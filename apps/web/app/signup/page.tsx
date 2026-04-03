@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client"
 
 export default function SignupPage() {
   const router = useRouter()
+  const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -21,7 +22,10 @@ export default function SignupPage() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        data: { full_name: name.trim() || undefined },
+      },
     })
     if (error) { setError(error.message); setLoading(false); return }
     setSent(true)
@@ -53,6 +57,15 @@ export default function SignupPage() {
       <p className="mt-3 text-sm text-text-secondary">Your knowledge, compiled.</p>
 
       <form onSubmit={handleSignup} className="mt-10 w-full max-w-xs space-y-4">
+        <div>
+          <label className="block text-xs text-text-tertiary mb-1.5">Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full bg-surface border border-border-emphasis px-3 py-2 text-xs text-text-primary placeholder:text-text-ghost outline-none focus:border-text-tertiary transition-colors duration-[180ms]"
+          />
+        </div>
         <div>
           <label className="block text-xs text-text-tertiary mb-1.5">Email</label>
           <input
