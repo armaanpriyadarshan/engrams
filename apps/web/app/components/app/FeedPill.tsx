@@ -93,27 +93,18 @@ export default function FeedPill({ engramId }: FeedPillProps) {
   return (
     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30" ref={pillRef}>
       {/* Collapsed pill */}
-      <div
-        className={`transition-all duration-300 ease-out overflow-hidden ${
-          expanded ? "max-h-0 opacity-0 scale-95 pointer-events-none" : "max-h-12 opacity-100 scale-100"
-        }`}
-      >
+      {!expanded && (
         <button
           onClick={() => setExpanded(true)}
-          className="bg-surface-raised border border-border hover:border-border-emphasis px-5 py-2.5 text-xs font-mono text-text-secondary hover:text-text-emphasis transition-all duration-150 cursor-pointer whitespace-nowrap"
+          className="bg-surface-raised border border-border hover:border-border-emphasis px-5 py-2.5 text-xs font-mono text-text-secondary hover:text-text-emphasis transition-all duration-150 cursor-pointer whitespace-nowrap animate-fade-in"
         >
           + Feed source
         </button>
-      </div>
+      )}
 
       {/* Expanded input area */}
-      <div
-        className={`w-[480px] transition-all duration-300 ease-out origin-bottom ${
-          expanded
-            ? "max-h-[300px] opacity-100 scale-100 translate-y-0"
-            : "max-h-0 opacity-0 scale-95 translate-y-2 pointer-events-none"
-        }`}
-      >
+      {expanded && (
+      <div className="w-[480px] animate-fade-in">
       <div className="bg-surface-raised border border-border-emphasis p-4">
         <div className="flex gap-3 mb-3">
           {(["url", "text", "file"] as const).map((tab) => (
@@ -195,6 +186,7 @@ export default function FeedPill({ engramId }: FeedPillProps) {
         )}
       </div>
       </div>
+      )}
     </div>
   )
 }
