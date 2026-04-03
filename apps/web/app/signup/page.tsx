@@ -5,22 +5,27 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 
-export default function LoginPage() {
+export default function SignupPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [sent, setSent] = useState(false)
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
     setLoading(true)
     const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    })
     if (error) { setError(error.message); setLoading(false); return }
-    router.push("/app")
-    router.refresh()
+    setSent(true)
+    setLoading(false)
   }
 
   const handleGoogleLogin = async () => {
@@ -31,12 +36,23 @@ export default function LoginPage() {
     })
   }
 
+  if (sent) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center px-6">
+        <h1 className="font-heading text-2xl text-text-emphasis">Check your email</h1>
+        <p className="mt-3 text-sm text-text-secondary max-w-xs text-center">
+          A confirmation link has been sent to {email}.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
-      <h1 className="font-heading text-2xl text-text-emphasis">Sign in to engrams</h1>
+      <h1 className="font-heading text-2xl text-text-emphasis">Create an account</h1>
       <p className="mt-3 text-sm text-text-secondary">Your knowledge, compiled.</p>
 
-      <form onSubmit={handleEmailLogin} className="mt-10 w-full max-w-xs space-y-4">
+      <form onSubmit={handleSignup} className="mt-10 w-full max-w-xs space-y-4">
         <div>
           <label className="block text-xs text-text-tertiary mb-1.5">Email</label>
           <input
@@ -54,6 +70,7 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            minLength={6}
             className="w-full bg-surface border border-border-emphasis px-3 py-2 text-xs text-text-primary placeholder:text-text-ghost outline-none focus:border-text-tertiary transition-colors duration-[180ms]"
           />
         </div>
@@ -63,7 +80,7 @@ export default function LoginPage() {
           disabled={loading}
           className="w-full bg-text-primary text-void py-2.5 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-150"
         >
-          {loading ? "Signing in..." : "Sign in"}
+          {loading ? "Creating account..." : "Sign up"}
         </button>
       </form>
 
@@ -87,9 +104,9 @@ export default function LoginPage() {
       </button>
 
       <p className="mt-8 text-xs text-text-tertiary">
-        Don&apos;t have an account?{" "}
-        <Link href="/signup" className="text-text-secondary hover:text-text-emphasis transition-colors duration-150">
-          Sign up
+        Already have an account?{" "}
+        <Link href="/login" className="text-text-secondary hover:text-text-emphasis transition-colors duration-150">
+          Sign in
         </Link>
       </p>
     </div>
