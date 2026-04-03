@@ -1,0 +1,112 @@
+"use client"
+
+import { useState } from "react"
+import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+
+interface Engram {
+  id: string
+  name: string
+  slug: string
+  accent_color: string
+  article_count: number
+  source_count: number
+}
+
+interface Profile {
+  id: string
+  email: string
+  display_name: string | null
+  avatar_url: string | null
+}
+
+export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Profile | null }) {
+  const pathname = usePathname()
+  const router = useRouter()
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState("")
+
+  const activeSlug = pathname.split("/")[2] ?? ""
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return
+    const supabase = createClient()
+    const slug = newName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
+    const { data, error } = await supabase
+      .from("engrams")
+      .insert({ owner_id: profile?.id, name: newName.trim(), slug })
+      .select("slug")
+      .single()
+
+    if (!error && data) {
+      setNewName("")
+      setCreating(false)
+      router.push(`/app/${data.slug}`)
+      router.refresh()
+    }
+  }
+
+  const handleSignOut = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push("/")
+    router.refresh()
+  }
+
+  return (
+    <aside className="w-56 shrink-0 border-r border-border bg-surface flex flex-col h-full">
+      <div className="px-4 py-4 border-b border-border">
+        <Link href="/app" className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150">
+          engrams
+        </Link>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto py-3 px-2">
+        {engrams.map((e) => (
+          <Link
+            key={e.id}
+            href={`/app/${e.slug}`}
+            className={`flex items-center gap-2.5 px-3 py-2 text-sm transition-colors duration-150 ${
+              activeSlug === e.slug
+                ? "text-text-emphasis bg-surface-elevated"
+                : "text-text-secondary hover:text-text-primary hover:bg-surface-raised"
+            }`}
+          >
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: e.accent_color }} />
+            <span className="truncate">{e.name}</span>
+          </Link>
+        ))}
+      </nav>
+
+      <div className="px-2 pb-2">
+        {creating ? (
+          <div className="px-2 py-1">
+            <input
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setCreating(false) }}
+              placeholder="Name your engram"
+              className="w-full bg-transparent border-b border-border-emphasis text-sm text-text-primary placeholder:text-text-ghost outline-none py-1"
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setCreating(true)}
+            className="w-full text-left px-3 py-2 text-sm text-text-tertiary hover:text-text-secondary transition-colors duration-150 cursor-pointer"
+          >
+            Form new engram
+          </button>
+        )}
+      </div>
+
+      <div className="px-4 py-3 border-t border-border flex items-center justify-between">
+        <span className="text-xs text-text-tertiary truncate">{profile?.display_name ?? profile?.email}</span>
+        <button onClick={handleSignOut} className="text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer">
+          Sign out
+        </button>
+      </div>
+    </aside>
+  )
+}
