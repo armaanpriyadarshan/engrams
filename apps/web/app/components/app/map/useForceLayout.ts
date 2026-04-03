@@ -17,13 +17,13 @@ export function useForceLayout(data: GraphData | null, width: number, height: nu
     }))
 
     const nodeCount = nodes.length
-    const repulsion = -80 - Math.min(nodeCount * 4, 300)
+    const repulsion = -20 - Math.min(nodeCount, 60)
 
     const simulation = forceSimulation(nodes)
-      .force("link", forceLink(links).distance(50).strength(0.5))
+      .force("link", forceLink(links).distance(25).strength(0.7))
       .force("charge", forceManyBody().strength(repulsion))
-      .force("center", forceCenter(0, 0))
-      .force("collide", forceCollide().radius((_, i) => 8 + data.nodes[i].depth * 12))
+      .force("center", forceCenter(0, 0).strength(0.4))
+      .force("collide", forceCollide().radius((_, i) => 4 + data.nodes[i].depth * 6))
       .stop()
 
     // Run synchronously
@@ -33,7 +33,7 @@ export function useForceLayout(data: GraphData | null, width: number, height: nu
     }
 
     // Scale positions to fit within a reasonable range
-    const scale = Math.min(width, height) * 0.3
+    const scale = Math.min(width, height) * 0.18
     let maxR = 1
     for (const node of nodes) {
       const r = Math.sqrt((node.x ?? 0) ** 2 + (node.y ?? 0) ** 2)
