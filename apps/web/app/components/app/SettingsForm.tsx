@@ -69,7 +69,7 @@ export default function SettingsForm({ engram }: { engram: Engram }) {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           onBlur={() => save({ description })}
-          placeholder="What is this engram about"
+          placeholder="What does this engram store"
           rows={3}
           className="mt-2 w-full bg-surface border border-border-emphasis px-4 py-3 text-sm text-text-primary placeholder:text-text-ghost outline-none focus:border-text-tertiary transition-colors duration-[180ms] resize-none"
         />

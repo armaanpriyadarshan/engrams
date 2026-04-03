@@ -76,15 +76,17 @@ export default function EngramPage() {
     <div className="w-full h-full relative">
       {/* Map */}
       {graphData && positions ? (
-        <EngineGraph
-          data={graphData}
-          positions={positions}
-          engramSlug={engramSlug}
-          onNodeClick={handleNodeClick}
-        />
+        <div className="w-full h-full animate-fade-in">
+          <EngineGraph
+            data={graphData}
+            positions={positions}
+            engramSlug={engramSlug}
+            onNodeClick={handleNodeClick}
+          />
+        </div>
       ) : (
         <div className="w-full h-full flex items-center justify-center">
-          <p className="text-xs font-mono text-text-ghost">Loading...</p>
+          <p className="text-xs font-mono text-text-ghost">Loading<span className="inline-flex w-4"><span className="animate-loading-dots" /></span></p>
         </div>
       )}
 

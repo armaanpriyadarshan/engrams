@@ -34,7 +34,8 @@
   --animate-drift-2: drift-2 22s ease-in-out infinite;
   --animate-gradient-pulse: gradient-pulse 6s ease-in-out infinite;
   --animate-pulse-dot: pulse-dot 3s ease-in-out infinite;
-  --animate-fade-in: fade-in 300ms ease-out;
+  --animate-fade-in: fade-in 800ms cubic-bezier(0, 0, 0.2, 1) both;
+  --animate-loading-dots: loading-dots 1.4s ease-in-out infinite;
   --animate-slide-in-left: slide-in-left 700ms cubic-bezier(0, 0, 0.2, 1) both;
   --animate-slide-in-right: slide-in-right 700ms cubic-bezier(0, 0, 0.2, 1) both;
   --animate-slide-in-up: slide-in-up 700ms cubic-bezier(0, 0, 0.2, 1) both;
@@ -87,6 +88,17 @@
 @keyframes compilation-sweep {
   0%, 100% { background-position: -200% 0; }
   50% { background-position: 200% 0; }
+}
+
+.animate-loading-dots::after {
+  content: "";
+  animation: loading-dots 1.4s steps(4, end) infinite;
+}
+@keyframes loading-dots {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
 }
 
 @keyframes slide-in-left {
