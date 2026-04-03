@@ -24,6 +24,8 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
   const [articleCount, setArticleCount] = useState(0)
   const [sourceCount, setSourceCount] = useState(0)
   const [avgConfidence, setAvgConfidence] = useState(0)
+  const [confBuckets, setConfBuckets] = useState<number[]>([0, 0, 0, 0, 0])
+  const [openQuestions, setOpenQuestions] = useState<string[]>([])
 
   useEffect(() => {
     const supabase = createClient()
@@ -53,11 +55,25 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
         if (count) setArticleCount(count)
         if (data && data.length > 0) {
           setAvgConfidence(data.reduce((s, a) => s + (a.confidence ?? 0), 0) / data.length)
+          // Confidence distribution: 5 buckets [0-0.2, 0.2-0.4, 0.4-0.6, 0.6-0.8, 0.8-1.0]
+          const buckets = [0, 0, 0, 0, 0]
+          data.forEach(a => {
+            const idx = Math.min(Math.floor((a.confidence ?? 0) * 5), 4)
+            buckets[idx]++
+          })
+          setConfBuckets(buckets)
         }
       })
 
     supabase.from("sources").select("id", { count: "exact" }).eq("engram_id", engramId)
       .then(({ count }) => { if (count) setSourceCount(count) })
+
+    // Open questions from engram config
+    supabase.from("engrams").select("config").eq("id", engramId).single()
+      .then(({ data }) => {
+        const questions = (data?.config as Record<string, unknown>)?.open_questions
+        if (Array.isArray(questions)) setOpenQuestions(questions.slice(0, 3))
+      })
   }, [engramId])
 
   const items = runs.length > 0 ? runs : [
@@ -103,32 +119,59 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
       {/* Health */}
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Health</span>
-        <div className="mt-2 grid grid-cols-3 gap-2">
-          <div>
+
+        {/* Stat boxes */}
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
+          <div className="border border-border rounded-sm px-2 py-1.5 text-center">
             <span className="block font-mono text-sm text-text-emphasis">{articleCount}</span>
-            <span className="font-mono text-[9px] text-text-ghost">articles</span>
+            <span className="font-mono text-[8px] text-text-ghost">articles</span>
           </div>
-          <div>
+          <div className="border border-border rounded-sm px-2 py-1.5 text-center">
             <span className="block font-mono text-sm text-text-emphasis">{sourceCount}</span>
-            <span className="font-mono text-[9px] text-text-ghost">sources</span>
+            <span className="font-mono text-[8px] text-text-ghost">sources</span>
           </div>
-          <div>
+          <div className="border border-border rounded-sm px-2 py-1.5 text-center">
             <span className={`block font-mono text-sm ${confColor}`}>
               {avgConfidence > 0 ? `${(avgConfidence * 100).toFixed(0)}%` : "—"}
             </span>
-            <span className="font-mono text-[9px] text-text-ghost">confidence</span>
+            <span className="font-mono text-[8px] text-text-ghost">avg conf</span>
           </div>
         </div>
-        {/* Mini confidence bar */}
-        <div className="mt-2 h-1 bg-border rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${Math.max(avgConfidence * 100, 2)}%`,
-              backgroundColor: avgConfidence > 0.8 ? "var(--color-confidence-high)" : avgConfidence > 0.5 ? "var(--color-confidence-mid)" : "var(--color-confidence-low)",
-            }}
-          />
+
+        {/* Confidence distribution */}
+        <div className="mt-2.5">
+          <span className="text-[8px] font-mono text-text-ghost">Confidence distribution</span>
+          <div className="flex gap-px mt-1 h-3">
+            {confBuckets.map((count, i) => {
+              const colors = ["bg-confidence-low", "bg-confidence-low", "bg-confidence-mid", "bg-confidence-mid", "bg-confidence-high"]
+              const maxCount = Math.max(...confBuckets, 1)
+              return (
+                <div key={i} className="flex-1 flex flex-col justify-end">
+                  <div
+                    className={`${colors[i]} rounded-[1px] transition-all duration-500`}
+                    style={{ height: `${(count / maxCount) * 100}%`, minHeight: count > 0 ? 1 : 0 }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex justify-between mt-0.5">
+            <span className="text-[7px] font-mono text-text-ghost">0</span>
+            <span className="text-[7px] font-mono text-text-ghost">1</span>
+          </div>
         </div>
+
+        {/* Open questions */}
+        {openQuestions.length > 0 && (
+          <div className="mt-2.5 pt-2 border-t border-border">
+            <span className="text-[8px] font-mono text-text-ghost">Open questions</span>
+            <div className="mt-1 space-y-1">
+              {openQuestions.map((q, i) => (
+                <p key={i} className="text-[10px] text-text-tertiary leading-tight">{q}</p>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

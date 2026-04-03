@@ -15,7 +15,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ engra
   if (!engram) notFound()
 
   return (
-    <div className="max-w-xl mx-auto px-6 py-10 overflow-y-auto h-full">
+    <div className="max-w-xl mx-auto px-6 py-10 h-full" style={{ overflow: "auto", scrollbarWidth: "none" }}>
       <h1 className="font-heading text-lg text-text-emphasis mb-8">Settings</h1>
       <SettingsForm engram={engram} />
     </div>
