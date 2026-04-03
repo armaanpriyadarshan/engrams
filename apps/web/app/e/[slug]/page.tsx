@@ -38,7 +38,7 @@ export default function PublishedMapPage() {
 
   if (loading || !graphData || !positions) {
     return (
-      <div className="w-full h-full flex items-center justify-center">
+      <div className="absolute inset-0 flex items-center justify-center">
         <p className="text-xs font-mono text-text-ghost">
           {loading ? "Loading..." : "No articles in this engram."}
         </p>
@@ -47,7 +47,7 @@ export default function PublishedMapPage() {
   }
 
   return (
-    <div className="w-full h-full relative">
+    <div className="absolute inset-0">
       <EngineGraph
         data={graphData}
         positions={positions}
