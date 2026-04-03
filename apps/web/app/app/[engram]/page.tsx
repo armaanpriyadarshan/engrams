@@ -25,6 +25,7 @@ export default function EngramPage() {
   const engramSlug = params.engram as string
 
   const [engramId, setEngramId] = useState<string | null>(null)
+  const [allEngrams, setAllEngrams] = useState<{ id: string; name: string; accent_color: string | null; slug: string }[]>([])
   const [askOpen, setAskOpen] = useState(false)
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
@@ -34,11 +35,14 @@ export default function EngramPage() {
     const supabase = createClient()
     supabase
       .from("engrams")
-      .select("id")
-      .eq("slug", engramSlug)
-      .single()
+      .select("id, name, accent_color, slug")
+      .order("created_at", { ascending: true })
       .then(({ data }) => {
-        if (data) setEngramId(data.id)
+        if (data) {
+          setAllEngrams(data)
+          const current = data.find((e) => e.slug === engramSlug)
+          if (current) setEngramId(current.id)
+        }
       })
   }, [engramSlug])
 
@@ -153,7 +157,7 @@ export default function EngramPage() {
 
       {/* Ask slide panel — right side */}
       <SlidePanel isOpen={askOpen} onClose={() => setAskOpen(false)}>
-        {engramId && <AskPanel engramId={engramId} engramSlug={engramSlug} prefill={askPrefill} />}
+        {engramId && <AskPanel engramId={engramId} engramSlug={engramSlug} prefill={askPrefill} allEngrams={allEngrams} />}
       </SlidePanel>
 
       {/* Compilation toast */}

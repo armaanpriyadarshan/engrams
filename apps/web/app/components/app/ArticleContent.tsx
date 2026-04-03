@@ -7,12 +7,14 @@ import type { Components } from "react-markdown"
 interface ArticleContentProps {
   contentMd: string
   engramSlug: string
+  linkPrefix?: string
 }
 
-function WikiLink({ slug, engramSlug }: { slug: string; engramSlug: string }) {
+function WikiLink({ slug, engramSlug, linkPrefix }: { slug: string; engramSlug: string; linkPrefix?: string }) {
+  const base = linkPrefix ?? `/app/${engramSlug}`
   return (
     <Link
-      href={`/app/${engramSlug}/article/${slug}`}
+      href={`${base}/article/${slug}`}
       className="text-text-secondary hover:text-text-emphasis transition-colors duration-150 border-b border-border hover:border-text-tertiary"
     >
       {slug.replace(/-/g, " ")}
@@ -20,23 +22,23 @@ function WikiLink({ slug, engramSlug }: { slug: string; engramSlug: string }) {
   )
 }
 
-function processWikiLinks(text: string, engramSlug: string): React.ReactNode[] {
+function processWikiLinks(text: string, engramSlug: string, linkPrefix?: string): React.ReactNode[] {
   const parts = text.split(/(\[\[[^\]]+\]\])/)
   return parts.map((part, i) => {
     const match = part.match(/^\[\[([^\]]+)\]\]$/)
     if (match) {
-      return <WikiLink key={i} slug={match[1]} engramSlug={engramSlug} />
+      return <WikiLink key={i} slug={match[1]} engramSlug={engramSlug} linkPrefix={linkPrefix} />
     }
     return part
   })
 }
 
-export default function ArticleContent({ contentMd, engramSlug }: ArticleContentProps) {
+export default function ArticleContent({ contentMd, engramSlug, linkPrefix }: ArticleContentProps) {
   // Pre-process: temporarily replace [[slug]] with placeholders for markdown parsing,
   // then restore them. Simpler approach: use custom components to handle text nodes.
   const components: Components = {
     p({ children }) {
-      return <p className="mb-4">{processChildren(children, engramSlug)}</p>
+      return <p className="mb-4">{processChildren(children, engramSlug, linkPrefix)}</p>
     },
     h1({ children }) {
       return <h1 className="font-heading text-xl text-text-emphasis mt-8 mb-3">{children}</h1>
@@ -54,7 +56,7 @@ export default function ArticleContent({ contentMd, engramSlug }: ArticleContent
       return <ol className="list-decimal list-outside ml-5 mb-4 space-y-1">{children}</ol>
     },
     li({ children }) {
-      return <li>{processChildren(children, engramSlug)}</li>
+      return <li>{processChildren(children, engramSlug, linkPrefix)}</li>
     },
     strong({ children }) {
       return <strong className="text-text-emphasis font-medium">{children}</strong>
@@ -102,14 +104,14 @@ export default function ArticleContent({ contentMd, engramSlug }: ArticleContent
   return <ReactMarkdown components={components}>{contentMd}</ReactMarkdown>
 }
 
-function processChildren(children: React.ReactNode, engramSlug: string): React.ReactNode {
+function processChildren(children: React.ReactNode, engramSlug: string, linkPrefix?: string): React.ReactNode {
   if (typeof children === "string") {
-    return processWikiLinks(children, engramSlug)
+    return processWikiLinks(children, engramSlug, linkPrefix)
   }
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === "string") {
-        const processed = processWikiLinks(child, engramSlug)
+        const processed = processWikiLinks(child, engramSlug, linkPrefix)
         return processed.length === 1 ? processed[0] : <span key={i}>{processed}</span>
       }
       return child

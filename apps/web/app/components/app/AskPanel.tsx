@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
 import ArticleContent from "./ArticleContent"
+import EngramSelector from "./EngramSelector"
 
 interface QueryResult {
   query_id: string
@@ -22,15 +23,24 @@ interface PastQuery {
   created_at: string
 }
 
+interface EngramOption {
+  id: string
+  name: string
+  accent_color: string | null
+  slug: string
+}
+
 interface AskPanelProps {
   engramId: string
   engramSlug: string
   prefill?: string
+  allEngrams?: EngramOption[]
 }
 
-export default function AskPanel({ engramId, engramSlug, prefill }: AskPanelProps) {
+export default function AskPanel({ engramId, engramSlug, prefill, allEngrams }: AskPanelProps) {
   const router = useRouter()
   const [question, setQuestion] = useState(prefill ?? "")
+  const [selectedEngramIds, setSelectedEngramIds] = useState<string[]>([engramId])
   const [asking, setAsking] = useState(false)
   const [result, setResult] = useState<QueryResult | null>(null)
   const [error, setError] = useState("")
@@ -97,7 +107,7 @@ export default function AskPanel({ engramId, engramSlug, prefill }: AskPanelProp
 
     const supabase = createClient()
     const { data, error: fnError } = await supabase.functions.invoke("ask-engram", {
-      body: { engram_id: engramId, question: queryText },
+      body: { engram_id: engramId, engram_ids: selectedEngramIds, question: queryText },
     })
 
     if (fnError || !data) { setError("Query failed. Try again."); setAsking(false); return }
@@ -132,6 +142,14 @@ export default function AskPanel({ engramId, engramSlug, prefill }: AskPanelProp
           </button>
         )}
       </div>
+
+      {allEngrams && allEngrams.length > 1 && (
+        <EngramSelector
+          engrams={allEngrams}
+          selected={selectedEngramIds}
+          onChange={setSelectedEngramIds}
+        />
+      )}
 
       <textarea
         value={question}

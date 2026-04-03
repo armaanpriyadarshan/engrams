@@ -17,6 +17,7 @@ export function TopBar() {
         { label: "Sources", href: `/app/${engramSlug}/sources` },
         { label: "Health", href: `/app/${engramSlug}/health` },
         { label: "Timeline", href: `/app/${engramSlug}/timeline` },
+        { label: "Settings", href: `/app/${engramSlug}/settings` },
       ]
     : []
 
