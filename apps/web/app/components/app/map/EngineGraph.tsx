@@ -9,17 +9,22 @@ interface EngineGraphProps {
   data: GraphData
   positions: Float32Array
   engramSlug: string
+  onNodeClick?: (slug: string) => void
 }
 
-export default function EngineGraph({ data, positions, engramSlug }: EngineGraphProps) {
+export default function EngineGraph({ data, positions, engramSlug, onNodeClick }: EngineGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const [hoveredNode, setHoveredNode] = useState<number | null>(null)
 
   const handleNodeClick = useCallback((slug: string) => {
-    router.push(`/app/${engramSlug}/article/${slug}`)
-  }, [router, engramSlug])
+    if (onNodeClick) {
+      onNodeClick(slug)
+    } else {
+      router.push(`/app/${engramSlug}/article/${slug}`)
+    }
+  }, [router, engramSlug, onNodeClick])
 
   useEffect(() => {
     const container = containerRef.current

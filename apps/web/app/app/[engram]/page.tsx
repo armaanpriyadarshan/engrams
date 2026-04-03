@@ -1,67 +1,112 @@
-import { createClient } from "@/lib/supabase/server"
-import { notFound } from "next/navigation"
-import Link from "next/link"
-import ArticleSearch from "@/app/components/app/ArticleSearch"
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+import { useParams } from "next/navigation"
+import dynamic from "next/dynamic"
+import { createClient } from "@/lib/supabase/client"
+import { useGraphData } from "@/app/components/app/map/useGraphData"
+import { useForceLayout } from "@/app/components/app/map/useForceLayout"
+import SlidePanel from "@/app/components/app/SlidePanel"
+import NodeCard from "@/app/components/app/NodeCard"
+import AskPanel from "@/app/components/app/AskPanel"
+import FeedPill from "@/app/components/app/FeedPill"
 import CompilationToast from "@/app/components/app/CompilationToast"
+import Link from "next/link"
 
-export default async function EngramPage({ params }: { params: Promise<{ engram: string }> }) {
-  const { engram: engramSlug } = await params
-  const supabase = await createClient()
+const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
 
-  const { data: engram } = await supabase
-    .from("engrams")
-    .select("*")
-    .eq("slug", engramSlug)
-    .single()
+export default function EngramPage() {
+  const params = useParams()
+  const engramSlug = params.engram as string
 
-  if (!engram) notFound()
+  const [engramId, setEngramId] = useState<string | null>(null)
+  const [askOpen, setAskOpen] = useState(false)
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
 
-  const { data: articles } = await supabase
-    .from("articles")
-    .select("slug, title, summary, confidence, article_type, tags, updated_at")
-    .eq("engram_id", engram.id)
-    .order("updated_at", { ascending: false })
+  useEffect(() => {
+    const supabase = createClient()
+    supabase
+      .from("engrams")
+      .select("id")
+      .eq("slug", engramSlug)
+      .single()
+      .then(({ data }) => {
+        if (data) setEngramId(data.id)
+      })
+  }, [engramSlug])
 
-  const { data: sources } = await supabase
-    .from("sources")
-    .select("id, title, source_type, status, created_at")
-    .eq("engram_id", engram.id)
-    .order("created_at", { ascending: false })
-    .limit(5)
+  const { data: graphData, loading } = useGraphData(engramId)
+  const positions = useForceLayout(graphData, 1200, 800)
+
+  const handleNodeClick = useCallback((slug: string) => {
+    setSelectedSlug(slug)
+  }, [])
+
+  // Empty state
+  if (!loading && graphData && graphData.nodes.length === 0) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center relative">
+        <p className="text-text-secondary text-sm">Nothing here yet.</p>
+        <p className="mt-2 text-sm text-text-tertiary">Feed a source to begin.</p>
+        {engramId && <FeedPill engramId={engramId} />}
+        {engramId && <CompilationToast engramId={engramId} />}
+      </div>
+    )
+  }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: engram.accent_color }} />
-        <h1 className="font-heading text-xl text-text-emphasis">{engram.name}</h1>
-      </div>
-
-      <ArticleSearch
-        engramId={engram.id}
-        engramSlug={engramSlug}
-        initialArticles={articles ?? []}
-      />
-
-      {sources && sources.length > 0 && (
-        <div className="mt-12 border-t border-border pt-8">
-          <h2 className="text-xs text-text-tertiary uppercase tracking-widest font-mono mb-4">Recent sources</h2>
-          <div className="space-y-2">
-            {sources.map((s) => (
-              <div key={s.id} className="flex items-center gap-3 text-xs">
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  s.status === "compiled" ? "bg-confidence-high"
-                    : s.status === "processing" ? "bg-agent-active"
-                    : s.status === "failed" ? "bg-danger"
-                    : "bg-text-ghost"
-                }`} />
-                <span className="text-text-secondary truncate">{s.title ?? s.source_type}</span>
-                <span className="text-text-ghost font-mono ml-auto shrink-0">{s.status}</span>
-              </div>
-            ))}
-          </div>
+    <div className="w-full h-full relative overflow-hidden">
+      {/* Map */}
+      {graphData && positions ? (
+        <EngineGraph
+          data={graphData}
+          positions={positions}
+          engramSlug={engramSlug}
+          onNodeClick={handleNodeClick}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center">
+          <p className="text-xs font-mono text-text-ghost">Loading...</p>
         </div>
       )}
-      <CompilationToast engramId={engram.id} />
+
+      {/* Stats overlay */}
+      {graphData && (
+        <div className="absolute top-0 left-0 right-0 px-4 py-2 pointer-events-none">
+          <span className="text-[10px] font-mono text-text-ghost">
+            {graphData.nodes.length} article{graphData.nodes.length !== 1 ? "s" : ""} &middot; {graphData.edges.length} connection{graphData.edges.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+      )}
+
+      {/* Node card — floating, draggable, left side */}
+      {selectedSlug && engramId && (
+        <NodeCard
+          slug={selectedSlug}
+          engramSlug={engramSlug}
+          engramId={engramId}
+          onClose={() => setSelectedSlug(null)}
+        />
+      )}
+
+      {/* Feed pill — bottom center */}
+      {engramId && <FeedPill engramId={engramId} />}
+
+      {/* Ask button — bottom right */}
+      <button
+        onClick={() => setAskOpen(!askOpen)}
+        className="absolute bottom-6 right-6 z-30 bg-surface-raised border border-border hover:border-border-emphasis px-4 py-2.5 text-xs font-mono text-text-secondary hover:text-text-emphasis transition-all duration-150 cursor-pointer"
+      >
+        Ask
+      </button>
+
+      {/* Ask slide panel — right side */}
+      <SlidePanel isOpen={askOpen} onClose={() => setAskOpen(false)}>
+        {engramId && <AskPanel engramId={engramId} engramSlug={engramSlug} />}
+      </SlidePanel>
+
+      {/* Compilation toast */}
+      {engramId && <CompilationToast engramId={engramId} />}
     </div>
   )
 }
