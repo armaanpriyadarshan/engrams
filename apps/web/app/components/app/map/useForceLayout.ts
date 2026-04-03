@@ -41,7 +41,7 @@ export function useForceLayout(data: GraphData | null, width: number, height: nu
     }
 
     // Offset Y upward by 30% of scale so graph clears the bottom buttons
-    const yOffset = scale * 0.3
+    const yOffset = scale * 0.12
     const positions = new Float32Array(nodeCount * 2)
     for (let i = 0; i < nodeCount; i++) {
       positions[i * 2] = ((nodes[i].x ?? 0) / maxR) * scale
