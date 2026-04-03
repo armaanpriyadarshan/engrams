@@ -1,0 +1,47 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# os
+.DS_Store
+Thumbs.db
+
+# editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# misc
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# tauri
+apps/desktop/src-tauri/target/
+
+# expo
+apps/mobile/.expo/
+
+# turbopack
+.turbo/
