@@ -2,8 +2,8 @@ import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import Link from "next/link"
 
-export default async function ArticlePage(props: PageProps<"/app/[engram]/article/[slug]">) {
-  const { engram: engramSlug, slug } = await props.params
+export default async function ArticlePage({ params }: { params: Promise<{ engram: string; slug: string }> }) {
+  const { engram: engramSlug, slug } = await params
   const supabase = await createClient()
 
   const { data: engram } = await supabase
