@@ -259,9 +259,9 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       // Camera orbit
       // Scale drift with node count — no movement under 5 nodes
       const driftScale = Math.min(Math.max((count - 5) / 10, 0), 1)
-      camera.position.x = Math.sin(elapsed * 0.02) * 60 * driftScale + (smoothMouse.x / 800) * -20
-      camera.position.y = Math.cos(elapsed * 0.015) * 40 * driftScale + (smoothMouse.y / 800) * -15
-      camera.position.z = camZ + Math.sin(elapsed * 0.01) * 20 * driftScale
+      camera.position.x = Math.sin(elapsed * 0.015) * 20 * driftScale + (smoothMouse.x / 800) * -8
+      camera.position.y = Math.cos(elapsed * 0.01) * 15 * driftScale + (smoothMouse.y / 800) * -6
+      camera.position.z = camZ + Math.sin(elapsed * 0.008) * 8 * driftScale
       camera.lookAt(0, 0, 0)
 
       const mPX = (smoothMouse.x / 800) * -10
