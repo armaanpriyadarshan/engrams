@@ -9,7 +9,7 @@ interface EngineGraphProps {
   data: GraphData
   positions: Float32Array
   engramSlug: string
-  onNodeClick?: (slug: string) => void
+  onNodeClick?: (slug: string, x: number, y: number) => void
 }
 
 export default function EngineGraph({ data, positions, engramSlug, onNodeClick }: EngineGraphProps) {
@@ -18,9 +18,9 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
   const router = useRouter()
   const [hoveredNode, setHoveredNode] = useState<number | null>(null)
 
-  const handleNodeClick = useCallback((slug: string) => {
+  const handleNodeClick = useCallback((slug: string, screenX: number, screenY: number) => {
     if (onNodeClick) {
-      onNodeClick(slug)
+      onNodeClick(slug, screenX, screenY)
     } else {
       router.push(`/app/${engramSlug}/article/${slug}`)
     }
@@ -96,7 +96,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     }
     const onClick = (e: MouseEvent) => {
       if (currentHovered >= 0) {
-        handleNodeClick(data.nodes[currentHovered].slug)
+        handleNodeClick(data.nodes[currentHovered].slug, e.clientX, e.clientY)
       } else {
         const w = screenToWorld(e.clientX, e.clientY)
         ripple.x = w.x

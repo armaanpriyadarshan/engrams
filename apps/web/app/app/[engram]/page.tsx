@@ -11,9 +11,14 @@ import NodeCard from "@/app/components/app/NodeCard"
 import AskPanel from "@/app/components/app/AskPanel"
 import FeedPill from "@/app/components/app/FeedPill"
 import CompilationToast from "@/app/components/app/CompilationToast"
-import Link from "next/link"
 
 const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
+
+interface NodeMenu {
+  slug: string
+  x: number
+  y: number
+}
 
 export default function EngramPage() {
   const params = useParams()
@@ -22,6 +27,8 @@ export default function EngramPage() {
   const [engramId, setEngramId] = useState<string | null>(null)
   const [askOpen, setAskOpen] = useState(false)
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
+  const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
+  const [askPrefill, setAskPrefill] = useState("")
 
   useEffect(() => {
     const supabase = createClient()
@@ -35,12 +42,34 @@ export default function EngramPage() {
       })
   }, [engramSlug])
 
+  // Close node menu on click outside
+  useEffect(() => {
+    if (!nodeMenu) return
+    const close = () => setNodeMenu(null)
+    window.addEventListener("click", close)
+    return () => window.removeEventListener("click", close)
+  }, [nodeMenu])
+
   const { data: graphData, loading } = useGraphData(engramId)
   const positions = useForceLayout(graphData, 1200, 800)
 
-  const handleNodeClick = useCallback((slug: string) => {
-    setSelectedSlug(slug)
+  const handleNodeClick = useCallback((slug: string, x: number, y: number) => {
+    setNodeMenu({ slug, x, y })
   }, [])
+
+  const openArticle = useCallback(() => {
+    if (!nodeMenu) return
+    setSelectedSlug(nodeMenu.slug)
+    setNodeMenu(null)
+  }, [nodeMenu])
+
+  const askAboutNode = useCallback(() => {
+    if (!nodeMenu) return
+    const title = graphData?.nodes.find(n => n.slug === nodeMenu.slug)?.title ?? nodeMenu.slug.replace(/-/g, " ")
+    setAskPrefill(`Tell me about ${title}`)
+    setAskOpen(true)
+    setNodeMenu(null)
+  }, [nodeMenu, graphData])
 
   // Empty state
   if (!loading && graphData && graphData.nodes.length === 0) {
@@ -79,6 +108,28 @@ export default function EngramPage() {
         </div>
       )}
 
+      {/* Node context menu */}
+      {nodeMenu && (
+        <div
+          className="fixed z-50 bg-surface-raised border border-border-emphasis py-1 min-w-[160px] animate-fade-in"
+          style={{ left: nodeMenu.x, top: nodeMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={openArticle}
+            className="block w-full text-left px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-150 cursor-pointer"
+          >
+            Open article
+          </button>
+          <button
+            onClick={askAboutNode}
+            className="block w-full text-left px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-150 cursor-pointer"
+          >
+            Ask a question
+          </button>
+        </div>
+      )}
+
       {/* Node card — floating, draggable, left side */}
       {selectedSlug && engramId && (
         <NodeCard
@@ -102,7 +153,7 @@ export default function EngramPage() {
 
       {/* Ask slide panel — right side */}
       <SlidePanel isOpen={askOpen} onClose={() => setAskOpen(false)}>
-        {engramId && <AskPanel engramId={engramId} engramSlug={engramSlug} />}
+        {engramId && <AskPanel engramId={engramId} engramSlug={engramSlug} prefill={askPrefill} />}
       </SlidePanel>
 
       {/* Compilation toast */}

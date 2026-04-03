@@ -25,17 +25,22 @@ interface PastQuery {
 interface AskPanelProps {
   engramId: string
   engramSlug: string
+  prefill?: string
 }
 
-export default function AskPanel({ engramId, engramSlug }: AskPanelProps) {
+export default function AskPanel({ engramId, engramSlug, prefill }: AskPanelProps) {
   const router = useRouter()
-  const [question, setQuestion] = useState("")
+  const [question, setQuestion] = useState(prefill ?? "")
   const [asking, setAsking] = useState(false)
   const [result, setResult] = useState<QueryResult | null>(null)
   const [error, setError] = useState("")
   const [history, setHistory] = useState<PastQuery[]>([])
   const [filing, setFiling] = useState(false)
   const [fileStatus, setFileStatus] = useState("")
+
+  useEffect(() => {
+    if (prefill) setQuestion(prefill)
+  }, [prefill])
 
   useEffect(() => {
     const supabase = createClient()
