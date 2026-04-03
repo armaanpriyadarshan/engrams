@@ -77,7 +77,7 @@ export default function HistoryTimeline({ engramId }: { engramId: string }) {
   }
 
   return (
-    <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 pointer-events-auto animate-slide-in-down" style={{ animationDelay: "350ms" }}>
+    <div className="absolute bottom-[72px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-slide-in-down" style={{ animationDelay: "350ms" }}>
       <div className="flex items-center gap-0">
         {/* Main trunk line */}
         <div className="relative flex items-center">
