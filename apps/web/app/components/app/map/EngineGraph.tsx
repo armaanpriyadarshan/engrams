@@ -222,7 +222,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     const sigGeo = new THREE.BufferGeometry()
     sigGeo.setAttribute("position", new THREE.BufferAttribute(sigPos, 3))
     const sigMat = new THREE.PointsMaterial({
-      color: 0x999999, size: 1.2, transparent: true, opacity: 0.35,
+      color: 0x999999, size: 2, transparent: true, opacity: 0.35,
       blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
     })
     if (edgeCount > 0) scene.add(new THREE.Points(sigGeo, sigMat))
