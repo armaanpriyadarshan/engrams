@@ -97,7 +97,7 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
   const confColor = avgConfidence > 0.8 ? "text-confidence-high" : avgConfidence > 0.5 ? "text-confidence-mid" : "text-confidence-low"
 
   return (
-    <div className="absolute top-3 right-3 z-30 max-w-[200px] pointer-events-auto space-y-2">
+    <div className="absolute top-3 right-3 z-30 max-w-[200px] pointer-events-auto space-y-2 animate-slide-in-right" style={{ animationDelay: "300ms" }}>
       {/* Activity */}
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
