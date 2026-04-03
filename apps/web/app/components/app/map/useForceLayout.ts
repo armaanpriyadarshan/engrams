@@ -22,7 +22,7 @@ export function useForceLayout(data: GraphData | null, width: number, height: nu
     const simulation = forceSimulation(nodes)
       .force("link", forceLink(links).distance(25).strength(0.7))
       .force("charge", forceManyBody().strength(repulsion))
-      .force("center", forceCenter(0, 0).strength(0.4))
+      .force("center", forceCenter(0, -15).strength(0.4))
       .force("collide", forceCollide().radius((_, i) => 18 + data.nodes[i].depth * 10).strength(1))
       .stop()
 
