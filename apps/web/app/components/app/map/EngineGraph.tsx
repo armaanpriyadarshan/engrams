@@ -142,7 +142,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       basePos[i3] = x
       basePos[i3 + 1] = y
       basePos[i3 + 2] = z
-      sizes[i] = 14 + d * 30
+      sizes[i] = 20 + d * 35
       phases[i] = i * 2.39996
       driftOff[i] = i * 1.618
       driftSpd[i] = 0.6 + (((i * 7) % 11) / 11) * 0.8
@@ -222,7 +222,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     const sigGeo = new THREE.BufferGeometry()
     sigGeo.setAttribute("position", new THREE.BufferAttribute(sigPos, 3))
     const sigMat = new THREE.PointsMaterial({
-      color: 0xcccccc, size: 2.5, transparent: true, opacity: 0.6,
+      color: 0x999999, size: 1.2, transparent: true, opacity: 0.35,
       blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
     })
     if (edgeCount > 0) scene.add(new THREE.Points(sigGeo, sigMat))
