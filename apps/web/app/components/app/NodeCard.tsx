@@ -10,6 +10,7 @@ interface NodeCardProps {
   engramSlug: string
   engramId: string
   onClose: () => void
+  linkPrefix?: string
 }
 
 interface Article {
@@ -21,7 +22,7 @@ interface Article {
   tags: string[] | null
 }
 
-export default function NodeCard({ slug, engramSlug, engramId, onClose }: NodeCardProps) {
+export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPrefix }: NodeCardProps) {
   const [article, setArticle] = useState<Article | null>(null)
   const [loading, setLoading] = useState(true)
   const [pos, setPos] = useState({ x: 24, y: 80 })
@@ -114,13 +115,13 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose }: NodeCa
 
             <div className="mt-4 border-t border-border pt-4">
               <div className="prose-engram leading-[1.6] text-[13px] text-text-primary">
-                <ArticleContent contentMd={article.content_md} engramSlug={engramSlug} />
+                <ArticleContent contentMd={article.content_md} engramSlug={engramSlug} linkPrefix={linkPrefix} />
               </div>
             </div>
 
             <div className="mt-4 pt-3 border-t border-border">
               <Link
-                href={`/app/${engramSlug}/article/${slug}`}
+                href={`${linkPrefix ?? `/app/${engramSlug}`}/article/${slug}`}
                 className="text-[10px] font-mono text-text-ghost hover:text-text-emphasis transition-colors duration-150"
               >
                 Open full article &rarr;
