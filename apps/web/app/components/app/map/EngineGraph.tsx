@@ -257,9 +257,11 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       }
 
       // Camera orbit
-      camera.position.x = Math.sin(elapsed * 0.02) * 60 + (smoothMouse.x / 800) * -20
-      camera.position.y = Math.cos(elapsed * 0.015) * 40 + (smoothMouse.y / 800) * -15
-      camera.position.z = camZ + Math.sin(elapsed * 0.01) * 20
+      // Scale drift with node count — no movement under 5 nodes
+      const driftScale = Math.min(Math.max((count - 5) / 10, 0), 1)
+      camera.position.x = Math.sin(elapsed * 0.02) * 60 * driftScale + (smoothMouse.x / 800) * -20
+      camera.position.y = Math.cos(elapsed * 0.015) * 40 * driftScale + (smoothMouse.y / 800) * -15
+      camera.position.z = camZ + Math.sin(elapsed * 0.01) * 20 * driftScale
       camera.lookAt(0, 0, 0)
 
       const mPX = (smoothMouse.x / 800) * -10
@@ -270,12 +272,12 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
         const off = driftOff[i], spd = driftSpd[i], d = depthArr[i]
         const i3 = i * 3
         nodePositions[i3] = basePos[i3]
-          + Math.sin(t * spd + off) * 5 + Math.sin(t * 0.14 + off * 0.7) * 3
+          + (Math.sin(t * spd + off) * 5 + Math.sin(t * 0.14 + off * 0.7) * 3) * driftScale
           + mPX * (0.3 + d * 0.7)
         nodePositions[i3 + 1] = basePos[i3 + 1]
-          + Math.cos(t * 0.85 * spd + off * 0.6) * 5 + Math.cos(t * 0.11 + off * 1.1) * 3
+          + (Math.cos(t * 0.85 * spd + off * 0.6) * 5 + Math.cos(t * 0.11 + off * 1.1) * 3) * driftScale
           + mPY * (0.3 + d * 0.7)
-        nodePositions[i3 + 2] = basePos[i3 + 2] + Math.sin(t * 0.3 + off * 1.5) * 30
+        nodePositions[i3 + 2] = basePos[i3 + 2] + Math.sin(t * 0.3 + off * 1.5) * 30 * driftScale
       }
       nodeGeo.attributes.position.needsUpdate = true
 
