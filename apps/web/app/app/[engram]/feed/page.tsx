@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 
@@ -11,10 +11,12 @@ export default function FeedPage() {
 
   const [url, setUrl] = useState("")
   const [text, setText] = useState("")
-  const [activeTab, setActiveTab] = useState<"url" | "text">("url")
+  const [activeTab, setActiveTab] = useState<"url" | "text" | "file">("url")
   const [submitting, setSubmitting] = useState(false)
   const [compiling, setCompiling] = useState(false)
   const [message, setMessage] = useState("")
+  const [isDragging, setIsDragging] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const submit = useCallback(async (sourceType: string, content: string, title?: string) => {
     if (!content.trim()) return
@@ -72,9 +74,27 @@ export default function FeedPage() {
     setCompiling(false)
   }, [engramSlug, router])
 
+  const handleFile = useCallback((file: File) => {
+    const ext = file.name.split(".").pop()?.toLowerCase()
+    if (ext !== "txt" && ext !== "md") {
+      setMessage("PDF and DOCX support is coming. For now, try TXT or MD.")
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const content = e.target?.result as string
+      if (content) {
+        const name = file.name.replace(/\.[^.]+$/, "")
+        submit("text", content, name)
+      }
+    }
+    reader.readAsText(file)
+  }, [submit])
+
   const tabs = [
     { id: "url" as const, label: "URL" },
     { id: "text" as const, label: "Text" },
+    { id: "file" as const, label: "File" },
   ]
 
   return (
@@ -130,6 +150,44 @@ export default function FeedPage() {
           >
             {submitting ? "Adding..." : "Feed"}
           </button>
+        </div>
+      )}
+
+      {activeTab === "file" && (
+        <div>
+          <div
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+            onDragEnter={(e) => { e.preventDefault(); setIsDragging(true) }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setIsDragging(false)
+              const file = e.dataTransfer.files[0]
+              if (file) handleFile(file)
+            }}
+            onClick={() => fileRef.current?.click()}
+            className={`border border-dashed px-6 py-16 text-center cursor-pointer transition-all duration-200 ease-out ${
+              isDragging
+                ? "border-border-emphasis bg-surface-raised"
+                : "border-border hover:border-border-emphasis"
+            }`}
+          >
+            <p className={`text-sm ${isDragging ? "text-text-secondary" : "text-text-tertiary"}`}>
+              {isDragging ? "Drop to feed." : "Drop a file or click to choose."}
+            </p>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".txt,.md"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handleFile(file)
+              e.target.value = ""
+            }}
+          />
+          <p className="mt-3 text-[10px] font-mono text-text-ghost">Supports TXT, MD. More formats coming.</p>
         </div>
       )}
 

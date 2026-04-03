@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation"
 import Link from "next/link"
+import CompilationPulse from "./CompilationPulse"
 
 export function TopBar() {
   const pathname = usePathname()
@@ -13,10 +14,13 @@ export function TopBar() {
     ? [
         { label: "Articles", href: `/app/${engramSlug}` },
         { label: "Feed", href: `/app/${engramSlug}/feed` },
+        { label: "Ask", href: `/app/${engramSlug}/ask` },
       ]
     : []
 
   return (
+    <>
+    <CompilationPulse engramSlug={engramSlug} />
     <header className="h-11 shrink-0 border-b border-border flex items-center px-4 gap-6">
       {engramSlug && (
         <span className="font-mono text-xs text-text-tertiary">{engramSlug}</span>
@@ -38,5 +42,6 @@ export function TopBar() {
         })}
       </nav>
     </header>
+    </>
   )
 }
