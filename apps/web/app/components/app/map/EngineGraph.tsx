@@ -49,7 +49,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
 
     // ── Scene ──
     const scene = new THREE.Scene()
-    const camZ = 600 + Math.min(count * 3, 400)
+    const camZ = 300 + Math.min(count * 5, 600)
     const camera = new THREE.PerspectiveCamera(55, initW / initH, 1, 3000)
     camera.position.set(0, 0, camZ)
 
