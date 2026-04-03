@@ -21,7 +21,7 @@ export default function SlidePanel({ isOpen, onClose, children }: SlidePanelProp
 
   return (
     <div
-      className={`fixed top-0 right-0 h-full z-40 transition-transform duration-300 ease-out ${
+      className={`absolute top-0 right-0 h-full z-40 transition-transform duration-300 ease-out ${
         isOpen ? "translate-x-0" : "translate-x-full"
       }`}
       style={{ width: "400px" }}
