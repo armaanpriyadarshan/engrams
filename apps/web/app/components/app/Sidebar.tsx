@@ -56,27 +56,35 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
 
   return (
     <aside className="w-56 shrink-0 border-r border-border bg-surface flex flex-col h-full">
-      <div className="px-5 py-5 border-b border-border">
+      <div className="px-5 py-2.5 border-b border-border flex items-center">
         <Link href="/app" className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150">
           engrams
         </Link>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-3 px-2">
-        {engrams.map((e) => (
-          <Link
-            key={e.id}
-            href={`/app/${e.slug}`}
-            className={`flex items-center gap-2.5 px-3 py-2 text-sm transition-colors duration-150 ${
-              activeSlug === e.slug
-                ? "text-text-emphasis bg-surface-elevated"
-                : "text-text-secondary hover:text-text-primary hover:bg-surface-raised"
-            }`}
-          >
-            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: e.accent_color }} />
-            <span className="truncate">{e.name}</span>
-          </Link>
-        ))}
+      <nav className="flex-1 overflow-y-auto py-3">
+        {engrams.map((e) => {
+          const isActive = activeSlug === e.slug
+          return (
+            <Link
+              key={e.id}
+              href={`/app/${e.slug}`}
+              className={`flex items-center gap-3 px-5 py-2.5 transition-colors duration-150 border-l-2 ${
+                isActive
+                  ? "text-text-emphasis bg-surface-elevated"
+                  : "text-text-secondary hover:text-text-primary hover:bg-surface-raised border-transparent"
+              }`}
+              style={{ borderLeftColor: isActive ? e.accent_color : undefined }}
+            >
+              <div className="min-w-0">
+                <span className="block text-sm truncate">{e.name}</span>
+                <span className="block text-[10px] text-text-ghost mt-0.5">
+                  {e.source_count} source{e.source_count !== 1 ? "s" : ""}
+                </span>
+              </div>
+            </Link>
+          )
+        })}
       </nav>
 
       <div className="px-2 pb-2">
