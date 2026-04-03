@@ -62,7 +62,6 @@ export default function SourceTree({ engramId }: { engramId: string }) {
               <div key={s.id}>
                 <div className="flex items-start gap-1.5">
                   <span className="font-mono text-[10px] text-text-ghost leading-none select-none mt-0.5">{prefix}</span>
-                  <div className={`w-1 h-1 rounded-full shrink-0 mt-1.5 ${statusDot(s.status)}`} />
                   <div className="min-w-0">
                     <p className="text-[11px] text-text-primary truncate leading-tight">
                       {s.title ?? s.source_type}
