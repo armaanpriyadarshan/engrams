@@ -13,7 +13,6 @@ import ViewToggle from "@/app/components/app/ViewToggle"
 import AddSourceButton from "@/app/components/app/AddSourceButton"
 import AgentTimeline from "@/app/components/app/AgentTimeline"
 import AskBar from "@/app/components/app/AskBar"
-import HistoryTimeline from "@/app/components/app/HistoryTimeline"
 
 const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
 
@@ -93,11 +92,7 @@ export default function EngramPage() {
 
       {/* ── Overlay layout ── */}
 
-      {/* Top left: sources + history stacked */}
-      <div className="absolute top-3 left-3 z-30 max-w-[240px] pointer-events-auto">
-        {engramId && <SourceTree engramId={engramId} />}
-        {engramId && <HistoryTimeline engramId={engramId} />}
-      </div>
+      {engramId && <SourceTree engramId={engramId} />}
 
       <ViewToggle />
       {engramId && <AddSourceButton engramId={engramId} />}
