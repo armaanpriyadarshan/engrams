@@ -30,50 +30,30 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
   useEffect(() => {
     const supabase = createClient()
 
-    supabase
-      .from("compilation_runs")
-      .select("id, trigger_type, status, articles_created, articles_updated, started_at")
-      .eq("engram_id", engramId)
-      .order("started_at", { ascending: false })
-      .limit(5)
-      .then(({ data }) => {
-        if (data) {
-          setRuns(data.map(d => ({
-            id: d.id,
-            agent_type: d.trigger_type,
-            status: d.status,
-            summary: d.status === "completed"
-              ? `${d.articles_created} created, ${d.articles_updated} updated`
-              : d.status === "running" ? "Compiling..." : d.status,
-            started_at: d.started_at,
-          })))
-        }
-      })
-
-    supabase.from("articles").select("confidence", { count: "exact" }).eq("engram_id", engramId)
-      .then(({ data, count }) => {
-        if (count) setArticleCount(count)
-        if (data && data.length > 0) {
-          setAvgConfidence(data.reduce((s, a) => s + (a.confidence ?? 0), 0) / data.length)
-          // Confidence distribution: 10 buckets [0-10, 10-20, ..., 90-100]
-          const buckets = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-          data.forEach(a => {
-            const idx = Math.min(Math.floor((a.confidence ?? 0) * 10), 9)
-            buckets[idx]++
-          })
-          setConfBuckets(buckets)
-        }
-      })
-
-    supabase.from("sources").select("id", { count: "exact" }).eq("engram_id", engramId)
-      .then(({ count }) => { if (count) setSourceCount(count) })
-
-    // Open questions from engram config
-    supabase.from("engrams").select("config").eq("id", engramId).single()
-      .then(({ data }) => {
-        const questions = (data?.config as Record<string, unknown>)?.open_questions
-        if (Array.isArray(questions)) setOpenQuestions(questions.slice(0, 3))
-      })
+    Promise.all([
+      supabase.from("compilation_runs").select("id, trigger_type, status, articles_created, articles_updated, started_at").eq("engram_id", engramId).order("started_at", { ascending: false }).limit(5),
+      supabase.from("articles").select("confidence", { count: "exact" }).eq("engram_id", engramId),
+      supabase.from("sources").select("id", { count: "exact" }).eq("engram_id", engramId),
+      supabase.from("engrams").select("config").eq("id", engramId).single(),
+    ]).then(([runsRes, articlesRes, sourcesRes, engramRes]) => {
+      if (runsRes.data) {
+        setRuns(runsRes.data.map(d => ({
+          id: d.id, agent_type: d.trigger_type, status: d.status,
+          summary: d.status === "completed" ? `${d.articles_created} created, ${d.articles_updated} updated` : d.status === "running" ? "Compiling..." : d.status,
+          started_at: d.started_at,
+        })))
+      }
+      if (articlesRes.count) setArticleCount(articlesRes.count)
+      if (articlesRes.data && articlesRes.data.length > 0) {
+        setAvgConfidence(articlesRes.data.reduce((s, a) => s + (a.confidence ?? 0), 0) / articlesRes.data.length)
+        const buckets = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        articlesRes.data.forEach(a => { buckets[Math.min(Math.floor((a.confidence ?? 0) * 10), 9)]++ })
+        setConfBuckets(buckets)
+      }
+      if (sourcesRes.count) setSourceCount(sourcesRes.count)
+      const questions = (engramRes.data?.config as Record<string, unknown>)?.open_questions
+      if (Array.isArray(questions)) setOpenQuestions(questions.slice(0, 3))
+    })
   }, [engramId])
 
   const items = runs.length > 0 ? runs : [
