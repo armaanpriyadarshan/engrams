@@ -102,14 +102,13 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
       <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-slide-in-up" style={{ animationDelay: "250ms" }}>
         <button
           onClick={() => setOpen(true)}
-          className="group relative bg-text-primary text-void px-6 py-2.5 flex items-center gap-2.5 text-sm font-heading font-medium cursor-pointer hover:bg-text-emphasis hover:scale-105 active:scale-95 transition-all duration-200"
+          className="bg-surface/80 backdrop-blur-md border border-border-emphasis hover:border-text-tertiary rounded-sm px-4 py-2 flex items-center gap-2 text-xs text-text-secondary hover:text-text-emphasis transition-all duration-150 cursor-pointer"
         >
-          <div className="absolute inset-0 bg-text-primary opacity-20 blur-xl group-hover:opacity-40 group-hover:blur-2xl transition-all duration-300" />
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="relative">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          <span className="relative">Feed</span>
+          Feed
         </button>
       </div>
     )
