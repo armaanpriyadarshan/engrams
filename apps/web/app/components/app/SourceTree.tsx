@@ -59,7 +59,7 @@ export default function SourceTree({ engramId }: { engramId: string }) {
 
             return (
               <div key={s.id} className={`${isLast ? "" : "pb-3"}`}>
-                <div className="min-w-0 pl-3">
+                <div className="min-w-0 pl-4">
                   <p className="text-[11px] text-text-primary truncate leading-tight">
                     {s.title ?? s.source_type}
                   </p>
