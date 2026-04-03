@@ -51,7 +51,7 @@ export default function SourceTree({ engramId }: { engramId: string }) {
     <div className="absolute top-3 left-3 z-30 max-w-[260px] pointer-events-auto animate-slide-in-left" style={{ animationDelay: "200ms" }}>
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
-        <div className="mt-2 space-y-0.5">
+        <div className="mt-2 space-y-1.5">
           {items.map((s, i) => {
             const isLast = i === items.length - 1
             const prefix = isLast ? "└" : "├"
