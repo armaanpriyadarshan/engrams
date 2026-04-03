@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, type ReactNode } from "react"
 import { useParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import { createClient } from "@/lib/supabase/client"
@@ -20,6 +20,22 @@ interface NodeMenu {
   slug: string
   x: number
   y: number
+}
+
+function StaggerIn({ children, delay, from = "bottom" }: { children: ReactNode; delay: number; from?: "bottom" | "top" | "left" | "right" }) {
+  const [show, setShow] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setShow(true), delay); return () => clearTimeout(t) }, [delay])
+  const translate = {
+    bottom: show ? "translateY(0)" : "translateY(12px)",
+    top: show ? "translateY(0)" : "translateY(-12px)",
+    left: show ? "translateX(0)" : "translateX(-16px)",
+    right: show ? "translateX(0)" : "translateX(16px)",
+  }
+  return (
+    <div style={{ opacity: show ? 1 : 0, transform: translate[from], transition: "opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)" }}>
+      {children}
+    </div>
+  )
 }
 
 export default function EngramPage() {
@@ -88,20 +104,27 @@ export default function EngramPage() {
         </div>
       )}
 
-      {/* ── Overlay layout ── */}
+      {/* ── Overlay layout — staggered load-in ── */}
 
-      {/* Top left: source tree */}
-      {engramId && <SourceTree engramId={engramId} />}
+      <StaggerIn delay={200} from="left">
+        {engramId && <SourceTree engramId={engramId} />}
+      </StaggerIn>
 
-      {/* Top center: view toggle + add source */}
-      <ViewToggle />
-      {engramId && <AddSourceButton engramId={engramId} />}
+      <StaggerIn delay={100} from="top">
+        <ViewToggle />
+      </StaggerIn>
 
-      {/* Top right: agent timeline */}
-      {engramId && <AgentTimeline engramId={engramId} />}
+      <StaggerIn delay={250} from="top">
+        {engramId && <AddSourceButton engramId={engramId} />}
+      </StaggerIn>
 
-      {/* Bottom center: ask bar */}
-      {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
+      <StaggerIn delay={300} from="right">
+        {engramId && <AgentTimeline engramId={engramId} />}
+      </StaggerIn>
+
+      <StaggerIn delay={400} from="bottom">
+        {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
+      </StaggerIn>
 
       {/* Node context menu */}
       {nodeMenu && (

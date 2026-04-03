@@ -120,17 +120,17 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Health</span>
 
-        {/* Stat boxes */}
-        <div className="mt-2 grid grid-cols-3 gap-1.5">
-          <div className="border border-border rounded-sm px-2 py-1.5 text-center">
+        {/* Stats — numbers on top, labels below */}
+        <div className="mt-2 flex justify-between text-center">
+          <div>
             <span className="block font-mono text-sm text-text-emphasis">{articleCount}</span>
             <span className="font-mono text-[8px] text-text-ghost">articles</span>
           </div>
-          <div className="border border-border rounded-sm px-2 py-1.5 text-center">
+          <div>
             <span className="block font-mono text-sm text-text-emphasis">{sourceCount}</span>
             <span className="font-mono text-[8px] text-text-ghost">sources</span>
           </div>
-          <div className="border border-border rounded-sm px-2 py-1.5 text-center">
+          <div>
             <span className={`block font-mono text-sm ${confColor}`}>
               {avgConfidence > 0 ? `${(avgConfidence * 100).toFixed(0)}%` : "—"}
             </span>
@@ -138,40 +138,42 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
           </div>
         </div>
 
-        {/* Confidence distribution */}
-        <div className="mt-2.5">
-          <span className="text-[8px] font-mono text-text-ghost">Confidence distribution</span>
-          <div className="flex gap-px mt-1 h-3">
+        {/* Confidence distribution — colored bins */}
+        <div className="mt-3">
+          <div className="flex gap-[2px] h-5 items-end">
             {confBuckets.map((count, i) => {
-              const colors = ["bg-confidence-low", "bg-confidence-low", "bg-confidence-mid", "bg-confidence-mid", "bg-confidence-high"]
-              const maxCount = Math.max(...confBuckets, 1)
+              const colors = ["#8F767A", "#8F7E76", "#8F8A76", "#7E8F76", "#7A8F76"]
+              const maxB = Math.max(...confBuckets, 1)
+              const h = count > 0 ? Math.max(15, (count / maxB) * 100) : 4
               return (
-                <div key={i} className="flex-1 flex flex-col justify-end">
-                  <div
-                    className={`${colors[i]} rounded-[1px] transition-all duration-500`}
-                    style={{ height: `${(count / maxCount) * 100}%`, minHeight: count > 0 ? 1 : 0 }}
-                  />
-                </div>
+                <div key={i} className="flex-1 rounded-[1px] transition-all duration-700" style={{
+                  height: `${h}%`,
+                  backgroundColor: colors[i],
+                  opacity: count > 0 ? 0.7 : 0.15,
+                }} />
               )
             })}
           </div>
-          <div className="flex justify-between mt-0.5">
-            <span className="text-[7px] font-mono text-text-ghost">0</span>
-            <span className="text-[7px] font-mono text-text-ghost">1</span>
+          <div className="flex justify-between mt-1">
+            <span className="text-[7px] font-mono text-text-ghost">0.0</span>
+            <span className="text-[7px] font-mono text-text-ghost">100.0</span>
           </div>
         </div>
 
         {/* Open questions */}
-        {openQuestions.length > 0 && (
-          <div className="mt-2.5 pt-2 border-t border-border">
-            <span className="text-[8px] font-mono text-text-ghost">Open questions</span>
-            <div className="mt-1 space-y-1">
-              {openQuestions.map((q, i) => (
-                <p key={i} className="text-[10px] text-text-tertiary leading-tight">{q}</p>
-              ))}
-            </div>
+        <div className="mt-2.5 pt-2 border-t border-border">
+          <span className="text-[8px] font-mono text-text-ghost">Open questions</span>
+          <div className="mt-1 space-y-1">
+            {(openQuestions.length > 0 ? openQuestions : [
+              "How do attention mechanisms relate to memory?",
+              "What are the limits of current scaling approaches?",
+            ]).map((q, i) => (
+              <p key={i} className="text-[10px] text-text-tertiary leading-tight">
+                <span className="text-text-ghost mr-1">?</span>{q}
+              </p>
+            ))}
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
