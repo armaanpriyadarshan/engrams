@@ -180,7 +180,7 @@ export default function EngineGraph({ data, positions, engramSlug }: EngineGraph
           vFade = aFade;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           vDepth = smoothstep(-1400.0, -700.0, mv.z);
-          gl_PointSize = aSize * (0.6 + vPulse * 0.7) * (500.0 / -mv.z);
+          gl_PointSize = aSize * (0.85 + vPulse * 0.3) * (500.0 / -mv.z);
           gl_Position = projectionMatrix * mv;
         }
       `,
