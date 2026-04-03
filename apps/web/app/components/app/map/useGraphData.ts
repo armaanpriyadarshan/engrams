@@ -1,0 +1,117 @@
+import { useState, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
+
+export interface GraphNode {
+  slug: string
+  title: string
+  summary: string | null
+  confidence: number
+  depth: number // normalized 0-1, based on word count × source count
+  tags: string[]
+  articleType: string
+}
+
+export interface GraphEdge {
+  sourceIdx: number
+  targetIdx: number
+  weight: number
+  relation: string
+}
+
+export interface GraphData {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  slugToIndex: Map<string, number>
+}
+
+export function useGraphData(engramId: string | null) {
+  const [data, setData] = useState<GraphData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!engramId) return
+
+    const fetch = async () => {
+      setLoading(true)
+      const supabase = createClient()
+
+      const [articlesResult, edgesResult] = await Promise.all([
+        supabase
+          .from("articles")
+          .select("slug, title, summary, confidence, article_type, tags, source_ids, related_slugs, content_md")
+          .eq("engram_id", engramId),
+        supabase
+          .from("edges")
+          .select("from_slug, to_slug, relation, weight")
+          .eq("engram_id", engramId),
+      ])
+
+      const articles = articlesResult.data ?? []
+      const dbEdges = edgesResult.data ?? []
+
+      // Build nodes
+      const slugToIndex = new Map<string, number>()
+      let maxDepth = 1
+
+      const nodes: GraphNode[] = articles.map((a, i) => {
+        slugToIndex.set(a.slug, i)
+        const wordCount = (a.content_md ?? "").split(/\s+/).length
+        const sourceCount = Math.max((a.source_ids ?? []).length, 1)
+        const rawDepth = wordCount * sourceCount
+        if (rawDepth > maxDepth) maxDepth = rawDepth
+        return {
+          slug: a.slug,
+          title: a.title,
+          summary: a.summary,
+          confidence: a.confidence ?? 0.5,
+          depth: rawDepth,
+          tags: a.tags ?? [],
+          articleType: a.article_type ?? "concept",
+        }
+      })
+
+      // Normalize depth
+      for (const node of nodes) {
+        node.depth = Math.min(node.depth / maxDepth, 1)
+      }
+
+      // Build edges from DB edges table
+      const edgeSet = new Set<string>()
+      const edges: GraphEdge[] = []
+
+      for (const e of dbEdges) {
+        const si = slugToIndex.get(e.from_slug)
+        const ti = slugToIndex.get(e.to_slug)
+        if (si !== undefined && ti !== undefined) {
+          const key = `${Math.min(si, ti)}-${Math.max(si, ti)}`
+          if (!edgeSet.has(key)) {
+            edgeSet.add(key)
+            edges.push({ sourceIdx: si, targetIdx: ti, weight: e.weight ?? 0.5, relation: e.relation ?? "related" })
+          }
+        }
+      }
+
+      // Add implicit edges from related_slugs
+      for (const article of articles) {
+        const si = slugToIndex.get(article.slug)
+        if (si === undefined) continue
+        for (const relSlug of article.related_slugs ?? []) {
+          const ti = slugToIndex.get(relSlug)
+          if (ti === undefined) continue
+          const key = `${Math.min(si, ti)}-${Math.max(si, ti)}`
+          if (!edgeSet.has(key)) {
+            edgeSet.add(key)
+            edges.push({ sourceIdx: si, targetIdx: ti, weight: 0.3, relation: "related" })
+          }
+        }
+      }
+
+      setData({ nodes, edges, slugToIndex })
+      setLoading(false)
+    }
+
+    fetch()
+  }, [engramId])
+
+  return { data, loading }
+}

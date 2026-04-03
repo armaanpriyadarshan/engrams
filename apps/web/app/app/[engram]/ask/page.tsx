@@ -34,7 +34,7 @@ export default function AskPage() {
   const [engramId, setEngramId] = useState<string | null>(null)
   const [history, setHistory] = useState<PastQuery[]>([])
   const [filing, setFiling] = useState(false)
-  const [filedSlug, setFiledSlug] = useState<string | null>(null)
+  const [fileStatus, setFileStatus] = useState("")
 
   // Resolve engram ID + load history
   useEffect(() => {
@@ -67,7 +67,7 @@ export default function AskPage() {
     setAsking(true)
     setResult(null)
     setError("")
-    setFiledSlug(null)
+    setFileStatus("")
 
     const supabase = createClient()
     const { data, error: fnError } = await supabase.functions.invoke("ask-engram", {
@@ -83,6 +83,11 @@ export default function AskPage() {
     setResult(data)
     setAsking(false)
 
+    // Auto-file substantial answers through the compilation engine
+    if (data.answer_md && data.answer_md.length > 300) {
+      compileAnswer(data.answer_md, queryText)
+    }
+
     // Refresh history
     const { data: queries } = await supabase
       .from("queries")
@@ -92,48 +97,47 @@ export default function AskPage() {
       .order("created_at", { ascending: false })
       .limit(10)
     setHistory(queries ?? [])
-  }, [question, engramId])
+  }, [question, engramId, compileAnswer])
 
-  const fileAsArticle = useCallback(async () => {
-    if (!result?.answer_md || !engramId) return
+  const compileAnswer = useCallback(async (answerMd: string, questionText: string) => {
+    if (!answerMd || !engramId) return
     setFiling(true)
+    setFileStatus("Filing into knowledge base...")
 
     const supabase = createClient()
-    const slug = question
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, "")
-      .replace(/\s+/g, "-")
-      .replace(/-+/g, "-")
-      .slice(0, 60)
 
-    await supabase.from("articles").insert({
+    // Create a source from the query answer
+    const { data: source } = await supabase.from("sources").insert({
       engram_id: engramId,
-      slug: `query-${slug}`,
-      title: question,
-      summary: result.answer_md.slice(0, 200),
-      content_md: result.answer_md,
-      confidence: 0.7,
-      article_type: "query_result",
-      tags: ["query"],
-      source_ids: [],
-      related_slugs: result.articles_consulted,
+      source_type: "query_answer",
+      content_md: answerMd,
+      title: questionText,
+      status: "pending",
+    }).select("id").single()
+
+    if (!source) {
+      setFileStatus("Filing failed.")
+      setFiling(false)
+      return
+    }
+
+    await supabase.rpc("increment_source_count", { eid: engramId })
+
+    // Run through compilation engine for proper edges and article linking
+    const { data: compileResult, error: compileError } = await supabase.functions.invoke("compile-source", {
+      body: { source_id: source.id },
     })
 
-    // Update article count
-    const { count } = await supabase
-      .from("articles")
-      .select("id", { count: "exact", head: true })
-      .eq("engram_id", engramId)
-
-    await supabase
-      .from("engrams")
-      .update({ article_count: count ?? 0 })
-      .eq("id", engramId)
-
-    setFiledSlug(`query-${slug}`)
+    if (compileError) {
+      setFileStatus("Filing failed.")
+    } else {
+      const created = compileResult?.articles_created ?? 0
+      const updated = compileResult?.articles_updated ?? 0
+      setFileStatus(`Compiled. ${created} created. ${updated} updated.`)
+      router.refresh()
+    }
     setFiling(false)
-    router.refresh()
-  }, [result, engramId, question, router])
+  }, [engramId, router])
 
   const loadPastQuery = (q: PastQuery) => {
     setQuestion(q.question)
@@ -144,7 +148,7 @@ export default function AskPage() {
       suggested_followups: q.suggested_followups ?? [],
     })
     setError("")
-    setFiledSlug(null)
+    setFileStatus("")
   }
 
   return (
@@ -223,20 +227,17 @@ export default function AskPage() {
           )}
 
           <div className="mt-6 border-t border-border pt-6">
-            {filedSlug ? (
-              <Link
-                href={`/app/${engramSlug}/article/${filedSlug}`}
-                className="text-xs font-mono text-text-tertiary hover:text-text-emphasis transition-colors duration-150"
-              >
-                Filed as article. View.
-              </Link>
+            {fileStatus ? (
+              <span className={`text-xs font-mono ${filing ? "text-agent-active" : "text-text-tertiary"}`}>
+                {fileStatus}
+              </span>
             ) : (
               <button
-                onClick={fileAsArticle}
+                onClick={() => compileAnswer(result.answer_md, question)}
                 disabled={filing}
                 className="text-xs font-mono text-text-tertiary hover:text-text-emphasis transition-colors duration-150 cursor-pointer"
               >
-                {filing ? "Filing..." : "File as article"}
+                File as article
               </button>
             )}
           </div>
