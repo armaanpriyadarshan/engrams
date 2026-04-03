@@ -169,7 +169,7 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
               "What are the limits of current scaling approaches?",
             ]).map((q, i) => (
               <p key={i} className="text-[10px] text-text-tertiary leading-tight">
-                <span className="text-text-ghost mr-1">?</span>{q}
+{q}
               </p>
             ))}
           </div>
