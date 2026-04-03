@@ -138,23 +138,49 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
           </div>
         </div>
 
-        {/* Confidence distribution — 10 colored bins */}
+        {/* Confidence distribution — smooth gradient curve */}
         <div className="mt-3">
-          <div className="flex gap-[1px] h-5 items-end">
-            {confBuckets.map((count, i) => {
-              const colors = ["#A0636A", "#9E6E63", "#9B7A63", "#8F8A6A", "#7E8F6A", "#6E8F6E", "#6A8F7A", "#668F86", "#638F8E", "#5E8F80"]
+          <svg viewBox="0 0 200 28" className="w-full h-5" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="conf-fill" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#A0636A" stopOpacity="0.5" />
+                <stop offset="25%" stopColor="#9B7A63" stopOpacity="0.5" />
+                <stop offset="50%" stopColor="#8F8A6A" stopOpacity="0.5" />
+                <stop offset="75%" stopColor="#6E8F6E" stopOpacity="0.5" />
+                <stop offset="100%" stopColor="#5E8F80" stopOpacity="0.5" />
+              </linearGradient>
+              <linearGradient id="conf-line" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#A0636A" />
+                <stop offset="25%" stopColor="#9B7A63" />
+                <stop offset="50%" stopColor="#8F8A6A" />
+                <stop offset="75%" stopColor="#6E8F6E" />
+                <stop offset="100%" stopColor="#5E8F80" />
+              </linearGradient>
+            </defs>
+            {(() => {
               const maxB = Math.max(...confBuckets, 1)
-              const h = count > 0 ? Math.max(12, (count / maxB) * 100) : 3
+              const pts = confBuckets.map((c, i) => ({
+                x: (i / (confBuckets.length - 1)) * 200,
+                y: 26 - (c / maxB) * 22,
+              }))
+              // Smooth cubic bezier path through points
+              let d = `M${pts[0].x},${pts[0].y}`
+              for (let i = 1; i < pts.length; i++) {
+                const prev = pts[i - 1]
+                const curr = pts[i]
+                const cpx = (prev.x + curr.x) / 2
+                d += ` C${cpx},${prev.y} ${cpx},${curr.y} ${curr.x},${curr.y}`
+              }
+              const fill = `${d} L200,28 L0,28 Z`
               return (
-                <div key={i} className="flex-1 rounded-[1px] transition-all duration-700" style={{
-                  height: `${h}%`,
-                  backgroundColor: colors[i],
-                  opacity: count > 0 ? 0.8 : 0.12,
-                }} />
+                <>
+                  <path d={fill} fill="url(#conf-fill)" />
+                  <path d={d} fill="none" stroke="url(#conf-line)" strokeWidth="1.5" />
+                </>
               )
-            })}
-          </div>
-          <div className="flex justify-between mt-1">
+            })()}
+          </svg>
+          <div className="flex justify-between">
             <span className="text-[7px] font-mono text-text-ghost">0.0</span>
             <span className="text-[7px] font-mono text-text-ghost">100.0</span>
           </div>
