@@ -51,28 +51,28 @@ export default function SourceTree({ engramId }: { engramId: string }) {
     <div className="absolute top-3 left-3 z-30 max-w-[260px] pointer-events-auto animate-slide-in-left" style={{ animationDelay: "200ms" }}>
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
-        <div className="mt-2 space-y-1.5">
+        <div className="mt-2 relative">
+          {/* Vertical trunk line */}
+          <div className="absolute left-[3px] top-0 bottom-0 w-px bg-border-emphasis" />
+
           {items.map((s, i) => {
-            const isLast = i === items.length - 1
-            const prefix = isLast ? "└" : "├"
             const domain = extractDomain(s.source_url)
             const typeLabel = s.source_type === "url" ? (domain?.includes("arxiv") ? "arxiv" : "url") : s.source_type
 
             return (
-              <div key={s.id}>
-                <div className="flex items-start gap-1.5">
-                  <span className="font-mono text-[10px] text-text-ghost leading-none select-none mt-0.5">{prefix}</span>
-                  <div className="min-w-0">
-                    <p className="text-[11px] text-text-primary truncate leading-tight">
-                      {s.title ?? s.source_type}
-                    </p>
-                    <p className="text-[9px] font-mono text-text-ghost mt-0.5 truncate">
-                      {typeLabel}
-                      {domain && <span> · {domain}</span>}
-                      {!domain && s.source_type === "pdf" && <span> · uploaded</span>}
-                      {!domain && s.source_type === "text" && <span> · pasted</span>}
-                    </p>
-                  </div>
+              <div key={s.id} className="flex items-start pl-4 pb-2.5 relative">
+                {/* Horizontal branch */}
+                <div className="absolute left-[3px] top-[7px] w-[10px] h-px bg-border-emphasis" />
+                <div className="min-w-0">
+                  <p className="text-[11px] text-text-primary truncate leading-tight">
+                    {s.title ?? s.source_type}
+                  </p>
+                  <p className="text-[9px] font-mono text-text-ghost mt-0.5 truncate">
+                    {typeLabel}
+                    {domain && <span> · {domain}</span>}
+                    {!domain && s.source_type === "pdf" && <span> · uploaded</span>}
+                    {!domain && s.source_type === "text" && <span> · pasted</span>}
+                  </p>
                 </div>
               </div>
             )
