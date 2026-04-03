@@ -22,7 +22,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Engrams",
+  title: "engrams",
   description: "Your knowledge, compiled.",
 };
 
