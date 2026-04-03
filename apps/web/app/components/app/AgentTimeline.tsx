@@ -24,7 +24,7 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
   const [articleCount, setArticleCount] = useState(0)
   const [sourceCount, setSourceCount] = useState(0)
   const [avgConfidence, setAvgConfidence] = useState(0)
-  const [confBuckets, setConfBuckets] = useState<number[]>([0, 0, 0, 0, 0])
+  const [confBuckets, setConfBuckets] = useState<number[]>([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
   const [openQuestions, setOpenQuestions] = useState<string[]>([])
 
   useEffect(() => {
@@ -55,10 +55,10 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
         if (count) setArticleCount(count)
         if (data && data.length > 0) {
           setAvgConfidence(data.reduce((s, a) => s + (a.confidence ?? 0), 0) / data.length)
-          // Confidence distribution: 5 buckets [0-0.2, 0.2-0.4, 0.4-0.6, 0.6-0.8, 0.8-1.0]
-          const buckets = [0, 0, 0, 0, 0]
+          // Confidence distribution: 10 buckets [0-10, 10-20, ..., 90-100]
+          const buckets = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
           data.forEach(a => {
-            const idx = Math.min(Math.floor((a.confidence ?? 0) * 5), 4)
+            const idx = Math.min(Math.floor((a.confidence ?? 0) * 10), 9)
             buckets[idx]++
           })
           setConfBuckets(buckets)
@@ -138,18 +138,18 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
           </div>
         </div>
 
-        {/* Confidence distribution — colored bins */}
+        {/* Confidence distribution — 10 colored bins */}
         <div className="mt-3">
-          <div className="flex gap-[2px] h-5 items-end">
+          <div className="flex gap-[1px] h-5 items-end">
             {confBuckets.map((count, i) => {
-              const colors = ["#8F767A", "#8F7E76", "#8F8A76", "#7E8F76", "#7A8F76"]
+              const colors = ["#A0636A", "#9E6E63", "#9B7A63", "#8F8A6A", "#7E8F6A", "#6E8F6E", "#6A8F7A", "#668F86", "#638F8E", "#5E8F80"]
               const maxB = Math.max(...confBuckets, 1)
-              const h = count > 0 ? Math.max(15, (count / maxB) * 100) : 4
+              const h = count > 0 ? Math.max(12, (count / maxB) * 100) : 3
               return (
                 <div key={i} className="flex-1 rounded-[1px] transition-all duration-700" style={{
                   height: `${h}%`,
                   backgroundColor: colors[i],
-                  opacity: count > 0 ? 0.7 : 0.15,
+                  opacity: count > 0 ? 0.8 : 0.12,
                 }} />
               )
             })}
