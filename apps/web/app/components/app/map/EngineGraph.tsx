@@ -137,7 +137,7 @@ export default function EngineGraph({ data, positions, engramSlug }: EngineGraph
       basePos[i3] = x
       basePos[i3 + 1] = y
       basePos[i3 + 2] = z
-      sizes[i] = 3 + d * 15
+      sizes[i] = 6 + d * 20
       phases[i] = i * 2.39996
       driftOff[i] = i * 1.618
       driftSpd[i] = 0.6 + (((i * 7) % 11) / 11) * 0.8
@@ -165,7 +165,7 @@ export default function EngineGraph({ data, positions, engramSlug }: EngineGraph
         varying float vPulse, vMouseProx, vDepth, vFade;
 
         void main() {
-          float pulse = 0.5 + 0.5 * sin(uTime * 0.6 + aPhase);
+          float pulse = 0.7 + 0.3 * sin(uTime * 0.6 + aPhase);
           float dm = distance(position.xy, uMouse);
           float mg = smoothstep(300.0, 0.0, dm);
           vMouseProx = mg;

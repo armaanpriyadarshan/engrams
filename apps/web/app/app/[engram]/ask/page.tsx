@@ -60,6 +60,44 @@ export default function AskPage() {
       })
   }, [engramSlug])
 
+  const compileAnswer = useCallback(async (answerMd: string, questionText: string) => {
+    if (!answerMd || !engramId) return
+    setFiling(true)
+    setFileStatus("Filing into knowledge base...")
+
+    const supabase = createClient()
+
+    const { data: source } = await supabase.from("sources").insert({
+      engram_id: engramId,
+      source_type: "query_answer",
+      content_md: answerMd,
+      title: questionText,
+      status: "pending",
+    }).select("id").single()
+
+    if (!source) {
+      setFileStatus("Filing failed.")
+      setFiling(false)
+      return
+    }
+
+    await supabase.rpc("increment_source_count", { eid: engramId })
+
+    const { data: compileResult, error: compileError } = await supabase.functions.invoke("compile-source", {
+      body: { source_id: source.id },
+    })
+
+    if (compileError) {
+      setFileStatus("Filing failed.")
+    } else {
+      const created = compileResult?.articles_created ?? 0
+      const updated = compileResult?.articles_updated ?? 0
+      setFileStatus(`Compiled. ${created} created. ${updated} updated.`)
+      router.refresh()
+    }
+    setFiling(false)
+  }, [engramId, router])
+
   const ask = useCallback(async (q?: string) => {
     const queryText = q ?? question
     if (!queryText.trim() || !engramId) return
@@ -98,46 +136,6 @@ export default function AskPage() {
       .limit(10)
     setHistory(queries ?? [])
   }, [question, engramId, compileAnswer])
-
-  const compileAnswer = useCallback(async (answerMd: string, questionText: string) => {
-    if (!answerMd || !engramId) return
-    setFiling(true)
-    setFileStatus("Filing into knowledge base...")
-
-    const supabase = createClient()
-
-    // Create a source from the query answer
-    const { data: source } = await supabase.from("sources").insert({
-      engram_id: engramId,
-      source_type: "query_answer",
-      content_md: answerMd,
-      title: questionText,
-      status: "pending",
-    }).select("id").single()
-
-    if (!source) {
-      setFileStatus("Filing failed.")
-      setFiling(false)
-      return
-    }
-
-    await supabase.rpc("increment_source_count", { eid: engramId })
-
-    // Run through compilation engine for proper edges and article linking
-    const { data: compileResult, error: compileError } = await supabase.functions.invoke("compile-source", {
-      body: { source_id: source.id },
-    })
-
-    if (compileError) {
-      setFileStatus("Filing failed.")
-    } else {
-      const created = compileResult?.articles_created ?? 0
-      const updated = compileResult?.articles_updated ?? 0
-      setFileStatus(`Compiled. ${created} created. ${updated} updated.`)
-      router.refresh()
-    }
-    setFiling(false)
-  }, [engramId, router])
 
   const loadPastQuery = (q: PastQuery) => {
     setQuestion(q.question)
