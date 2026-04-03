@@ -93,15 +93,18 @@ export default function EngramPage() {
 
       {/* ── Overlay layout ── */}
 
-      {engramId && <SourceTree engramId={engramId} />}
+      {/* Top left: sources + history stacked */}
+      <div className="absolute top-3 left-3 z-30 max-w-[240px] pointer-events-auto">
+        {engramId && <SourceTree engramId={engramId} />}
+        {engramId && <HistoryTimeline engramId={engramId} />}
+      </div>
+
       <ViewToggle />
       {engramId && <AddSourceButton engramId={engramId} />}
       {engramId && <AgentTimeline engramId={engramId} />}
-      {/* Bottom center: timeline + ask bar stacked */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-xl px-6 pointer-events-auto flex flex-col items-center gap-1">
-        {engramId && <HistoryTimeline engramId={engramId} />}
-        {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
-      </div>
+
+      {/* Bottom center: ask bar */}
+      {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
 
       {/* Node context menu */}
       {nodeMenu && (
