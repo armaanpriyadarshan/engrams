@@ -65,7 +65,7 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
             <Link
               key={e.id}
               href={`/app/${e.slug}`}
-              className={`flex items-center gap-3 px-5 py-2.5 transition-colors duration-150 border-l-2 ${
+              className={`flex items-center gap-3 px-5 py-1.5 transition-colors duration-150 border-l-2 ${
                 isActive
                   ? "text-text-emphasis bg-surface-elevated"
                   : "text-text-secondary hover:text-text-primary hover:bg-surface-raised border-transparent"
