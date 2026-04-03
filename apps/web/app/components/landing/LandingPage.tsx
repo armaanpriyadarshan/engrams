@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, type ReactNode } from "react"
+import Link from "next/link"
 import dynamic from "next/dynamic"
 
 const KnowledgeGraph = dynamic(() => import("./KnowledgeGraph"), { ssr: false })
@@ -184,8 +185,8 @@ function NavBar({ visible }: { visible: boolean }) {
       pointerEvents: visible ? "auto" : "none",
       transition: "opacity 600ms ease-out",
     }}>
-      <span className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150 cursor-pointer">engrams</span>
-      <span className="text-sm text-text-tertiary cursor-pointer hover:text-text-emphasis transition-colors duration-150">Sign in</span>
+      <Link href="/" className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150">engrams</Link>
+      <Link href="/login" className="text-sm text-text-tertiary hover:text-text-emphasis transition-colors duration-150">Sign in</Link>
     </div>
   )
 }
