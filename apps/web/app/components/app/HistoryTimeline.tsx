@@ -69,12 +69,11 @@ export default function HistoryTimeline({ engramId }: { engramId: string }) {
             const x = i * nodeW + nodeW / 2
             const isCompile = ev.type === "compile"
             const color = isCompile ? "#7A8F76" : "#555"
-            // Alternate branches up/down
-            const goUp = i % 2 === 0
+            const goUp = true
 
-            const branchEndY = goUp ? trunkY - branchUp : trunkY + branchDown
-            const textY = goUp ? branchEndY - 5 : branchEndY + 9
-            const timeY = goUp ? branchEndY - 14 : branchEndY + 18
+            const branchEndY = trunkY - branchUp
+            const textY = branchEndY - 5
+            const timeY = branchEndY - 14
 
             return (
               <g key={ev.id} className="group">
