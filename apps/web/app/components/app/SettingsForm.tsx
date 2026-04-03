@@ -100,9 +100,9 @@ export default function SettingsForm({ engram }: { engram: Engram }) {
         <label className="text-[10px] font-mono text-text-tertiary uppercase tracking-widest">Visibility</label>
         <div className="mt-3 space-y-2">
           {([
-            { value: "private", label: "Private", desc: "Only you can access this engram." },
+            { value: "private", label: "Private", desc: "Only you can access this engram.", disabled: false },
             { value: "shared", label: "Shared", desc: "Invite members to collaborate.", disabled: true },
-            { value: "published", label: "Published", desc: "Anyone with the link can view the map and articles." },
+            { value: "published", label: "Published", desc: "Anyone with the link can view the map and articles.", disabled: false },
           ] as const).map((opt) => (
             <button
               key={opt.value}
