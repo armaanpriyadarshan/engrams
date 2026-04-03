@@ -53,16 +53,17 @@ export default function SourceTree({ engramId }: { engramId: string }) {
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
         <div className="mt-2 relative">
           {/* Vertical trunk line */}
-          <div className="absolute left-[3px] top-0 bottom-0 w-px bg-border-emphasis" />
+          <div className="absolute left-[3px] top-0 w-px bg-border-emphasis" style={{ height: `calc(100% - ${items.length > 0 ? "14px" : "0px"})` }} />
 
           {items.map((s, i) => {
+            const isLast = i === items.length - 1
             const domain = extractDomain(s.source_url)
             const typeLabel = s.source_type === "url" ? (domain?.includes("arxiv") ? "arxiv" : "url") : s.source_type
 
             return (
-              <div key={s.id} className="flex items-start pl-4 pb-2.5 relative">
+              <div key={s.id} className={`flex items-start pl-5 ${isLast ? "" : "pb-3"} relative`}>
                 {/* Horizontal branch */}
-                <div className="absolute left-[3px] top-[7px] w-[10px] h-px bg-border-emphasis" />
+                <div className="absolute left-[3px] top-[7px] w-[13px] h-px bg-border-emphasis" />
                 <div className="min-w-0">
                   <p className="text-[11px] text-text-primary truncate leading-tight">
                     {s.title ?? s.source_type}
