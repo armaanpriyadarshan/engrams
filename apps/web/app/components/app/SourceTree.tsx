@@ -49,22 +49,19 @@ export default function SourceTree({ engramId }: { engramId: string }) {
 
   return (
     <div className="absolute top-3 left-3 z-30 max-w-[260px] pointer-events-auto animate-slide-in-left" style={{ animationDelay: "200ms" }}>
-      <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
-        <div className="mt-2 relative">
-          {/* Vertical trunk line */}
-          <div className="absolute left-[3px] top-0 w-px bg-border-emphasis" style={{ height: `calc(100% - ${items.length > 0 ? "14px" : "0px"})` }} />
-
+      <div className="bg-surface/80 backdrop-blur-md border border-border border-l-border-emphasis rounded-sm pr-3 py-2.5 pl-0">
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase pl-3">Sources</span>
+        <div className="mt-2">
           {items.map((s, i) => {
             const isLast = i === items.length - 1
             const domain = extractDomain(s.source_url)
             const typeLabel = s.source_type === "url" ? (domain?.includes("arxiv") ? "arxiv" : "url") : s.source_type
 
             return (
-              <div key={s.id} className={`flex items-start pl-5 ${isLast ? "" : "pb-3"} relative`}>
-                {/* Horizontal branch */}
-                <div className="absolute left-[3px] top-[7px] w-[13px] h-px bg-border-emphasis" />
-                <div className="min-w-0">
+              <div key={s.id} className={`relative ${isLast ? "" : "pb-3"}`}>
+                {/* Horizontal branch from left border */}
+                <div className="absolute left-0 top-[7px] w-5 h-px bg-border-emphasis" />
+                <div className="min-w-0 pl-8">
                   <p className="text-[11px] text-text-primary truncate leading-tight">
                     {s.title ?? s.source_type}
                   </p>
