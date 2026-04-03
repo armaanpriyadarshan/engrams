@@ -45,3 +45,12 @@ apps/mobile/.expo/
 
 # turbopack
 .turbo/
+
+# agent skills / tool configs
+.agents/
+.claude/
+.factory/
+.windsurf/
+skills/
+skills-lock.json
+.mcp.json
