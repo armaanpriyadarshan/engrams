@@ -6,11 +6,13 @@ import dynamic from "next/dynamic"
 import { createClient } from "@/lib/supabase/client"
 import { useGraphData } from "@/app/components/app/map/useGraphData"
 import { useForceLayout } from "@/app/components/app/map/useForceLayout"
-import SlidePanel from "@/app/components/app/SlidePanel"
 import NodeCard from "@/app/components/app/NodeCard"
-import AskPanel from "@/app/components/app/AskPanel"
-import FeedPill from "@/app/components/app/FeedPill"
 import CompilationToast from "@/app/components/app/CompilationToast"
+import SourceTree from "@/app/components/app/SourceTree"
+import ViewToggle from "@/app/components/app/ViewToggle"
+import AddSourceButton from "@/app/components/app/AddSourceButton"
+import AgentTimeline from "@/app/components/app/AgentTimeline"
+import AskBar from "@/app/components/app/AskBar"
 
 const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
 
@@ -25,28 +27,19 @@ export default function EngramPage() {
   const engramSlug = params.engram as string
 
   const [engramId, setEngramId] = useState<string | null>(null)
-  const [allEngrams, setAllEngrams] = useState<{ id: string; name: string; accent_color: string | null; slug: string }[]>([])
-  const [askOpen, setAskOpen] = useState(false)
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
-  const [askPrefill, setAskPrefill] = useState("")
 
   useEffect(() => {
     const supabase = createClient()
     supabase
       .from("engrams")
-      .select("id, name, accent_color, slug")
-      .order("created_at", { ascending: true })
-      .then(({ data }) => {
-        if (data) {
-          setAllEngrams(data)
-          const current = data.find((e) => e.slug === engramSlug)
-          if (current) setEngramId(current.id)
-        }
-      })
+      .select("id")
+      .eq("slug", engramSlug)
+      .single()
+      .then(({ data }) => { if (data) setEngramId(data.id) })
   }, [engramSlug])
 
-  // Close node menu on click outside
   useEffect(() => {
     if (!nodeMenu) return
     const close = () => setNodeMenu(null)
@@ -67,21 +60,13 @@ export default function EngramPage() {
     setNodeMenu(null)
   }, [nodeMenu])
 
-  const askAboutNode = useCallback(() => {
-    if (!nodeMenu) return
-    const title = graphData?.nodes.find(n => n.slug === nodeMenu.slug)?.title ?? nodeMenu.slug.replace(/-/g, " ")
-    setAskPrefill(`Tell me about ${title}`)
-    setAskOpen(true)
-    setNodeMenu(null)
-  }, [nodeMenu, graphData])
-
   // Empty state
   if (!loading && graphData && graphData.nodes.length === 0) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center relative">
         <p className="text-text-secondary text-sm">Nothing here yet.</p>
-        <p className="mt-2 text-sm text-text-tertiary">Feed a source to begin.</p>
-        {engramId && <FeedPill engramId={engramId} />}
+        <p className="mt-2 text-sm text-text-tertiary">Add a source to begin.</p>
+        {engramId && <AddSourceButton engramId={engramId} />}
         {engramId && <CompilationToast engramId={engramId} />}
       </div>
     )
@@ -103,14 +88,20 @@ export default function EngramPage() {
         </div>
       )}
 
-      {/* Stats overlay */}
-      {graphData && (
-        <div className="absolute top-0 left-0 right-0 px-4 py-2 pointer-events-none">
-          <span className="text-[10px] font-mono text-text-ghost">
-            {graphData.nodes.length} article{graphData.nodes.length !== 1 ? "s" : ""} &middot; {graphData.edges.length} connection{graphData.edges.length !== 1 ? "s" : ""}
-          </span>
-        </div>
-      )}
+      {/* ── Overlay layout ── */}
+
+      {/* Top left: source tree */}
+      {engramId && <SourceTree engramId={engramId} />}
+
+      {/* Top center: view toggle + add source */}
+      <ViewToggle />
+      {engramId && <AddSourceButton engramId={engramId} />}
+
+      {/* Top right: agent timeline */}
+      {engramId && <AgentTimeline engramId={engramId} />}
+
+      {/* Bottom center: ask bar */}
+      {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
 
       {/* Node context menu */}
       {nodeMenu && (
@@ -125,16 +116,10 @@ export default function EngramPage() {
           >
             Open article
           </button>
-          <button
-            onClick={askAboutNode}
-            className="block w-full text-left px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-150 cursor-pointer"
-          >
-            Ask a question
-          </button>
         </div>
       )}
 
-      {/* Node card — floating, draggable, left side */}
+      {/* Node card */}
       {selectedSlug && engramId && (
         <NodeCard
           slug={selectedSlug}
@@ -143,22 +128,6 @@ export default function EngramPage() {
           onClose={() => setSelectedSlug(null)}
         />
       )}
-
-      {/* Feed pill — bottom center */}
-      {engramId && <FeedPill engramId={engramId} />}
-
-      {/* Ask button — bottom right */}
-      <button
-        onClick={() => setAskOpen(!askOpen)}
-        className="absolute bottom-6 right-6 z-30 bg-surface-raised border border-border hover:border-border-emphasis px-4 py-2.5 text-xs font-mono text-text-secondary hover:text-text-emphasis transition-all duration-150 cursor-pointer"
-      >
-        Ask
-      </button>
-
-      {/* Ask slide panel — right side */}
-      <SlidePanel isOpen={askOpen} onClose={() => setAskOpen(false)}>
-        {engramId && <AskPanel engramId={engramId} engramSlug={engramSlug} prefill={askPrefill} allEngrams={allEngrams} />}
-      </SlidePanel>
 
       {/* Compilation toast */}
       {engramId && <CompilationToast engramId={engramId} />}
