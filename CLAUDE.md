@@ -66,7 +66,7 @@ Dark monochrome only. No light mode. Typography is the primary design material.
 - Semantic accents are muted and used surgically
 
 **Typography:**
-- Headings: Instrument Serif (free) / GT Sectra, Canela (licensed targets)
+- Headings: Space Grotesk (free) / GT Sectra, Canela (licensed targets)
 - Body: DM Sans (free) / Sohne, Untitled Sans (licensed targets)
 - Mono: JetBrains Mono (free) / Berkeley Mono (licensed target)
 

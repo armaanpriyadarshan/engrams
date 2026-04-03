@@ -22,7 +22,7 @@
   --color-agent-active: #76808F;
   --color-danger: #8F4040;
 
-  --font-heading: var(--font-instrument-serif), "Georgia", serif;
+  --font-heading: var(--font-space-grotesk), "Helvetica Neue", sans-serif;
   --font-body: var(--font-dm-sans), "Helvetica Neue", sans-serif;
   --font-mono: var(--font-jetbrains-mono), "Courier New", monospace;
 

@@ -60,7 +60,7 @@
 
 | Role | Direction | Free Launch Fonts | Licensed Targets |
 |---|---|---|---|
-| Headings | Geometric/serif, sharp, unusual | Instrument Serif | GT Sectra, Canela, Sohne Breit |
+| Headings | Geometric, sharp, avant-garde | Space Grotesk | GT Sectra, Canela, Sohne Breit |
 | Body | Legible, distinctive at small sizes | DM Sans | Sohne, Untitled Sans, Tiempos Text |
 | Mono | Code, metadata, logs | JetBrains Mono | Berkeley Mono, iA Writer Mono |
 | Data | Compact, dashboards, labels | DM Sans 400/500 | Geist, ABC Diatype |
