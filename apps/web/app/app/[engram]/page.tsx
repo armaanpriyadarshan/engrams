@@ -13,7 +13,6 @@ import ViewToggle from "@/app/components/app/ViewToggle"
 import AddSourceButton from "@/app/components/app/AddSourceButton"
 import AgentTimeline from "@/app/components/app/AgentTimeline"
 import AskBar from "@/app/components/app/AskBar"
-import HistoryTimeline from "@/app/components/app/HistoryTimeline"
 
 const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
 
@@ -97,7 +96,6 @@ export default function EngramPage() {
       <ViewToggle />
       {engramId && <AddSourceButton engramId={engramId} />}
       {engramId && <AgentTimeline engramId={engramId} />}
-      {engramId && <HistoryTimeline engramId={engramId} />}
       {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
 
       {/* Node context menu */}
