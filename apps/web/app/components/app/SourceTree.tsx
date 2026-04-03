@@ -58,10 +58,8 @@ export default function SourceTree({ engramId }: { engramId: string }) {
             const typeLabel = s.source_type === "url" ? (domain?.includes("arxiv") ? "arxiv" : "url") : s.source_type
 
             return (
-              <div key={s.id} className={`relative ${isLast ? "" : "pb-3"}`}>
-                {/* Horizontal branch from left border */}
-                <div className="absolute left-0 top-[7px] w-3 h-px bg-border-emphasis" />
-                <div className="min-w-0 pl-5">
+              <div key={s.id} className={`${isLast ? "" : "pb-3"}`}>
+                <div className="min-w-0 pl-3">
                   <p className="text-[11px] text-text-primary truncate leading-tight">
                     {s.title ?? s.source_type}
                   </p>
