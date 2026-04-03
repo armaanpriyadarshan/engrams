@@ -82,34 +82,37 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
           )
         })}
         </div>
-      </nav>
 
-      <div className="px-2 pb-2">
         {creating ? (
-          <div className="px-2 py-1">
+          <div className="px-5 py-1.5">
             <input
               autoFocus
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setCreating(false) }}
               placeholder="Name your engram"
-              className="w-full bg-transparent border-b border-border-emphasis text-sm text-text-primary placeholder:text-text-ghost outline-none py-1"
+              className="w-full bg-transparent border-b border-border-emphasis text-xs text-text-primary placeholder:text-text-ghost outline-none py-1"
             />
           </div>
         ) : (
           <button
             onClick={() => setCreating(true)}
-            className="w-full text-left px-3 py-2 text-sm text-text-tertiary hover:text-text-secondary transition-colors duration-150 cursor-pointer"
+            className="flex items-center gap-2 px-5 py-1.5 text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer"
           >
+            <span className="text-sm leading-none">+</span>
             Form new engram
           </button>
         )}
-      </div>
+      </nav>
 
-      <div className="px-4 py-3 border-t border-border flex items-center justify-between">
-        <span className="text-xs text-text-tertiary truncate">{profile?.display_name ?? profile?.email}</span>
-        <button onClick={handleSignOut} className="text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer">
-          Sign out
+      <div className="px-5 py-3 border-t border-border flex items-center justify-between">
+        <span className="text-xs text-text-tertiary truncate lowercase">{profile?.display_name ?? profile?.email}</span>
+        <button onClick={handleSignOut} className="text-text-ghost hover:text-danger transition-colors duration-150 cursor-pointer shrink-0" title="Sign out">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
         </button>
       </div>
     </aside>
