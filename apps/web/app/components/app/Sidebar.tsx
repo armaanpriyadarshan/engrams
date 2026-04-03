@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -21,7 +21,6 @@ interface Profile {
   avatar_url: string | null
 }
 
-// Three-phase collapse: content fades → width shrinks → dots fade in
 type Phase = "expanded" | "fading-out" | "shrinking" | "collapsed" | "expanding" | "fading-in"
 
 export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Profile | null }) {
@@ -30,9 +29,9 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState("")
   const [phase, setPhase] = useState<Phase>("expanded")
+  const [settingsOpen, setSettingsOpen] = useState<string | null>(null)
 
   const activeSlug = pathname.split("/")[2] ?? ""
-  const isCollapsed = phase === "collapsed" || phase === "shrinking" || phase === "fading-out"
   const showExpanded = phase === "expanded" || phase === "fading-out" || phase === "fading-in"
   const showCollapsed = phase === "collapsed" || phase === "expanding" || phase === "shrinking"
 
@@ -59,13 +58,20 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
       .insert({ owner_id: profile?.id, name: newName.trim(), slug })
       .select("slug")
       .single()
-
     if (!error && data) {
       setNewName("")
       setCreating(false)
       router.push(`/app/${data.slug}`)
       router.refresh()
     }
+  }
+
+  const handleDelete = async (id: string, slug: string) => {
+    const supabase = createClient()
+    await supabase.from("engrams").delete().eq("id", id)
+    setSettingsOpen(null)
+    if (activeSlug === slug) router.push("/app")
+    router.refresh()
   }
 
   const handleSignOut = async () => {
@@ -75,39 +81,21 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
     router.refresh()
   }
 
-  const sidebarWidth =
-    phase === "shrinking" || phase === "collapsed" ? 40
-    : phase === "expanding" ? 224
-    : 224
-
-  const expandedOpacity =
-    phase === "fading-out" ? 0
-    : phase === "fading-in" || phase === "expanded" ? 1
-    : 0
-
-  const collapsedOpacity =
-    phase === "collapsed" ? 1
-    : phase === "shrinking" ? 0
-    : 0
+  const sidebarWidth = phase === "shrinking" || phase === "collapsed" ? 40 : 224
+  const expandedOpacity = phase === "fading-out" ? 0 : (phase === "fading-in" || phase === "expanded") ? 1 : 0
+  const collapsedOpacity = phase === "collapsed" ? 1 : 0
 
   return (
     <aside
       className="shrink-0 border-r border-border bg-surface flex flex-col h-full overflow-hidden"
-      style={{
-        width: sidebarWidth,
-        transition: "width 250ms cubic-bezier(0.4, 0, 0.2, 1)",
-      }}
+      style={{ width: sidebarWidth, transition: "width 250ms cubic-bezier(0.4, 0, 0.2, 1)" }}
     >
-      {/* Collapsed dots */}
       {showCollapsed && (
         <div
           className="absolute inset-y-0 left-0 w-10 flex flex-col items-center z-10"
           style={{ opacity: collapsedOpacity, transition: "opacity 200ms ease-out" }}
         >
-          <button
-            onClick={expand}
-            className="mt-3 text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer"
-          >
+          <button onClick={expand} className="mt-3 text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 18 15 12 9 6" />
             </svg>
@@ -115,27 +103,18 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
           <div className="flex flex-col items-center gap-2.5 mt-4">
             {engrams.map((e) => (
               <Link key={e.id} href={`/app/${e.slug}`} title={e.name}>
-                <div
-                  className={`w-2 h-2 rounded-full transition-all duration-150 ${activeSlug === e.slug ? "scale-125" : "opacity-50 hover:opacity-100"}`}
-                  style={{ backgroundColor: e.accent_color }}
-                />
+                <div className={`w-2 h-2 rounded-full transition-all duration-150 ${activeSlug === e.slug ? "scale-125" : "opacity-50 hover:opacity-100"}`}
+                  style={{ backgroundColor: e.accent_color }} />
               </Link>
             ))}
           </div>
         </div>
       )}
 
-      {/* Expanded content */}
       {showExpanded && (
-        <div
-          className="flex flex-col h-full min-w-[224px]"
-          style={{ opacity: expandedOpacity, transition: "opacity 150ms ease-out" }}
-        >
+        <div className="flex flex-col h-full min-w-[224px]" style={{ opacity: expandedOpacity, transition: "opacity 150ms ease-out" }}>
           <nav className="flex-1 overflow-y-auto">
-            <button
-              onClick={collapse}
-              className="w-full flex items-center justify-between px-5 pt-4 pb-3 cursor-pointer group"
-            >
+            <button onClick={collapse} className="w-full flex items-center justify-between px-5 pt-4 pb-3 cursor-pointer group">
               <span className="text-[10px] font-mono text-text-ghost tracking-widest uppercase group-hover:text-text-tertiary transition-colors duration-150">Your engrams</span>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
                 className="text-text-ghost opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -146,23 +125,58 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
             {engrams.map((e) => {
               const isActive = activeSlug === e.slug
               return (
-                <Link
-                  key={e.id}
-                  href={`/app/${e.slug}`}
-                  className={`flex items-center gap-2.5 px-5 py-1.5 transition-colors duration-150 border-l-2 ${
-                    isActive
-                      ? "text-text-emphasis bg-surface-elevated"
-                      : "text-text-secondary hover:text-text-primary hover:bg-surface-raised border-transparent"
-                  }`}
-                  style={{ borderLeftColor: isActive ? e.accent_color : undefined }}
-                >
-                  <div className="min-w-0">
-                    <span className="block text-sm truncate">{e.name}</span>
-                    <span className="block text-[10px] text-text-ghost mt-0.5">
-                      {e.source_count} source{e.source_count !== 1 ? "s" : ""}
-                    </span>
-                  </div>
-                </Link>
+                <div key={e.id} className="relative group">
+                  <Link
+                    href={`/app/${e.slug}`}
+                    className={`flex items-center gap-2.5 px-5 py-1.5 transition-colors duration-150 border-l-2 ${
+                      isActive
+                        ? "text-text-emphasis bg-surface-elevated"
+                        : "text-text-secondary hover:text-text-primary hover:bg-surface-raised border-transparent"
+                    }`}
+                    style={{ borderLeftColor: isActive ? e.accent_color : undefined }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="block text-sm truncate">{e.name}</span>
+                      <span className="block text-[10px] text-text-ghost mt-0.5">
+                        {e.source_count} source{e.source_count !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  </Link>
+
+                  {/* Three-dot menu */}
+                  <button
+                    onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setSettingsOpen(settingsOpen === e.id ? null : e.id) }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-ghost opacity-0 group-hover:opacity-100 hover:text-text-tertiary transition-all duration-150 cursor-pointer px-1 py-0.5"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="5" r="1.5" />
+                      <circle cx="12" cy="12" r="1.5" />
+                      <circle cx="12" cy="19" r="1.5" />
+                    </svg>
+                  </button>
+
+                  {/* Settings dropdown */}
+                  {settingsOpen === e.id && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setSettingsOpen(null)} />
+                      <div className="absolute right-1 top-full z-50 bg-surface-raised border border-border py-1 min-w-[120px]">
+                        <Link
+                          href={`/app/${e.slug}/settings`}
+                          onClick={() => setSettingsOpen(null)}
+                          className="block px-3 py-1.5 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-150"
+                        >
+                          Settings
+                        </Link>
+                        <button
+                          onClick={() => handleDelete(e.id, e.slug)}
+                          className="block w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-surface-elevated transition-colors duration-150 cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )
             })}
 
