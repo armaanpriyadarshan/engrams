@@ -56,7 +56,7 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
 
   return (
     <aside className="w-56 shrink-0 border-r border-border bg-surface flex flex-col h-full">
-      <div className="px-5 py-2.5 border-b border-border flex items-center">
+      <div className="px-5 py-[13px] border-b border-border flex items-center">
         <Link href="/app" className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150">
           engrams
         </Link>
