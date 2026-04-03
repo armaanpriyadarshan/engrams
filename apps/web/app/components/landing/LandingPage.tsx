@@ -336,12 +336,12 @@ function AskSection() {
       i++
       if (i > DEMO_QUERY.length) {
         clearInterval(timer)
-        setTimeout(() => setShowAnswer(true), 700)
-        setTimeout(() => setShowFiled(true), 2500)
+        setTimeout(() => setShowAnswer(true), 300)
+        setTimeout(() => setShowFiled(true), 1000)
         return
       }
       setTypedQuery(DEMO_QUERY.slice(0, i))
-    }, 25)
+    }, 12)
     return () => clearInterval(timer)
   }, [inView])
 
@@ -358,8 +358,8 @@ function AskSection() {
 
           <div style={{
             opacity: showAnswer ? 1 : 0,
-            transform: showAnswer ? "translateY(0)" : "translateY(24px)",
-            transition: "all 900ms cubic-bezier(0.16, 1, 0.3, 1)",
+            transform: showAnswer ? "translateY(0)" : "translateY(12px)",
+            transition: "all 400ms cubic-bezier(0.16, 1, 0.3, 1)",
           }}>
             <div className="mt-12 space-y-5 leading-[1.7] text-[15px] border-l border-border pl-5">
               <p className="text-text-primary">
@@ -380,7 +380,7 @@ function AskSection() {
             </div>
 
             <div className="mt-8 flex items-center gap-3" style={{
-              opacity: showFiled ? 1 : 0, transition: "opacity 800ms ease-out",
+              opacity: showFiled ? 1 : 0, transition: "opacity 350ms ease-out",
             }}>
               <div className="h-px flex-1 bg-border" />
               <span className="font-mono text-[10px] text-text-tertiary tracking-widest uppercase">Filed back as article</span>
@@ -390,8 +390,8 @@ function AskSection() {
 
           <div className="mt-24 text-center" style={{
             opacity: showFiled ? 1 : 0,
-            transform: showFiled ? "translateY(0)" : "translateY(20px)",
-            transition: "opacity 1.2s ease-out 0.6s, transform 1.2s ease-out 0.6s",
+            transform: showFiled ? "translateY(0)" : "translateY(10px)",
+            transition: "opacity 500ms ease-out 200ms, transform 500ms ease-out 200ms",
           }}>
             <p className="font-heading text-2xl md:text-3xl text-text-emphasis">Every question makes it smarter.</p>
           </div>
