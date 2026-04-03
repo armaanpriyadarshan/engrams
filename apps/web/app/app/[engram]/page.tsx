@@ -76,7 +76,7 @@ export default function EngramPage() {
     <div className="w-full h-full relative">
       {/* Map */}
       {graphData && positions ? (
-        <div className="w-full h-full" style={{ animation: "fade-in-only 1s cubic-bezier(0,0,0.2,1) both" }}>
+        <div className="w-full h-full" style={{ animation: "graph-ignite 1.6s cubic-bezier(0,0,0.2,1) both" }}>
           <EngineGraph
             data={graphData}
             positions={positions}
