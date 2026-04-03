@@ -25,7 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Sidebar engrams={engrams ?? []} profile={profile} />
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-hidden relative">
           {children}
         </main>
       </div>

@@ -55,7 +55,7 @@ export default function EngramPage() {
   }
 
   return (
-    <div className="w-full h-full relative overflow-hidden">
+    <div className="w-full h-full relative">
       {/* Map */}
       {graphData && positions ? (
         <EngineGraph
