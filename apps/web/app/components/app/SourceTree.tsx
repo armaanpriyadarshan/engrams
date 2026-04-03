@@ -91,10 +91,16 @@ export default function SourceTree({ engramId }: { engramId: string }) {
                 onMouseEnter={() => setHoveredId(s.id)}
                 onMouseLeave={() => setHoveredId(null)}
               >
-                <div className="min-w-0 pl-4 cursor-default">
-                  <p className="text-[11px] text-text-primary truncate leading-tight">
-                    {s.title ?? s.source_type}
-                  </p>
+                <div className="min-w-0 pl-4">
+                  {s.source_url ? (
+                    <a href={s.source_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-text-primary hover:text-text-emphasis truncate leading-tight block transition-colors duration-150">
+                      {s.title ?? s.source_type}
+                    </a>
+                  ) : (
+                    <p className="text-[11px] text-text-primary truncate leading-tight">
+                      {s.title ?? s.source_type}
+                    </p>
+                  )}
                   <p className="text-[9px] font-mono text-text-ghost mt-0.5 truncate">
                     {typeLabel}
                     {meta?.author && <span> · {meta.author}</span>}
@@ -104,11 +110,15 @@ export default function SourceTree({ engramId }: { engramId: string }) {
 
                 {/* Hover detail card */}
                 {isHovered && (
-                  <div className="absolute left-full top-0 ml-2 z-50 w-56 bg-surface/95 backdrop-blur-md border border-border rounded-sm p-3 pointer-events-none">
+                  <div className="absolute left-full top-0 ml-2 z-50 w-56 bg-surface/95 backdrop-blur-md border border-border rounded-sm p-3">
                     <p className="text-[11px] text-text-emphasis leading-tight">{s.title}</p>
                     {meta?.author && <p className="text-[9px] font-mono text-text-tertiary mt-1">{meta.author}{meta?.year ? `, ${meta.year}` : ""}</p>}
                     {meta?.claim && <p className="text-[10px] text-text-secondary mt-1.5 leading-snug">{meta.claim as string}</p>}
-                    {domain && <p className="text-[8px] font-mono text-text-ghost mt-1.5">{domain}</p>}
+                    {s.source_url && (
+                      <a href={s.source_url} target="_blank" rel="noopener noreferrer" className="text-[8px] font-mono text-text-ghost hover:text-text-tertiary mt-1.5 block truncate transition-colors duration-150">
+                        {s.source_url}
+                      </a>
+                    )}
                     <div className="flex items-center gap-3 mt-2 pt-1.5 border-t border-border">
                       <span className="text-[8px] font-mono text-text-ghost">{artCount} article{artCount !== 1 ? "s" : ""} informed</span>
                       <span className="text-[8px] font-mono text-text-ghost">{timeAgo(s.created_at)}</span>
