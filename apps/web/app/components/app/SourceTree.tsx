@@ -60,8 +60,8 @@ export default function SourceTree({ engramId }: { engramId: string }) {
             return (
               <div key={s.id} className={`relative ${isLast ? "" : "pb-3"}`}>
                 {/* Horizontal branch from left border */}
-                <div className="absolute left-0 top-[7px] w-5 h-px bg-border-emphasis" />
-                <div className="min-w-0 pl-8">
+                <div className="absolute left-0 top-[7px] w-3 h-px bg-border-emphasis" />
+                <div className="min-w-0 pl-5">
                   <p className="text-[11px] text-text-primary truncate leading-tight">
                     {s.title ?? s.source_type}
                   </p>
