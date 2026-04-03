@@ -13,6 +13,7 @@ export default function FeedPage() {
   const [text, setText] = useState("")
   const [activeTab, setActiveTab] = useState<"url" | "text">("url")
   const [submitting, setSubmitting] = useState(false)
+  const [compiling, setCompiling] = useState(false)
   const [message, setMessage] = useState("")
 
   const submit = useCallback(async (sourceType: string, content: string, title?: string) => {
@@ -31,26 +32,44 @@ export default function FeedPage() {
 
     if (!engram) { setMessage("Engram not found."); setSubmitting(false); return }
 
-    const { error } = await supabase.from("sources").insert({
+    const { data: source, error } = await supabase.from("sources").insert({
       engram_id: engram.id,
       source_type: sourceType,
       source_url: sourceType === "url" ? content.trim() : null,
       content_md: sourceType === "text" ? content.trim() : null,
       title: title ?? (sourceType === "url" ? content.trim() : content.trim().slice(0, 80)),
       status: "pending",
+    }).select("id").single()
+
+    if (error || !source) {
+      setMessage("Failed to add source.")
+      setSubmitting(false)
+      return
+    }
+
+    // Increment source count
+    await supabase.rpc("increment_source_count", { eid: engram.id })
+    setMessage("Source added. Compiling...")
+    setUrl("")
+    setText("")
+    setSubmitting(false)
+    setCompiling(true)
+
+    // Trigger compilation
+    const { data: compileResult, error: compileError } = await supabase.functions.invoke("compile-source", {
+      body: { source_id: source.id },
     })
 
-    if (error) {
-      setMessage("Failed to add source.")
+    if (compileError) {
+      setMessage("Source added. Compilation failed.")
     } else {
-      // Increment source count
-      await supabase.rpc("increment_source_count", { eid: engram.id })
-      setMessage("Source added.")
-      setUrl("")
-      setText("")
+      const created = compileResult?.articles_created ?? 0
+      const updated = compileResult?.articles_updated ?? 0
+      const edges = compileResult?.edges_created ?? 0
+      setMessage(`Compilation complete. ${created} created. ${updated} updated. ${edges} connections found.`)
       router.refresh()
     }
-    setSubmitting(false)
+    setCompiling(false)
   }, [engramSlug, router])
 
   const tabs = [
@@ -115,7 +134,7 @@ export default function FeedPage() {
       )}
 
       {message && (
-        <p className="mt-4 text-xs text-text-tertiary">{message}</p>
+        <p className={`mt-4 text-xs ${compiling ? "text-agent-active" : "text-text-tertiary"}`}>{message}</p>
       )}
     </div>
   )

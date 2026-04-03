@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import Link from "next/link"
+import ArticleContent from "@/app/components/app/ArticleContent"
 
 export default async function ArticlePage({ params }: { params: Promise<{ engram: string; slug: string }> }) {
   const { engram: engramSlug, slug } = await params
@@ -61,8 +62,8 @@ export default async function ArticlePage({ params }: { params: Promise<{ engram
         </div>
 
         <div className="mt-8 border-t border-border pt-8">
-          <div className="prose-engram leading-[1.65] text-[15px] text-text-primary space-y-4 whitespace-pre-wrap">
-            {article.content_md}
+          <div className="prose-engram leading-[1.65] text-[15px] text-text-primary">
+            <ArticleContent contentMd={article.content_md} engramSlug={engramSlug} />
           </div>
         </div>
       </article>

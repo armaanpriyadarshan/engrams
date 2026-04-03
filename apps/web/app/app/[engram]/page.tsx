@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import Link from "next/link"
+import ArticleSearch from "@/app/components/app/ArticleSearch"
+import CompilationToast from "@/app/components/app/CompilationToast"
 
 export default async function EngramPage({ params }: { params: Promise<{ engram: string }> }) {
   const { engram: engramSlug } = await params
@@ -34,45 +36,11 @@ export default async function EngramPage({ params }: { params: Promise<{ engram:
         <h1 className="font-heading text-xl text-text-emphasis">{engram.name}</h1>
       </div>
 
-      {(!articles || articles.length === 0) ? (
-        <div className="py-20 text-center">
-          <p className="text-text-secondary">Nothing here yet.</p>
-          <p className="mt-2 text-sm text-text-tertiary">
-            <Link href={`/app/${engramSlug}/feed`} className="text-text-secondary hover:text-text-emphasis transition-colors duration-150">
-              Feed a source
-            </Link>
-            {" "}to begin.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {articles.map((a) => (
-            <Link
-              key={a.slug}
-              href={`/app/${engramSlug}/article/${a.slug}`}
-              className="block border border-border hover:border-border-emphasis bg-surface p-4 transition-colors duration-150"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-1.5 h-1.5 mt-2 rounded-full shrink-0" style={{
-                  backgroundColor: (a.confidence ?? 0) > 0.8 ? "var(--color-confidence-high)"
-                    : (a.confidence ?? 0) > 0.5 ? "var(--color-confidence-mid)" : "var(--color-confidence-low)",
-                }} />
-                <div>
-                  <h2 className="font-heading text-sm text-text-emphasis">{a.title}</h2>
-                  {a.summary && <p className="mt-1 text-xs text-text-tertiary leading-relaxed">{a.summary}</p>}
-                  {a.tags && a.tags.length > 0 && (
-                    <div className="mt-2 flex gap-2">
-                      {a.tags.map((tag: string) => (
-                        <span key={tag} className="font-mono text-[10px] text-text-ghost">{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+      <ArticleSearch
+        engramId={engram.id}
+        engramSlug={engramSlug}
+        initialArticles={articles ?? []}
+      />
 
       {sources && sources.length > 0 && (
         <div className="mt-12 border-t border-border pt-8">
@@ -93,6 +61,7 @@ export default async function EngramPage({ params }: { params: Promise<{ engram:
           </div>
         </div>
       )}
+      <CompilationToast engramId={engram.id} />
     </div>
   )
 }
