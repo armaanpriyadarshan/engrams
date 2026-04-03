@@ -121,7 +121,17 @@ export default function AskPanel({ engramId, engramSlug, prefill }: AskPanelProp
 
   return (
     <div>
-      <h2 className="font-heading text-lg text-text-emphasis mb-4">Ask</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-heading text-lg text-text-emphasis">Ask</h2>
+        {result && (
+          <button
+            onClick={() => { setResult(null); setQuestion(""); setError(""); setFileStatus("") }}
+            className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer"
+          >
+            New question
+          </button>
+        )}
+      </div>
 
       <textarea
         value={question}
