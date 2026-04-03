@@ -110,7 +110,7 @@ export default function SourceTree({ engramId }: { engramId: string }) {
 
                 {/* Hover detail card */}
                 {isHovered && (
-                  <div className="absolute left-full top-0 ml-4 z-50 w-56 bg-surface/95 backdrop-blur-md border border-border rounded-sm p-3">
+                  <div className="absolute left-full top-0 ml-2 z-50 w-56 bg-surface/95 backdrop-blur-md border border-border rounded-sm p-3">
                     <p className="text-[11px] text-text-emphasis leading-tight">{s.title}</p>
                     {meta?.author && <p className="text-[9px] font-mono text-text-tertiary mt-1">{meta.author}{meta?.year ? `, ${meta.year}` : ""}</p>}
                     {meta?.claim && <p className="text-[10px] text-text-secondary mt-1.5 leading-snug">{meta.claim as string}</p>}
