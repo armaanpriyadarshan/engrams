@@ -24,14 +24,17 @@ export function TopBar() {
   return (
     <>
     <CompilationPulse engramSlug={engramSlug} />
-    <header className="h-11 shrink-0 border-b border-border flex items-center">
-      <Link href="/app" className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150 px-5 shrink-0">
+    <header className="h-11 shrink-0 border-b border-border flex items-center px-5 gap-3">
+      <Link href="/app" className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150">
         engrams
       </Link>
       {engramSlug && (
-        <Link href={`/app/${engramSlug}`} className="font-mono text-xs text-text-tertiary hover:text-text-secondary transition-colors duration-150 border-l border-border px-4 py-3">
-          {engramSlug}
-        </Link>
+        <>
+          <span className="text-text-ghost text-xs">/</span>
+          <Link href={`/app/${engramSlug}`} className="font-mono text-xs text-text-tertiary hover:text-text-secondary transition-colors duration-150">
+            {engramSlug}
+          </Link>
+        </>
       )}
 
       <div className="flex-1" />
