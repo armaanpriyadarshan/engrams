@@ -98,7 +98,7 @@ export default function EngramPage() {
       {engramId && <AddSourceButton engramId={engramId} />}
       {engramId && <AgentTimeline engramId={engramId} />}
       {/* Bottom center: timeline + ask bar stacked */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-xl px-6 pointer-events-auto flex flex-col items-center gap-3">
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-xl px-6 pointer-events-auto flex flex-col items-center gap-6">
         {engramId && <HistoryTimeline engramId={engramId} />}
         {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
       </div>
