@@ -56,7 +56,9 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
 
   return (
     <aside className="w-56 shrink-0 border-r border-border bg-surface flex flex-col h-full">
-      <nav className="flex-1 overflow-y-auto pt-3">
+      <nav className="flex-1 overflow-y-auto pt-4">
+        <span className="px-5 text-[10px] font-mono text-text-ghost tracking-widest uppercase">Your engrams</span>
+        <div className="mt-2">
         {engrams.map((e) => {
           const isActive = activeSlug === e.slug
           return (
@@ -79,6 +81,7 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
             </Link>
           )
         })}
+        </div>
       </nav>
 
       <div className="px-2 pb-2">
