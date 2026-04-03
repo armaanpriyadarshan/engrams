@@ -272,12 +272,12 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
         const off = driftOff[i], spd = driftSpd[i], d = depthArr[i]
         const i3 = i * 3
         nodePositions[i3] = basePos[i3]
-          + (Math.sin(t * spd + off) * 5 + Math.sin(t * 0.14 + off * 0.7) * 3) * driftScale
-          + mPX * (0.3 + d * 0.7)
+          + (Math.sin(t * spd + off) * 1.5 + Math.sin(t * 0.14 + off * 0.7) * 1) * driftScale
+          + mPX * (0.2 + d * 0.4)
         nodePositions[i3 + 1] = basePos[i3 + 1]
-          + (Math.cos(t * 0.85 * spd + off * 0.6) * 5 + Math.cos(t * 0.11 + off * 1.1) * 3) * driftScale
-          + mPY * (0.3 + d * 0.7)
-        nodePositions[i3 + 2] = basePos[i3 + 2] + Math.sin(t * 0.3 + off * 1.5) * 30 * driftScale
+          + (Math.cos(t * 0.85 * spd + off * 0.6) * 1.5 + Math.cos(t * 0.11 + off * 1.1) * 1) * driftScale
+          + mPY * (0.2 + d * 0.4)
+        nodePositions[i3 + 2] = basePos[i3 + 2] + Math.sin(t * 0.3 + off * 1.5) * 10 * driftScale
       }
       nodeGeo.attributes.position.needsUpdate = true
 
