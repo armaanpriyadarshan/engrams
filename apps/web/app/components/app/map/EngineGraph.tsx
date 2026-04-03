@@ -262,7 +262,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       camera.position.x = Math.sin(elapsed * 0.02) * 60 * driftScale + (smoothMouse.x / 800) * -20
       camera.position.y = Math.cos(elapsed * 0.015) * 40 * driftScale + (smoothMouse.y / 800) * -15
       camera.position.z = camZ + Math.sin(elapsed * 0.01) * 20 * driftScale
-      camera.lookAt(0, 30, 0)
+      camera.lookAt(0, 0, 0)
 
       const mPX = (smoothMouse.x / 800) * -10
       const mPY = (smoothMouse.y / 800) * -10

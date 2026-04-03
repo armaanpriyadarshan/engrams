@@ -22,7 +22,7 @@ export function useForceLayout(data: GraphData | null, width: number, height: nu
     const simulation = forceSimulation(nodes)
       .force("link", forceLink(links).distance(25).strength(0.7))
       .force("charge", forceManyBody().strength(repulsion))
-      .force("center", forceCenter(0, -15).strength(0.4))
+      .force("center", forceCenter(0, 0).strength(0.4))
       .force("collide", forceCollide().radius((_, i) => 18 + data.nodes[i].depth * 10).strength(1))
       .stop()
 
@@ -40,10 +40,12 @@ export function useForceLayout(data: GraphData | null, width: number, height: nu
       if (r > maxR) maxR = r
     }
 
+    // Offset Y upward by 30% of scale so graph clears the bottom buttons
+    const yOffset = scale * 0.3
     const positions = new Float32Array(nodeCount * 2)
     for (let i = 0; i < nodeCount; i++) {
       positions[i * 2] = ((nodes[i].x ?? 0) / maxR) * scale
-      positions[i * 2 + 1] = ((nodes[i].y ?? 0) / maxR) * scale
+      positions[i * 2 + 1] = ((nodes[i].y ?? 0) / maxR) * scale + yOffset
     }
 
     return positions
