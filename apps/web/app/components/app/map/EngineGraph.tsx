@@ -181,7 +181,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
             pulse += smoothstep(80.0, 0.0, abs(dr - uRippleTime * 500.0)) * exp(-uRippleTime) * 1.5;
           }
 
-          vPulse = clamp(pulse, 0.0, 2.5);
+          vPulse = clamp(pulse, 0.0, 1.4);
           vFade = aFade;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           vDepth = smoothstep(-1400.0, -700.0, mv.z);
