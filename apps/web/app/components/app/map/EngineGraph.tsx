@@ -58,10 +58,18 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     container.appendChild(renderer.domElement)
 
-    // ── Camera zoom/pan state ──
-    const maxZoom = camZ * 1.5 // default = max zoomed out, further back
-    const minZoom = Math.max(camZ * 0.25, 100) // can zoom in to 25%
+    // ── Compute graph extent from positions for zoom/pan scaling ──
+    let graphRadius = 1
+    for (let i = 0; i < count; i++) {
+      const r = Math.sqrt(positions[i * 2] ** 2 + positions[i * 2 + 1] ** 2)
+      if (r > graphRadius) graphRadius = r
+    }
+
+    // ── Camera zoom/pan state — scales with graph size ──
+    const maxZoom = camZ * 1.5
+    const minZoom = Math.max(camZ * 0.15, 80)
     let targetZ = maxZoom
+    const panLimit = graphRadius * 1.2 // can pan slightly beyond the graph edge
     const panOffset = { x: 0, y: 0 }
     let isPanning = false
     let panStart = { x: 0, y: 0 }
@@ -126,7 +134,6 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     const onPanMove = (e: MouseEvent) => {
       if (!isPanning) return
       const scale = camera.position.z * 0.002
-      const panLimit = camZ * 0.4
       panOffset.x = Math.max(-panLimit, Math.min(panLimit, panOffset.x - (e.clientX - panStart.x) * scale))
       panOffset.y = Math.max(-panLimit, Math.min(panLimit, panOffset.y + (e.clientY - panStart.y) * scale))
       panStart = { x: e.clientX, y: e.clientY }
