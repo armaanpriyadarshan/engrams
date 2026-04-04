@@ -49,34 +49,24 @@ export function useForceLayout(data: GraphData | null, width: number, height: nu
       simulation.tick()
     }
 
-    // Normalize positions to fit a safe bounding box in the center
-    // Avoid side panels (~40% from left, ~25% from right) and bottom UI (~20% from bottom)
-    const safeW = width * 0.35
-    const safeH = height * 0.4
-    const safeCenterY = height * 0.05 // shift up slightly
-
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    // Normalize all positions to fit within a tight radius in world space
+    // The camera handles the rest — this just ensures nodes stay in a compact cluster
+    let maxR = 1
     for (const node of nodes) {
-      const x = node.x ?? 0, y = node.y ?? 0
-      if (x < minX) minX = x
-      if (x > maxX) maxX = x
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
+      const r = Math.sqrt((node.x ?? 0) ** 2 + (node.y ?? 0) ** 2)
+      if (r > maxR) maxR = r
     }
-    const rangeX = Math.max(maxX - minX, 1)
-    const rangeY = Math.max(maxY - minY, 1)
-    const centerX = (minX + maxX) / 2
-    const centerY = (minY + maxY) / 2
+
+    // Tight world-space radius — camera at z=400+ will frame this well
+    const targetRadius = 60 + Math.min(nodeCount, 40)
+    const yOffset = 15 // shift up slightly to clear bottom UI
 
     const positions = new Float32Array(nodeCount * 2)
     const newCache = new Map<string, { x: number; y: number }>()
 
     for (let i = 0; i < nodeCount; i++) {
-      // Map to -1..1 range centered on graph center, then scale to safe area
-      const nx = ((nodes[i].x ?? 0) - centerX) / rangeX
-      const ny = ((nodes[i].y ?? 0) - centerY) / rangeY
-      const px = nx * safeW
-      const py = ny * safeH + safeCenterY
+      const px = ((nodes[i].x ?? 0) / maxR) * targetRadius
+      const py = ((nodes[i].y ?? 0) / maxR) * targetRadius + yOffset
       positions[i * 2] = px
       positions[i * 2 + 1] = py
       newCache.set(nodes[i].slug, { x: nodes[i].x ?? 0, y: nodes[i].y ?? 0 })
