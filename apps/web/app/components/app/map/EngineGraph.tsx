@@ -124,7 +124,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       e.preventDefault()
       targetZ = Math.max(minZoom, Math.min(maxZoom, targetZ + e.deltaY * 0.5))
     }
-    let targetRotZ = 0 // left/right rotation around Z axis
+    let targetRotY = 0 // left/right rotation around Y axis
     let targetRotX = 0 // up/down rotation around X axis
 
     const onMouseDown = (e: MouseEvent) => {
@@ -149,7 +149,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
 
       // Determine which quadrant: left/right rotates around Z, up/down around X
       if (Math.abs(cx) > Math.abs(cy)) {
-        targetRotZ += cx > 0 ? Math.PI / 2 : -Math.PI / 2
+        targetRotY += cx > 0 ? -Math.PI / 2 : Math.PI / 2
       } else {
         targetRotX += cy > 0 ? Math.PI / 2 : -Math.PI / 2
         targetRotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotX))
@@ -320,7 +320,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       camera.position.z += (targetZ - camera.position.z) * 0.1
 
       // Smooth rotation toward targets
-      scene.rotation.z += (targetRotZ - scene.rotation.z) * 0.08
+      scene.rotation.y += (targetRotY - scene.rotation.y) * 0.08
       scene.rotation.x += (targetRotX - scene.rotation.x) * 0.08
 
       camera.position.x = Math.sin(elapsed * 0.015) * 20 * driftScale + (smoothMouse.x / 800) * -8 + panOffset.x
