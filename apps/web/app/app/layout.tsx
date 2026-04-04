@@ -18,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { data: engrams } = await supabase
     .from("engrams")
     .select("id, name, slug, accent_color, article_count, source_count")
+    .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
 
   const totalNodes = (engrams ?? []).reduce((s, e) => s + e.article_count, 0)
