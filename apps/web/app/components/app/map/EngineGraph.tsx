@@ -124,6 +124,8 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       e.preventDefault()
       targetZ = Math.max(minZoom, Math.min(maxZoom, targetZ + e.deltaY * 0.5))
     }
+    let targetRotation = 0 // in radians, snaps in 90-degree increments
+
     const onMouseDown = (e: MouseEvent) => {
       if (e.button === 0 && currentHovered < 0) {
         isPanning = true
@@ -138,12 +140,17 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       panOffset.y = Math.max(-panLimit, Math.min(panLimit, panOffset.y + (e.clientY - panStart.y) * scale))
       panStart = { x: e.clientX, y: e.clientY }
     }
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
+      targetRotation += Math.PI / 2 // rotate 90 degrees
+    }
 
     window.addEventListener("mousemove", onMouseMove, { passive: true })
     window.addEventListener("mousemove", onPanMove, { passive: true })
     window.addEventListener("click", onClick)
     container.addEventListener("wheel", onWheel, { passive: false })
     container.addEventListener("mousedown", onMouseDown)
+    container.addEventListener("contextmenu", onContextMenu)
     window.addEventListener("mouseup", onMouseUp)
 
     // ── Edges ──
@@ -301,6 +308,9 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       // Smooth zoom
       camera.position.z += (targetZ - camera.position.z) * 0.1
 
+      // Smooth rotation toward target (90-degree snaps)
+      scene.rotation.z += (targetRotation - scene.rotation.z) * 0.08
+
       camera.position.x = Math.sin(elapsed * 0.015) * 20 * driftScale + (smoothMouse.x / 800) * -8 + panOffset.x
       camera.position.y = Math.cos(elapsed * 0.01) * 15 * driftScale + (smoothMouse.y / 800) * -6 + panOffset.y
       camera.lookAt(panOffset.x, panOffset.y, 0)
@@ -422,6 +432,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       window.removeEventListener("mouseup", onMouseUp)
       container.removeEventListener("wheel", onWheel)
       container.removeEventListener("mousedown", onMouseDown)
+      container.removeEventListener("contextmenu", onContextMenu)
       cancelAnimationFrame(frame)
       renderer.dispose()
       edgeGeo.dispose(); edgeMat.dispose()
