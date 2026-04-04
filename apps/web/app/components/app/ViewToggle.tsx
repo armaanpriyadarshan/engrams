@@ -11,7 +11,7 @@ export default function ViewToggle({ onViewChange }: { onViewChange?: (view: "gr
   }
 
   return (
-    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex flex-col items-center gap-2.5 animate-slide-in-up" style={{ animationDelay: "100ms" }}>
+    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex flex-col items-center gap-2.5 animate-slide-in-up" style={{ animationDelay: "100ms" }}>
       {/* Toggle pill */}
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm flex">
         <button
