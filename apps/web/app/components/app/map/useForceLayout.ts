@@ -57,8 +57,8 @@ export function useForceLayout(data: GraphData | null, width: number, height: nu
       if (r > maxR) maxR = r
     }
 
-    // Tight world-space radius — camera at z=400+ will frame this well
-    const targetRadius = 60 + Math.min(nodeCount, 40)
+    // Comfortable world-space radius — users can zoom in to explore
+    const targetRadius = 100 + Math.min(nodeCount * 3, 150)
     const yOffset = 15 // shift up slightly to clear bottom UI
 
     const positions = new Float32Array(nodeCount * 2)

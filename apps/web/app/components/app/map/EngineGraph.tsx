@@ -58,6 +58,14 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     container.appendChild(renderer.domElement)
 
+    // ── Camera zoom/pan state ──
+    const maxZoom = camZ // default = max zoomed out
+    const minZoom = Math.max(camZ * 0.25, 100) // can zoom in to 25%
+    let targetZ = camZ
+    const panOffset = { x: 0, y: 0 }
+    let isPanning = false
+    let panStart = { x: 0, y: 0 }
+
     // ── Mouse ──
     const mouse = { x: 0, y: 0, screenX: 0, screenY: 0 }
     const smoothMouse = { x: 0, y: 0 }
@@ -104,8 +112,31 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
         ripple.time = 0
       }
     }
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      targetZ = Math.max(minZoom, Math.min(maxZoom, targetZ + e.deltaY * 0.5))
+    }
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 0 && currentHovered < 0) {
+        isPanning = true
+        panStart = { x: e.clientX, y: e.clientY }
+      }
+    }
+    const onMouseUp = () => { isPanning = false }
+    const onPanMove = (e: MouseEvent) => {
+      if (!isPanning) return
+      const scale = camera.position.z * 0.002
+      panOffset.x += (e.clientX - panStart.x) * scale
+      panOffset.y -= (e.clientY - panStart.y) * scale
+      panStart = { x: e.clientX, y: e.clientY }
+    }
+
     window.addEventListener("mousemove", onMouseMove, { passive: true })
+    window.addEventListener("mousemove", onPanMove, { passive: true })
     window.addEventListener("click", onClick)
+    container.addEventListener("wheel", onWheel, { passive: false })
+    container.addEventListener("mousedown", onMouseDown)
+    window.addEventListener("mouseup", onMouseUp)
 
     // ── Edges ──
     const edgeCount = edgeList.length
@@ -259,10 +290,12 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       // Camera orbit
       // Scale drift with node count — no movement under 5 nodes
       const driftScale = Math.min(Math.max((count - 5) / 10, 0), 1)
-      camera.position.x = Math.sin(elapsed * 0.015) * 20 * driftScale + (smoothMouse.x / 800) * -8
-      camera.position.y = Math.cos(elapsed * 0.01) * 15 * driftScale + (smoothMouse.y / 800) * -6
-      camera.position.z = camZ + Math.sin(elapsed * 0.008) * 8 * driftScale
-      camera.lookAt(0, 0, 0)
+      // Smooth zoom
+      camera.position.z += (targetZ - camera.position.z) * 0.1
+
+      camera.position.x = Math.sin(elapsed * 0.015) * 20 * driftScale + (smoothMouse.x / 800) * -8 + panOffset.x
+      camera.position.y = Math.cos(elapsed * 0.01) * 15 * driftScale + (smoothMouse.y / 800) * -6 + panOffset.y
+      camera.lookAt(panOffset.x, panOffset.y, 0)
 
       const mPX = (smoothMouse.x / 800) * -10
       const mPY = (smoothMouse.y / 800) * -10
@@ -376,7 +409,11 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     return () => {
       window.removeEventListener("resize", onResize)
       window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mousemove", onPanMove)
       window.removeEventListener("click", onClick)
+      window.removeEventListener("mouseup", onMouseUp)
+      container.removeEventListener("wheel", onWheel)
+      container.removeEventListener("mousedown", onMouseDown)
       cancelAnimationFrame(frame)
       renderer.dispose()
       edgeGeo.dispose(); edgeMat.dispose()
