@@ -49,7 +49,8 @@ export function useForceLayout(data: GraphData | null, width: number, height: nu
       simulation.tick()
     }
 
-    const scale = Math.min(width, height) * 0.18
+    // Use a tighter scale to keep nodes away from side panel overlays
+    const scale = Math.min(width * 0.6, height) * 0.18
     let maxR = 1
     for (const node of nodes) {
       const r = Math.sqrt((node.x ?? 0) ** 2 + (node.y ?? 0) ** 2)
