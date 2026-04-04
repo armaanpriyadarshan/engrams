@@ -142,7 +142,18 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     }
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault()
-      targetRotation += Math.PI / 2 // rotate 90 degrees
+      const rect = container.getBoundingClientRect()
+      const cx = (e.clientX - rect.left) / rect.width - 0.5  // -0.5 to 0.5
+      const cy = (e.clientY - rect.top) / rect.height - 0.5  // -0.5 to 0.5
+
+      // Determine which quadrant: rotate toward that direction
+      if (Math.abs(cx) > Math.abs(cy)) {
+        // Horizontal dominant
+        targetRotation = cx > 0 ? Math.PI / 2 : -Math.PI / 2  // right or left
+      } else {
+        // Vertical dominant
+        targetRotation = cy > 0 ? Math.PI : 0  // down (180) or up (0)
+      }
     }
 
     window.addEventListener("mousemove", onMouseMove, { passive: true })
