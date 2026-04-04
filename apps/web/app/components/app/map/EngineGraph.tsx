@@ -124,36 +124,39 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       e.preventDefault()
       targetZ = Math.max(minZoom, Math.min(maxZoom, targetZ + e.deltaY * 0.5))
     }
-    let targetRotY = 0 // left/right rotation around Y axis
-    let targetRotX = 0 // up/down rotation around X axis
+    let orbitTheta = 0 // horizontal orbit (right-click drag)
+    let orbitPhi = 0   // vertical orbit (right-click drag)
+    let targetTheta = 0
+    let targetPhi = 0
+    let isOrbiting = false
+    let orbitStart = { x: 0, y: 0 }
+    let currentZoom = targetZ
 
     const onMouseDown = (e: MouseEvent) => {
       if (e.button === 0 && currentHovered < 0) {
         isPanning = true
         panStart = { x: e.clientX, y: e.clientY }
+      } else if (e.button === 2) {
+        isOrbiting = true
+        orbitStart = { x: e.clientX, y: e.clientY }
       }
     }
-    const onMouseUp = () => { isPanning = false }
+    const onMouseUp = () => { isPanning = false; isOrbiting = false }
     const onPanMove = (e: MouseEvent) => {
-      if (!isPanning) return
-      const scale = camera.position.z * 0.002
-      panOffset.x = Math.max(-panLimit, Math.min(panLimit, panOffset.x - (e.clientX - panStart.x) * scale))
-      panOffset.y = Math.max(-panLimit, Math.min(panLimit, panOffset.y + (e.clientY - panStart.y) * scale))
-      panStart = { x: e.clientX, y: e.clientY }
+      if (isPanning) {
+        const scale = camera.position.z * 0.002
+        panOffset.x = Math.max(-panLimit, Math.min(panLimit, panOffset.x - (e.clientX - panStart.x) * scale))
+        panOffset.y = Math.max(-panLimit, Math.min(panLimit, panOffset.y + (e.clientY - panStart.y) * scale))
+        panStart = { x: e.clientX, y: e.clientY }
+      }
+      if (isOrbiting) {
+        targetTheta -= (e.clientX - orbitStart.x) * 0.004
+        targetPhi = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, targetPhi + (e.clientY - orbitStart.y) * 0.004))
+        orbitStart = { x: e.clientX, y: e.clientY }
+      }
     }
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault()
-      const rect = container.getBoundingClientRect()
-      const cx = (e.clientX - rect.left) / rect.width - 0.5  // -0.5 to 0.5
-      const cy = (e.clientY - rect.top) / rect.height - 0.5  // -0.5 to 0.5
-
-      // Determine which quadrant: left/right rotates around Z, up/down around X
-      if (Math.abs(cx) > Math.abs(cy)) {
-        targetRotY += cx > 0 ? -Math.PI / 2 : Math.PI / 2
-      } else {
-        targetRotX += cy > 0 ? Math.PI / 2 : -Math.PI / 2
-        targetRotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotX))
-      }
     }
 
     window.addEventListener("mousemove", onMouseMove, { passive: true })
@@ -317,14 +320,17 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       // Scale drift with node count — no movement under 5 nodes
       const driftScale = Math.min(Math.max((count - 5) / 10, 0), 1)
       // Smooth zoom
-      camera.position.z += (targetZ - camera.position.z) * 0.1
+      currentZoom += (targetZ - currentZoom) * 0.1
 
-      // Smooth rotation toward targets
-      scene.rotation.y += (targetRotY - scene.rotation.y) * 0.08
-      scene.rotation.x += (targetRotX - scene.rotation.x) * 0.08
+      // Smooth orbit angles
+      orbitTheta += (targetTheta - orbitTheta) * 0.08
+      orbitPhi += (targetPhi - orbitPhi) * 0.08
 
-      camera.position.x = Math.sin(elapsed * 0.015) * 20 * driftScale + (smoothMouse.x / 800) * -8 + panOffset.x
-      camera.position.y = Math.cos(elapsed * 0.01) * 15 * driftScale + (smoothMouse.y / 800) * -6 + panOffset.y
+      const driftX = Math.sin(elapsed * 0.015) * 20 * driftScale + (smoothMouse.x / 800) * -8
+      const driftY = Math.cos(elapsed * 0.01) * 15 * driftScale + (smoothMouse.y / 800) * -6
+      camera.position.x = panOffset.x + driftX + currentZoom * Math.sin(orbitTheta) * Math.cos(orbitPhi)
+      camera.position.y = panOffset.y + driftY + currentZoom * Math.sin(orbitPhi)
+      camera.position.z = currentZoom * Math.cos(orbitTheta) * Math.cos(orbitPhi)
       camera.lookAt(panOffset.x, panOffset.y, 0)
 
       const mPX = (smoothMouse.x / 800) * -10
