@@ -56,11 +56,7 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
     })
   }, [engramId])
 
-  const items = runs.length > 0 ? runs : [
-    { id: "p1", agent_type: "compiler", status: "completed", summary: "4 articles created", started_at: new Date(Date.now() - 120000).toISOString() },
-    { id: "p2", agent_type: "linter", status: "completed", summary: "1 gap found", started_at: new Date(Date.now() - 3600000).toISOString() },
-    { id: "p3", agent_type: "feed", status: "completed", summary: "2 sources ingested", started_at: new Date(Date.now() - 10800000).toISOString() },
-  ]
+  const items = runs
 
   const typeLabel: Record<string, string> = {
     feed: "Fed", compiler: "Compiled", linter: "Linted", freshener: "Freshened",
@@ -82,17 +78,21 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
         <div className="mt-2 space-y-1.5">
-          {items.map((r) => (
-            <div key={r.id} className="flex items-start gap-2">
-              <div className={`w-1 h-1 rounded-full mt-1 shrink-0 ${statusColor(r.status)}`} />
-              <div className="min-w-0">
-                <span className="font-mono text-[10px] text-text-tertiary block truncate">
-                  {typeLabel[r.agent_type] ?? r.agent_type} &middot; {r.summary}
-                </span>
-                <span className="font-mono text-[9px] text-text-ghost">{timeAgo(r.started_at)}</span>
+          {items.length === 0 ? (
+            <p className="text-[10px] text-text-ghost">No activity yet.</p>
+          ) : (
+            items.map((r) => (
+              <div key={r.id} className="flex items-start gap-2">
+                <div className={`w-1 h-1 rounded-full mt-1 shrink-0 ${statusColor(r.status)}`} />
+                <div className="min-w-0">
+                  <span className="font-mono text-[10px] text-text-tertiary block truncate">
+                    {typeLabel[r.agent_type] ?? r.agent_type} &middot; {r.summary}
+                  </span>
+                  <span className="font-mono text-[9px] text-text-ghost">{timeAgo(r.started_at)}</span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
@@ -167,19 +167,18 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
         </div>
 
         {/* Open questions */}
-        <div className="mt-2.5 pt-2 border-t border-border">
-          <span className="text-[8px] font-mono text-text-ghost">Open questions</span>
-          <div className="mt-1 space-y-1">
-            {(openQuestions.length > 0 ? openQuestions : [
-              "How do attention mechanisms relate to memory?",
-              "What are the limits of current scaling approaches?",
-            ]).map((q, i) => (
-              <p key={i} className="text-[10px] text-text-tertiary leading-tight">
+        {openQuestions.length > 0 && (
+          <div className="mt-2.5 pt-2 border-t border-border">
+            <span className="text-[8px] font-mono text-text-ghost">Open questions</span>
+            <div className="mt-1 space-y-1">
+              {openQuestions.map((q, i) => (
+                <p key={i} className="text-[10px] text-text-tertiary leading-tight">
 {q}
-              </p>
-            ))}
+                </p>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
