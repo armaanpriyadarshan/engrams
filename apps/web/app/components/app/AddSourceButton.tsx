@@ -114,7 +114,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
 
   if (!open) {
     return (
-      <div className="absolute top-[72px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-slide-in-up" style={{ animationDelay: "250ms" }}>
+      <div className="absolute top-[60px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-slide-in-up" style={{ animationDelay: "250ms" }}>
         <button
           onClick={() => setOpen(true)}
           className="bg-surface/80 backdrop-blur-md border border-border-emphasis hover:border-text-tertiary rounded-sm px-4 py-2 flex items-center gap-2 text-xs text-text-secondary hover:text-text-emphasis transition-all duration-150 cursor-pointer"
@@ -130,7 +130,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
   }
 
   return (
-    <div className="absolute top-[72px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-full max-w-md px-4">
+    <div className="absolute top-[60px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-full max-w-md px-4">
       <div className="bg-surface/95 backdrop-blur-md border border-border-emphasis rounded-sm overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
