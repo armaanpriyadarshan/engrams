@@ -126,8 +126,9 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     const onPanMove = (e: MouseEvent) => {
       if (!isPanning) return
       const scale = camera.position.z * 0.002
-      panOffset.x -= (e.clientX - panStart.x) * scale
-      panOffset.y += (e.clientY - panStart.y) * scale
+      const panLimit = camZ * 0.4
+      panOffset.x = Math.max(-panLimit, Math.min(panLimit, panOffset.x - (e.clientX - panStart.x) * scale))
+      panOffset.y = Math.max(-panLimit, Math.min(panLimit, panOffset.y + (e.clientY - panStart.y) * scale))
       panStart = { x: e.clientX, y: e.clientY }
     }
 
