@@ -55,18 +55,9 @@ export default function SourceTree({ engramId }: { engramId: string }) {
     })
   }, [engramId])
 
-  const items: Source[] = sources.length > 0 ? sources : [
-    { id: "p1", title: "Attention Is All You Need", source_type: "url", source_url: "https://arxiv.org/abs/1706.03762", status: "compiled", created_at: new Date(Date.now() - 300000).toISOString(), metadata: { author: "Vaswani et al.", year: "2017", claim: "Self-attention can replace recurrence entirely for sequence transduction." } },
-    { id: "p2", title: "The Illustrated Transformer", source_type: "url", source_url: "https://jalammar.github.io/illustrated-transformer", status: "compiled", created_at: new Date(Date.now() - 900000).toISOString(), metadata: { author: "Jay Alammar", year: "2018", claim: "Visual walkthrough of transformer architecture and attention mechanisms." } },
-    { id: "p3", title: "Formal Algorithms for Transformers", source_type: "url", source_url: "https://arxiv.org/abs/2207.09238", status: "compiled", created_at: new Date(Date.now() - 3600000).toISOString(), metadata: { author: "Phuong & Hutter", year: "2022", claim: "Compact mathematical description of transformer variants." } },
-    { id: "p4", title: "Language Models are Few-Shot Learners", source_type: "pdf", source_url: null, status: "compiled", created_at: new Date(Date.now() - 7200000).toISOString(), metadata: { author: "Brown et al.", year: "2020", claim: "Scaling language models enables few-shot task performance without fine-tuning." } },
-    { id: "p5", title: "Scaling Language Models", source_type: "pdf", source_url: null, status: "compiled", created_at: new Date(Date.now() - 10800000).toISOString(), metadata: { author: "Kaplan et al.", year: "2020", claim: "Neural language model performance scales as a power-law with model size." } },
-    { id: "p6", title: "The Bitter Lesson", source_type: "url", source_url: "https://incompleteideas.net", status: "pending", created_at: new Date(Date.now() - 86400000).toISOString(), metadata: { author: "Rich Sutton", year: "2019", claim: "General methods that leverage computation are ultimately the most effective." } },
-  ]
-
-  const displayCount = sources.length > 0 ? totalCount : 6
-  const placeholderArticleCounts: Record<string, number> = { p1: 5, p2: 3, p3: 4, p4: 6, p5: 2, p6: 0 }
-  const getCounts = (id: string) => Object.keys(articleCounts).length > 0 ? (articleCounts[id] ?? 0) : (placeholderArticleCounts[id] ?? 0)
+  const items = sources
+  const displayCount = totalCount
+  const getCounts = (id: string) => articleCounts[id] ?? 0
 
   return (
     <div className="absolute top-3 left-3 z-30 max-w-[260px] pointer-events-auto animate-slide-in-left" style={{ animationDelay: "200ms" }}>
@@ -76,7 +67,9 @@ export default function SourceTree({ engramId }: { engramId: string }) {
           <span className="text-[9px] font-mono text-text-ghost">{displayCount}</span>
         </div>
         <div className="mt-2">
-          {items.map((s, i) => {
+          {items.length === 0 ? (
+            <p className="text-[10px] text-text-ghost pl-4">No sources yet.</p>
+          ) : items.map((s, i) => {
             const isLast = i === items.length - 1
             const domain = extractDomain(s.source_url)
             const typeLabel = s.source_type === "url" ? (domain?.includes("arxiv") ? "arxiv" : "url") : s.source_type
