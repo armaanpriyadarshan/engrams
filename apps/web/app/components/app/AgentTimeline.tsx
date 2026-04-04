@@ -96,9 +96,9 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
         </div>
       </div>
 
-      {/* Health */}
+      {/* Stats */}
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Health</span>
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
 
         {/* Stats — numbers on top, labels below */}
         <div className="mt-2 flex justify-between text-center">

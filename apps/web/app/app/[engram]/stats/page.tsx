@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 
-export default async function HealthPage({ params }: { params: Promise<{ engram: string }> }) {
+export default async function StatsPage({ params }: { params: Promise<{ engram: string }> }) {
   const { engram: engramSlug } = await params
   const supabase = await createClient()
 
@@ -75,7 +75,7 @@ export default async function HealthPage({ params }: { params: Promise<{ engram:
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10">
-      <h1 className="font-heading text-lg text-text-emphasis mb-8">Health</h1>
+      <h1 className="font-heading text-lg text-text-emphasis mb-8">Stats</h1>
 
       {/* Stat boxes */}
       <div className="grid grid-cols-4 gap-4 mb-10">
