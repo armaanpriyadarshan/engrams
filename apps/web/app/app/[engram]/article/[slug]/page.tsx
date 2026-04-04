@@ -32,7 +32,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ engram
     .contains("related_slugs", [slug])
 
   return (
-    <div className="max-w-[660px] mx-auto px-6 py-10">
+    <div className="max-w-[660px] mx-auto px-6 py-10 h-full overflow-y-auto">
       <Link
         href={`/app/${engramSlug}`}
         className="text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-150 font-mono"
