@@ -83,37 +83,11 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
-    const binaryFormats = ["pdf", "docx", "pptx", "xlsx"]
     for (const file of Array.from(files)) {
+      const content = await file.text()
       const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
-      const name = file.name.replace(/\.[^.]+$/, "")
-
-      if (binaryFormats.includes(ext)) {
-        setSubmitting(true)
-        setMessage({ type: "ok", text: "Parsing..." })
-        const buffer = await file.arrayBuffer()
-        const bytes = new Uint8Array(buffer)
-        let binary = ""
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-        const base64 = btoa(binary)
-
-        const supabase = createClient()
-        const { data: parsed, error: parseError } = await supabase.functions.invoke("parse-file", {
-          body: { file_base64: base64, filename: file.name, format: ext },
-        })
-
-        if (parseError || !parsed?.content) {
-          setMessage({ type: "err", text: "File parsing requires the backend API." })
-          setSubmitting(false)
-          continue
-        }
-
-        setSubmitting(false)
-        await feed("text", parsed.content, name)
-      } else {
-        const content = await file.text()
-        await feed("text", content, name)
-      }
+      const type = ["pdf"].includes(ext) ? "pdf" : ["md", "txt", "csv", "json"].includes(ext) ? "text" : "file"
+      await feed(type, content, file.name)
     }
   }
 
@@ -140,7 +114,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
 
   if (!open) {
     return (
-      <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-slide-in-up" style={{ animationDelay: "250ms" }}>
+      <div className="absolute top-[72px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-slide-in-up" style={{ animationDelay: "250ms" }}>
         <button
           onClick={() => setOpen(true)}
           className="bg-surface/80 backdrop-blur-md border border-border-emphasis hover:border-text-tertiary rounded-sm px-4 py-2 flex items-center gap-2 text-xs text-text-secondary hover:text-text-emphasis transition-all duration-150 cursor-pointer"
@@ -156,7 +130,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
   }
 
   return (
-    <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-full max-w-md px-4">
+    <div className="absolute top-[72px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-full max-w-md px-4">
       <div className="bg-surface/95 backdrop-blur-md border border-border-emphasis rounded-sm overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
