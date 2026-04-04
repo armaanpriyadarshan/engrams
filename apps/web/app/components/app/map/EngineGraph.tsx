@@ -59,9 +59,9 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     container.appendChild(renderer.domElement)
 
     // ── Camera zoom/pan state ──
-    const maxZoom = camZ // default = max zoomed out
+    const maxZoom = camZ * 1.5 // default = max zoomed out, further back
     const minZoom = Math.max(camZ * 0.25, 100) // can zoom in to 25%
-    let targetZ = camZ
+    let targetZ = maxZoom
     const panOffset = { x: 0, y: 0 }
     let isPanning = false
     let panStart = { x: 0, y: 0 }
@@ -126,8 +126,8 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     const onPanMove = (e: MouseEvent) => {
       if (!isPanning) return
       const scale = camera.position.z * 0.002
-      panOffset.x += (e.clientX - panStart.x) * scale
-      panOffset.y -= (e.clientY - panStart.y) * scale
+      panOffset.x -= (e.clientX - panStart.x) * scale
+      panOffset.y += (e.clientY - panStart.y) * scale
       panStart = { x: e.clientX, y: e.clientY }
     }
 
