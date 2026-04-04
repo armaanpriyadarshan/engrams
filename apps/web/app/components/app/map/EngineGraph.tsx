@@ -144,9 +144,14 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     const onMouseUp = () => { isPanning = false; isOrbiting = false }
     const onPanMove = (e: MouseEvent) => {
       if (isPanning) {
-        const scale = camera.position.z * 0.002
-        panOffset.x = Math.max(-panLimit, Math.min(panLimit, panOffset.x - (e.clientX - panStart.x) * scale))
-        panOffset.y = Math.max(-panLimit, Math.min(panLimit, panOffset.y + (e.clientY - panStart.y) * scale))
+        const scale = currentZoom * 0.002
+        const dx = -(e.clientX - panStart.x) * scale
+        const dy = (e.clientY - panStart.y) * scale
+        // Rotate pan delta by current orbit angle so drag stays consistent
+        const cosT = Math.cos(orbitTheta)
+        const sinT = Math.sin(orbitTheta)
+        panOffset.x = Math.max(-panLimit, Math.min(panLimit, panOffset.x + dx * cosT))
+        panOffset.y = Math.max(-panLimit, Math.min(panLimit, panOffset.y + dy))
         panStart = { x: e.clientX, y: e.clientY }
       }
       if (isOrbiting) {
