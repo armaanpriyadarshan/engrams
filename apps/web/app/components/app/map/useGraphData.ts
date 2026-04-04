@@ -27,6 +27,7 @@ export interface GraphData {
 export function useGraphData(engramId: string | null) {
   const [data, setData] = useState<GraphData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     if (!engramId) return
@@ -111,6 +112,25 @@ export function useGraphData(engramId: string | null) {
     }
 
     fetch()
+  }, [engramId, refreshKey])
+
+  // Subscribe to compilation_runs so graph refreshes after compilation
+  useEffect(() => {
+    if (!engramId) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`graph-refresh-${engramId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "compilation_runs", filter: `engram_id=eq.${engramId}` },
+        (payload) => {
+          if ((payload.new as any).status === "completed") {
+            setRefreshKey((k) => k + 1)
+          }
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [engramId])
 
   return { data, loading }
