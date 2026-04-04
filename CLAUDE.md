@@ -80,6 +80,10 @@ Dark monochrome only. No light mode. Typography is the primary design material.
 - **Integrations:** 20+ services (Notion, GitHub, Slack, Google Drive, RSS, etc.) via OAuth + abstract Integration base class
 - **Multi-engram:** Private, shared, or published. Cross-engram queries. Forking.
 
+## Testing
+
+Use Playwright MCP tools (`mcp__playwright__*`) to test UI changes against the running dev server at `http://localhost:3000`. Navigate, take snapshots, click elements, and verify behavior visually.
+
 ## Development Guidelines
 
 - Every component renders on dark ground. No white backgrounds anywhere, including modals/tooltips/dropdowns.

@@ -1,8 +1,13 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import WelcomeScreen from "@/app/components/app/WelcomeScreen"
 
 export default async function AppPage() {
   const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect("/login")
+
   const { data: engrams } = await supabase
     .from("engrams")
     .select("slug")
@@ -13,12 +18,5 @@ export default async function AppPage() {
     redirect(`/app/${engrams[0].slug}`)
   }
 
-  return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center">
-        <p className="text-text-secondary">Nothing here yet.</p>
-        <p className="mt-2 text-sm text-text-tertiary">Form your first engram from the sidebar.</p>
-      </div>
-    </div>
-  )
+  return <WelcomeScreen userId={user.id} />
 }

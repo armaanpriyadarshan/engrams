@@ -449,7 +449,7 @@ function PulseSection() {
 }
 
 const ENGRAM_DOTS = [
-  { color: "#7A8F76", name: "AI Research" },
+  { color: "#7A8F76", name: "Coffee" },
   { color: "#76808F", name: "Startup" },
   { color: "#8F767A", name: "Philosophy" },
 ]
