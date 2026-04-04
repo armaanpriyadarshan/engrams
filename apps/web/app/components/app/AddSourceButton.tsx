@@ -34,21 +34,36 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
     setMessage(null)
 
     const supabase = createClient()
-    const { error } = await supabase.from("sources").insert({
+    const { data: source, error } = await supabase.from("sources").insert({
       engram_id: engramId,
       source_type: sourceType,
       source_url: sourceType === "url" ? content : null,
       content_md: sourceType !== "url" ? content : null,
       title,
       status: "pending",
+    }).select("id").single()
+
+    if (error || !source) {
+      setMessage({ type: "err", text: "Failed to add source." })
+      setSubmitting(false)
+      return
+    }
+
+    await supabase.rpc("increment_source_count", { eid: engramId })
+    setMessage({ type: "ok", text: "Compiling..." })
+    reset()
+
+    // Trigger compilation
+    const { data: result, error: compileError } = await supabase.functions.invoke("compile-source", {
+      body: { source_id: source.id },
     })
 
-    if (error) {
-      setMessage({ type: "err", text: "Failed to add source." })
+    if (compileError) {
+      setMessage({ type: "err", text: "Source added. Compilation failed." })
     } else {
-      await supabase.rpc("increment_source_count", { eid: engramId })
-      setMessage({ type: "ok", text: "Source added." })
-      reset()
+      const created = result?.articles_created ?? 0
+      const updated = result?.articles_updated ?? 0
+      setMessage({ type: "ok", text: `${created} created. ${updated} updated.` })
       router.refresh()
     }
     setSubmitting(false)
