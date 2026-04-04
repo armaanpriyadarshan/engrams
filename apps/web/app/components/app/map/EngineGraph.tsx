@@ -124,7 +124,8 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       e.preventDefault()
       targetZ = Math.max(minZoom, Math.min(maxZoom, targetZ + e.deltaY * 0.5))
     }
-    let targetRotation = 0 // in radians, snaps in 90-degree increments
+    let targetRotZ = 0 // left/right rotation around Z axis
+    let targetRotX = 0 // up/down rotation around X axis
 
     const onMouseDown = (e: MouseEvent) => {
       if (e.button === 0 && currentHovered < 0) {
@@ -146,13 +147,12 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       const cx = (e.clientX - rect.left) / rect.width - 0.5  // -0.5 to 0.5
       const cy = (e.clientY - rect.top) / rect.height - 0.5  // -0.5 to 0.5
 
-      // Determine which quadrant: rotate toward that direction
+      // Determine which quadrant: left/right rotates around Z, up/down around X
       if (Math.abs(cx) > Math.abs(cy)) {
-        // Horizontal dominant
-        targetRotation = cx > 0 ? Math.PI / 2 : -Math.PI / 2  // right or left
+        targetRotZ += cx > 0 ? Math.PI / 2 : -Math.PI / 2
       } else {
-        // Vertical dominant
-        targetRotation = cy > 0 ? Math.PI : 0  // down (180) or up (0)
+        targetRotX += cy > 0 ? Math.PI / 2 : -Math.PI / 2
+        targetRotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotX))
       }
     }
 
@@ -319,8 +319,9 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       // Smooth zoom
       camera.position.z += (targetZ - camera.position.z) * 0.1
 
-      // Smooth rotation toward target (90-degree snaps)
-      scene.rotation.z += (targetRotation - scene.rotation.z) * 0.08
+      // Smooth rotation toward targets
+      scene.rotation.z += (targetRotZ - scene.rotation.z) * 0.08
+      scene.rotation.x += (targetRotX - scene.rotation.x) * 0.08
 
       camera.position.x = Math.sin(elapsed * 0.015) * 20 * driftScale + (smoothMouse.x / 800) * -8 + panOffset.x
       camera.position.y = Math.cos(elapsed * 0.01) * 15 * driftScale + (smoothMouse.y / 800) * -6 + panOffset.y
