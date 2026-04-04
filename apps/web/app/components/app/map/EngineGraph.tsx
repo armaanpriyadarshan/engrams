@@ -326,8 +326,8 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       orbitTheta += (targetTheta - orbitTheta) * 0.08
       orbitPhi += (targetPhi - orbitPhi) * 0.08
 
-      const driftX = Math.sin(elapsed * 0.015) * 20 * driftScale + (smoothMouse.x / 800) * -8
-      const driftY = Math.cos(elapsed * 0.01) * 15 * driftScale + (smoothMouse.y / 800) * -6
+      const driftX = Math.sin(elapsed * 0.015) * 20 * driftScale
+      const driftY = Math.cos(elapsed * 0.01) * 15 * driftScale
       camera.position.x = panOffset.x + driftX + currentZoom * Math.sin(orbitTheta) * Math.cos(orbitPhi)
       camera.position.y = panOffset.y + driftY + currentZoom * Math.sin(orbitPhi)
       camera.position.z = currentZoom * Math.cos(orbitTheta) * Math.cos(orbitPhi)
