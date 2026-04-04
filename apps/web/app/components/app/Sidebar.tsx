@@ -188,6 +188,7 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setCreating(false) }}
+                    onBlur={() => { setCreating(false); setNewName("") }}
                     placeholder="Name your engram"
                     className="w-full bg-transparent border-b border-border-emphasis text-xs text-text-primary placeholder:text-text-ghost outline-none py-1"
                   />
