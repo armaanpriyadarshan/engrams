@@ -11,6 +11,7 @@ export default async function AppPage() {
   const { data: engrams } = await supabase
     .from("engrams")
     .select("slug")
+    .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
     .limit(1)
 
