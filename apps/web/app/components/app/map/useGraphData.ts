@@ -9,6 +9,7 @@ export interface GraphNode {
   depth: number // normalized 0-1, based on word count × source count
   tags: string[]
   articleType: string
+  contentMd: string | null
 }
 
 export interface GraphEdge {
@@ -68,6 +69,7 @@ export function useGraphData(engramId: string | null) {
           depth: rawDepth,
           tags: a.tags ?? [],
           articleType: a.article_type ?? "concept",
+          contentMd: a.content_md ?? null,
         }
       })
 

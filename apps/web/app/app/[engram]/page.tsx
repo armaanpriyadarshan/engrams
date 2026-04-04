@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { useGraphData } from "@/app/components/app/map/useGraphData"
+import { useGraphData, type GraphNode } from "@/app/components/app/map/useGraphData"
 import { useForceLayout } from "@/app/components/app/map/useForceLayout"
 import NodeCard from "@/app/components/app/NodeCard"
 import CompilationToast from "@/app/components/app/CompilationToast"
@@ -28,7 +28,7 @@ export default function EngramPage() {
   const engramSlug = params.engram as string
 
   const [engramId, setEngramId] = useState<string | null>(null)
-  const [view, setView] = useState<"graph" | "list">("graph")
+  const [view, setView] = useState<"graph" | "wiki">("graph")
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
 
