@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import dynamic from "next/dynamic"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useGraphData } from "@/app/components/app/map/useGraphData"
 import { useForceLayout } from "@/app/components/app/map/useForceLayout"
@@ -27,6 +28,7 @@ export default function EngramPage() {
   const engramSlug = params.engram as string
 
   const [engramId, setEngramId] = useState<string | null>(null)
+  const [view, setView] = useState<"graph" | "list">("graph")
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
 
@@ -74,19 +76,54 @@ export default function EngramPage() {
 
   return (
     <div className="w-full h-full relative">
-      {/* Map */}
-      {graphData && positions ? (
-        <div className="w-full h-full" style={{ animation: "graph-ignite 1.2s ease-out both" }}>
-          <EngineGraph
-            data={graphData}
-            positions={positions}
-            engramSlug={engramSlug}
-            onNodeClick={handleNodeClick}
-          />
-        </div>
-      ) : (
-        <div className="w-full h-full flex items-center justify-center">
-          <p className="text-xs font-mono text-text-ghost">Loading<span className="inline-flex w-4"><span className="animate-loading-dots" /></span></p>
+      {/* Graph view */}
+      {view === "graph" && (
+        graphData && positions ? (
+          <div className="w-full h-full" style={{ animation: "graph-ignite 1.2s ease-out both" }}>
+            <EngineGraph
+              data={graphData}
+              positions={positions}
+              engramSlug={engramSlug}
+              onNodeClick={handleNodeClick}
+            />
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <p className="text-xs font-mono text-text-ghost">Loading<span className="inline-flex w-4"><span className="animate-loading-dots" /></span></p>
+          </div>
+        )
+      )}
+
+      {/* List view */}
+      {view === "list" && graphData && (
+        <div className="max-w-3xl mx-auto px-6 py-10 h-full overflow-y-auto" style={{ animation: "fade-in 300ms ease-out both" }}>
+          <div className="space-y-2">
+            {graphData.nodes.map((node) => (
+              <Link
+                key={node.slug}
+                href={`/app/${engramSlug}/article/${node.slug}`}
+                className="block border border-border hover:border-border-emphasis bg-surface p-4 transition-colors duration-150"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-1.5 h-1.5 mt-2 rounded-full shrink-0" style={{
+                    backgroundColor: node.confidence > 0.8 ? "var(--color-confidence-high)"
+                      : node.confidence > 0.5 ? "var(--color-confidence-mid)" : "var(--color-confidence-low)",
+                  }} />
+                  <div>
+                    <h2 className="font-heading text-sm text-text-emphasis">{node.title}</h2>
+                    {node.summary && <p className="mt-1 text-xs text-text-tertiary leading-relaxed">{node.summary}</p>}
+                    {node.tags.length > 0 && (
+                      <div className="mt-2 flex gap-2">
+                        {node.tags.map((tag) => (
+                          <span key={tag} className="font-mono text-[10px] text-text-ghost">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
@@ -94,7 +131,7 @@ export default function EngramPage() {
 
       {engramId && <SourceTree engramId={engramId} />}
 
-      <ViewToggle />
+      <ViewToggle onViewChange={setView} />
       {engramId && <AddSourceButton engramId={engramId} />}
       {engramId && <AgentTimeline engramId={engramId} />}
 
