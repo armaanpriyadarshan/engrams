@@ -17,6 +17,23 @@ import AskBar from "@/app/components/app/AskBar"
 
 const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
 
+function truncateContent(md: string, maxLen: number): string {
+  // Strip markdown headings and clean up for preview
+  const cleaned = md
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`(.+?)`/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+  if (cleaned.length <= maxLen) return cleaned
+  const truncated = cleaned.slice(0, maxLen)
+  const lastSpace = truncated.lastIndexOf(" ")
+  return (lastSpace > maxLen * 0.8 ? truncated.slice(0, lastSpace) : truncated) + "..."
+}
+
 interface NodeMenu {
   slug: string
   x: number
@@ -51,6 +68,43 @@ export default function EngramPage() {
 
   const { data: graphData, loading } = useGraphData(engramId)
   const positions = useForceLayout(graphData, 1200, 800)
+
+  // Group articles by type for wiki view
+  const wikiSections = useMemo(() => {
+    if (!graphData) return []
+    const groups = new Map<string, GraphNode[]>()
+    for (const node of graphData.nodes) {
+      const type = node.articleType || "concept"
+      if (!groups.has(type)) groups.set(type, [])
+      groups.get(type)!.push(node)
+    }
+    // Sort each group by confidence descending, then by title
+    for (const nodes of groups.values()) {
+      nodes.sort((a, b) => b.confidence - a.confidence || a.title.localeCompare(b.title))
+    }
+    // Sort sections: concepts first, then alphabetically
+    return Array.from(groups.entries()).sort(([a], [b]) => {
+      if (a === "concept") return -1
+      if (b === "concept") return 1
+      return a.localeCompare(b)
+    })
+  }, [graphData])
+
+  // Build a map of slug -> connected article titles for cross-references
+  const connectionMap = useMemo(() => {
+    if (!graphData) return new Map<string, string[]>()
+    const map = new Map<string, string[]>()
+    for (const edge of graphData.edges) {
+      const srcNode = graphData.nodes[edge.sourceIdx]
+      const tgtNode = graphData.nodes[edge.targetIdx]
+      if (!srcNode || !tgtNode) continue
+      if (!map.has(srcNode.slug)) map.set(srcNode.slug, [])
+      if (!map.has(tgtNode.slug)) map.set(tgtNode.slug, [])
+      map.get(srcNode.slug)!.push(tgtNode.title)
+      map.get(tgtNode.slug)!.push(srcNode.title)
+    }
+    return map
+  }, [graphData])
 
   const handleNodeClick = useCallback((slug: string, x: number, y: number) => {
     setNodeMenu({ slug, x, y })
@@ -94,35 +148,116 @@ export default function EngramPage() {
         )
       )}
 
-      {/* List view */}
-      {view === "list" && graphData && (
-        <div className="max-w-3xl mx-auto px-6 py-10 h-full overflow-y-auto" style={{ animation: "fade-in 300ms ease-out both" }}>
-          <div className="space-y-2">
-            {graphData.nodes.map((node) => (
-              <Link
-                key={node.slug}
-                href={`/app/${engramSlug}/article/${node.slug}`}
-                className="block border border-border hover:border-border-emphasis bg-surface p-4 transition-colors duration-150"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-1.5 h-1.5 mt-2 rounded-full shrink-0" style={{
-                    backgroundColor: node.confidence > 0.8 ? "var(--color-confidence-high)"
-                      : node.confidence > 0.5 ? "var(--color-confidence-mid)" : "var(--color-confidence-low)",
-                  }} />
-                  <div>
-                    <h2 className="font-heading text-sm text-text-emphasis">{node.title}</h2>
-                    {node.summary && <p className="mt-1 text-xs text-text-tertiary leading-relaxed">{node.summary}</p>}
-                    {node.tags.length > 0 && (
-                      <div className="mt-2 flex gap-2">
-                        {node.tags.map((tag) => (
-                          <span key={tag} className="font-mono text-[10px] text-text-ghost">{tag}</span>
-                        ))}
-                      </div>
-                    )}
+      {/* Wiki view */}
+      {view === "wiki" && graphData && (
+        <div className="h-full overflow-y-auto scrollbar-hidden" style={{ animation: "fade-in 300ms ease-out both" }}>
+          <div className="max-w-[660px] mx-auto px-6 pt-16 pb-32">
+            {/* Wiki header */}
+            <div className="mb-10 border-b border-border pb-6">
+              <p className="text-xs font-mono text-text-ghost">
+                {graphData.nodes.length} articles &middot; {graphData.edges.length} connections
+              </p>
+            </div>
+
+            {/* Table of contents */}
+            {wikiSections.length > 1 && (
+              <nav className="mb-12">
+                <h2 className="font-heading text-xs text-text-ghost uppercase tracking-widest mb-3">Contents</h2>
+                <ol className="space-y-1">
+                  {wikiSections.map(([type, nodes]) => (
+                    <li key={type}>
+                      <a
+                        href={`#section-${type}`}
+                        className="text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120"
+                      >
+                        {type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")}
+                        <span className="text-text-ghost ml-2 font-mono text-[10px]">{nodes.length}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </nav>
+            )}
+
+            {/* Sections grouped by article type */}
+            <div className="space-y-16">
+              {wikiSections.map(([type, nodes]) => (
+                <section key={type} id={`section-${type}`}>
+                  {wikiSections.length > 1 && (
+                    <h2 className="font-heading text-xs text-text-ghost uppercase tracking-widest mb-6 border-b border-border/50 pb-2">
+                      {type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")}
+                    </h2>
+                  )}
+                  <div className="space-y-10">
+                    {nodes.map((node) => {
+                      const connections = connectionMap.get(node.slug) ?? []
+                      return (
+                        <article key={node.slug} className="group">
+                          <Link
+                            href={`/app/${engramSlug}/article/${node.slug}`}
+                            className="inline-block"
+                          >
+                            <h3 className="font-heading text-base text-text-emphasis group-hover:text-text-bright transition-colors duration-120">
+                              {node.title}
+                            </h3>
+                          </Link>
+
+                          {node.tags.length > 0 && (
+                            <div className="mt-1.5 flex gap-2 flex-wrap">
+                              {node.tags.map((tag) => (
+                                <span key={tag} className="font-mono text-[10px] text-text-ghost">{tag}</span>
+                              ))}
+                            </div>
+                          )}
+
+                          {node.summary && (
+                            <p className="mt-3 text-sm text-text-secondary leading-[1.65]">{node.summary}</p>
+                          )}
+
+                          {node.contentMd && (
+                            <div className="mt-3 text-sm text-text-tertiary leading-[1.65] whitespace-pre-line">
+                              {truncateContent(node.contentMd, 600)}
+                            </div>
+                          )}
+
+                          {connections.length > 0 && (
+                            <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] font-mono text-text-ghost">linked to</span>
+                              {connections.slice(0, 5).map((title) => (
+                                <span key={title} className="text-[10px] font-mono text-text-ghost border border-border/60 px-1.5 py-0.5">
+                                  {title}
+                                </span>
+                              ))}
+                              {connections.length > 5 && (
+                                <span className="text-[10px] font-mono text-text-ghost">+{connections.length - 5}</span>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="mt-3 flex items-center gap-3">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-1 h-1 rounded-full" style={{
+                                backgroundColor: node.confidence > 0.8 ? "var(--color-confidence-high)"
+                                  : node.confidence > 0.5 ? "var(--color-confidence-mid)" : "var(--color-confidence-low)",
+                              }} />
+                              <span className="text-[10px] font-mono text-text-ghost">
+                                {Math.round(node.confidence * 100)}%
+                              </span>
+                            </div>
+                            <Link
+                              href={`/app/${engramSlug}/article/${node.slug}`}
+                              className="text-[10px] font-mono text-text-ghost hover:text-text-secondary transition-colors duration-120"
+                            >
+                              read full article
+                            </Link>
+                          </div>
+                        </article>
+                      )
+                    })}
                   </div>
-                </div>
-              </Link>
-            ))}
+                </section>
+              ))}
+            </div>
           </div>
         </div>
       )}
