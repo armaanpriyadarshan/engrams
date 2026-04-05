@@ -71,15 +71,9 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
     return (
       <div className={compact ? "" : "py-2"}>
         <div className="min-w-0">
-          {s.source_url ? (
-            <a href={s.source_url} target="_blank" rel="noopener noreferrer" className={`${compact ? "text-[11px]" : "text-xs"} text-text-primary hover:text-text-emphasis truncate leading-tight block transition-colors duration-150`}>
-              {s.title ?? s.source_type}
-            </a>
-          ) : (
-            <p className={`${compact ? "text-[11px]" : "text-xs"} text-text-primary truncate leading-tight`}>
-              {s.title ?? s.source_type}
-            </p>
-          )}
+          <p className={`${compact ? "text-[11px]" : "text-xs"} text-text-primary truncate leading-tight`}>
+            {s.title ?? s.source_type}
+          </p>
           <p className={`${compact ? "text-[9px]" : "text-[10px]"} font-mono text-text-ghost mt-0.5 truncate`}>
             {typeLabel}
             {meta?.author && <span> · {meta.author}</span>}
