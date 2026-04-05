@@ -70,42 +70,25 @@ export function WidgetPanel({ id, side, preview, children, previewClassName }: W
         {preview}
       </div>
 
-      {/* Full-window expanded panel */}
+      {/* Expanded panel — slides from edge, fills height */}
       <div
-        className="fixed inset-0 z-40"
+        className={`absolute top-0 ${side === "left" ? "left-0" : "right-0"} h-full z-40`}
         style={{
-          opacity: isOpen ? 1 : 0,
+          width: isOpen ? "380px" : "0px",
           pointerEvents: isOpen ? "auto" : "none",
-          transition: "opacity 250ms cubic-bezier(0.16, 1, 0.3, 1)",
+          transition: "width 250ms cubic-bezier(0.16, 1, 0.3, 1)",
         }}
       >
         <div
-          className="absolute inset-0 bg-void/80 backdrop-blur-sm"
-          onClick={close}
-        />
-        <div
-          className="absolute inset-0 flex items-stretch justify-center"
+          className={`h-full bg-surface/95 backdrop-blur-xl ${side === "left" ? "border-r" : "border-l"} border-border overflow-y-auto scrollbar-hidden`}
           style={{
-            transform: isOpen ? "scale(1)" : "scale(0.97)",
-            transition: "transform 250ms cubic-bezier(0.16, 1, 0.3, 1)",
+            opacity: isOpen ? 1 : 0,
+            transform: isOpen ? "translateX(0)" : `translateX(${side === "left" ? "-12px" : "12px"})`,
+            transition: "opacity 200ms ease-out, transform 250ms cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
-          <div className="w-full max-w-3xl h-full overflow-y-auto scrollbar-hidden relative">
-            {/* Close button */}
-            <div className="sticky top-0 z-10 flex justify-end p-4">
-              <button
-                onClick={close}
-                className="bg-surface/80 backdrop-blur-md border border-border rounded-sm p-2 text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <div className="px-6 pb-12">
-              {children}
-            </div>
+          <div className="px-5 pt-4 pb-8">
+            {children}
           </div>
         </div>
       </div>
