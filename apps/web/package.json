@@ -12,6 +12,7 @@
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.101.1",
     "d3-force": "^3.0.0",
+    "d3-hierarchy": "^3.1.2",
     "d3-scale": "^4.0.2",
     "d3-voronoi-treemap": "^1.1.2",
     "highlight.js": "^11.11.1",
