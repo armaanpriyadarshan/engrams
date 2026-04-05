@@ -255,9 +255,9 @@ export default function EngramPage() {
                             <p className="mt-1 text-xs text-text-tertiary leading-[1.6] line-clamp-2">{node.summary}</p>
                           )}
                           {node.tags.length > 0 && (
-                            <div className="mt-1.5 flex gap-2 flex-wrap">
+                            <div className="mt-1.5 flex gap-1.5 flex-wrap">
                               {node.tags.map((tag) => (
-                                <span key={tag} className="font-mono text-[10px] text-text-ghost">{tag}</span>
+                                <span key={tag} className="font-mono text-[10px] text-text-ghost border border-border rounded-full px-2 py-0.5">{tag}</span>
                               ))}
                             </div>
                           )}
