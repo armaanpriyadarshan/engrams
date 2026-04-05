@@ -74,7 +74,7 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
   const typeColor: Record<string, string> = { missing: "bg-confidence-low", low_confidence: "bg-confidence-mid", orphan: "bg-text-ghost", thin_answer: "bg-agent-active" }
 
   const preview = (
-    <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
+    <div className="px-3 py-2.5">
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Gaps</span>
         <span className="text-[9px] font-mono text-text-ghost">{gaps.length}</span>
@@ -87,7 +87,7 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
     <WidgetPanel
       id="gaps"
       origin={{ bottom: "12px", right: "12px", width: "200px" }}
-      className="animate-slide-in-right"
+      className="animate-slide-in-right border-r-border-emphasis"
       preview={preview}
     >
       <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Knowledge Gaps</span>

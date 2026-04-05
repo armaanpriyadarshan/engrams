@@ -88,6 +88,10 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@keyframes panel-content-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 @keyframes graph-ignite {
   0% { opacity: 0; filter: blur(12px); }
   100% { opacity: 1; filter: blur(0); }

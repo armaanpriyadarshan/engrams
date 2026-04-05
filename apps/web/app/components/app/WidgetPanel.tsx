@@ -54,16 +54,13 @@ export function WidgetPanel({ id, origin, preview, children, className }: Widget
   const isOpen = openId === id
   const otherOpen = openId !== null && openId !== id
 
-  // Collapsed: widget at its origin position/size
-  // Expanded: fills the parent (inset 0, full size)
   const collapsed = {
     top: origin.top ?? "auto",
     bottom: origin.bottom ?? "auto",
     left: origin.left ?? "auto",
     right: origin.right ?? "auto",
     width: origin.width,
-    height: "auto",
-    borderRadius: "1px",
+    maxHeight: "auto",
   }
 
   const expanded = {
@@ -72,22 +69,24 @@ export function WidgetPanel({ id, origin, preview, children, className }: Widget
     left: "0px",
     right: "0px",
     width: "100%",
-    height: "100%",
-    borderRadius: "0px",
+    maxHeight: "100%",
   }
 
   const style = isOpen ? expanded : collapsed
+  const t = "300ms cubic-bezier(0.16, 1, 0.3, 1)"
 
   return (
     <div
-      className={`absolute z-30 pointer-events-auto ${className ?? ""}`}
+      className={`absolute z-30 pointer-events-auto bg-surface/80 backdrop-blur-md border border-border rounded-sm ${className ?? ""}`}
       onClick={() => { if (!isOpen) toggle(id) }}
       style={{
         ...style,
         cursor: isOpen ? "default" : "pointer",
         opacity: otherOpen ? 0 : 1,
         pointerEvents: otherOpen ? "none" : "auto",
-        transition: "top 300ms cubic-bezier(0.16, 1, 0.3, 1), bottom 300ms cubic-bezier(0.16, 1, 0.3, 1), left 300ms cubic-bezier(0.16, 1, 0.3, 1), right 300ms cubic-bezier(0.16, 1, 0.3, 1), width 300ms cubic-bezier(0.16, 1, 0.3, 1), height 300ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease-out, border-radius 300ms cubic-bezier(0.16, 1, 0.3, 1)",
+        overflow: "hidden",
+        transition: `top ${t}, bottom ${t}, left ${t}, right ${t}, width ${t}, max-height ${t}, opacity 180ms ease-out, border-radius ${t}`,
+        borderRadius: isOpen ? "0px" : "1px",
       }}
     >
       {/* Preview — visible when collapsed */}
@@ -95,29 +94,32 @@ export function WidgetPanel({ id, origin, preview, children, className }: Widget
         style={{
           opacity: isOpen ? 0 : 1,
           pointerEvents: isOpen ? "none" : "auto",
-          transition: "opacity 150ms ease-out",
+          transition: "opacity 120ms ease-out",
           position: isOpen ? "absolute" : "relative",
+          top: 0,
+          left: 0,
+          right: 0,
         }}
       >
         {preview}
       </div>
 
-      {/* Expanded content — visible when open */}
-      <div
-        className="overflow-y-auto scrollbar-hidden"
-        style={{
-          opacity: isOpen ? 1 : 0,
-          pointerEvents: isOpen ? "auto" : "none",
-          transition: "opacity 200ms ease-out 100ms",
-          height: isOpen ? "100%" : "0",
-        }}
-      >
-        <div className="bg-surface/95 backdrop-blur-xl h-full">
-          <div className="max-w-2xl mx-auto px-6 pt-6 pb-12">
-            {children}
+      {/* Expanded content — fades and slides in */}
+      {isOpen && (
+        <div
+          className="h-full overflow-y-auto scrollbar-hidden"
+        >
+          <div className="max-w-2xl mx-auto px-6 pt-5 pb-12">
+            <div
+              style={{
+                animation: "panel-content-in 400ms cubic-bezier(0.16, 1, 0.3, 1) both",
+              }}
+            >
+              {children}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { WidgetPanel, usePanelContext } from "./WidgetPanel"
 import VoronoiHeatmap from "./VoronoiHeatmap"
 
@@ -113,7 +114,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
   const confColor = avgConfidence > 0.8 ? "text-confidence-high" : avgConfidence > 0.5 ? "text-confidence-mid" : "text-confidence-low"
 
   const activityPreview = (
-    <div className="bg-surface/80 backdrop-blur-md border border-border border-r-border-emphasis rounded-sm px-3 py-2.5">
+    <div className="px-3 py-2.5">
       <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
       <div className="mt-2 space-y-1.5">
         {runs.length === 0 ? (
@@ -132,7 +133,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
   )
 
   const statsPreview = (
-    <div className="bg-surface/80 backdrop-blur-md border border-border border-r-border-emphasis rounded-sm px-3 py-2.5">
+    <div className="px-3 py-2.5">
       <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
       <div className="mt-2 flex justify-between text-center">
         <div><span className="block font-mono text-sm text-text-emphasis">{sourceCount}</span><span className="font-mono text-[8px] text-text-ghost">sources</span></div>
@@ -169,7 +170,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
       <WidgetPanel
         id="activity"
         origin={{ top: "12px", right: "12px", width: "200px" }}
-        className="animate-slide-in-right"
+        className="animate-slide-in-right border-r-border-emphasis"
         preview={activityPreview}
       >
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
@@ -194,7 +195,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
       <WidgetPanel
         id="stats"
         origin={{ top: "130px", right: "12px", width: "200px" }}
-        className="animate-slide-in-right"
+        className="animate-slide-in-right border-r-border-emphasis"
         preview={statsPreview}
       >
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
@@ -204,6 +205,24 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
           <div className="border border-border p-3"><div className={`font-mono text-lg ${confColor}`}>{avgConfidence > 0 ? `${(avgConfidence * 100).toFixed(0)}%` : "—"}</div><div className="text-[9px] font-mono text-text-ghost uppercase mt-0.5">Avg conf</div></div>
         </div>
         {articles.length > 0 && <div className="mt-6"><VoronoiHeatmap articles={articles} engramSlug={engramSlug} /></div>}
+        {articles.length > 0 && (
+          <div className="mt-6 pt-4 border-t border-border">
+            <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Articles</span>
+            <div className="mt-3 space-y-1">
+              {articles.sort((a, b) => b.confidence - a.confidence).map(a => (
+                <Link
+                  key={a.slug}
+                  href={`/app/${engramSlug}/article/${a.slug}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex items-center justify-between py-1.5 text-xs text-text-secondary hover:text-text-emphasis transition-colors duration-120"
+                >
+                  <span className="truncate">{a.title}</span>
+                  <span className="text-[10px] font-mono text-text-ghost shrink-0 ml-2">{Math.round(a.confidence * 100)}%</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
         {openQuestions.length > 0 && (
           <div className="mt-6 pt-4 border-t border-border">
             <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Open questions</span>
