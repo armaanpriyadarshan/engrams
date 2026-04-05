@@ -1,30 +1,59 @@
 # Phase 1-2 Polish — Design Spec
 
 Date: 2026-04-04
+Updated: 2026-04-04 (post-audit)
 
 ## Scope
 
 Complete Phase 1-2 of the Engrams web app. Make everything that exists sharp, fill in missing functionality, and add new features that make the knowledge base feel alive and trustworthy.
 
+## Current State (audited)
+
+What's real:
+- AskBar: Fully wired to `ask-engram` edge function. Shows answer, articles consulted, follow-ups. No placeholder.
+- ArticleSearch: Working full-text search via Supabase `textSearch` with 300ms debounce. Component exists at `ArticleSearch.tsx`.
+- AddSourceButton: Accepts `.pdf,.md,.txt,.csv,.json,.docx,.pptx` in the file input. But reads all files as `file.text()` — binary formats (PDF/DOCX) will produce garbage.
+- All core flows (feed, compile, ask, graph, wiki, settings) are real and database-connected.
+
+What's placeholder/incomplete:
+- AgentTimeline: Lines 59-63 show hardcoded fallback runs when `runs.length === 0`. Lines 173-176 show hardcoded open questions when none exist.
+- SourceTree: Lines 58-65 show 6 hardcoded transformer papers when `sources.length === 0`. Line 68 maps placeholder IDs to fake article counts.
+- FeedPage: Lines 79-80 still block PDF/DOCX with message "PDF and DOCX support is coming." File input accepts only `.txt,.md` (line 182). Inconsistent with AddSourceButton.
+- Health page: Still at `/health/`, titled "Health". No `/stats/` route exists.
+- No syntax highlighting in code blocks (plain monospace).
+- No expandable widget system (each panel has standalone expand logic).
+- No snapshots, no voronoi heatmap, no knowledge gaps, no semantic search.
+
 ## Work Items (in order)
 
 ### 1. Quick Wins
 
-**1a. Remove placeholders**
-- AskBar: Currently shows a fake "Thinking..." response. Wire it to `ask-engram` edge function. On submit from the compact bar, navigate to `/app/[engram]/ask?q={question}` with the question pre-filled and auto-submitted. The Ask page reads the `q` param and triggers the query on mount.
-- AgentTimeline: Remove hardcoded placeholder agent runs (lines ~59-63) and fake open questions (lines ~173-175). Show empty state: "No activity yet." in `text-ghost`.
-- SourceTree: Remove hardcoded placeholder article counts. Query actual article count per source from the database.
+**1a. Remove placeholder fallbacks**
+- AgentTimeline (`AgentTimeline.tsx`):
+  - Remove lines 59-63 (hardcoded compiler/linter/feed placeholder runs)
+  - Remove lines 173-176 (hardcoded open questions)
+  - When `runs.length === 0`, show: "No activity yet." in `text-ghost`
+  - When no open questions, hide the "Open questions" section entirely
+- SourceTree (`SourceTree.tsx`):
+  - Remove lines 58-65 (hardcoded transformer paper list)
+  - Remove line 68 (placeholder article count map)
+  - When `sources.length === 0`, show: "No sources yet." in `text-ghost`
 
 **1b. Rename Health → Stats**
 - Rename directory `apps/web/app/app/[engram]/health/` → `apps/web/app/app/[engram]/stats/`
-- Update all references: Sidebar nav, breadcrumbs, links in other pages.
+- Update page heading from "Health" to "Stats"
+- Update all references: Sidebar nav, breadcrumbs, links in other pages
 
-**1c. Enable PDF/DOCX upload**
-- Change file input `accept` to `.txt,.md,.pdf,.docx,.pptx,.xlsx,.csv`
-- Remove "PDF and DOCX support is coming" message
-- For PDF/DOCX: read as ArrayBuffer, base64-encode, send to a new edge function `parse-file` that uses the backend parser (PyMuPDF for PDF, python-docx for DOCX)
-- Show "Parsing..." status for larger files before compilation begins
-- Fallback: if edge function isn't available, show "File parsing requires the backend API" message
+**1c. Reconcile file upload across Feed page and AddSourceButton**
+- FeedPage (`feed/page.tsx`):
+  - Update `handleFile` (line 77-92) to accept all formats, not just TXT/MD
+  - Update file input `accept` (line 182) to `.txt,.md,.pdf,.docx,.pptx,.xlsx,.csv`
+  - Remove "PDF and DOCX support is coming" message (line 80)
+  - Remove "Supports TXT, MD. More formats coming." text (line 190)
+- Both FeedPage and AddSourceButton:
+  - For binary formats (PDF, DOCX, PPTX, XLSX): read as ArrayBuffer, base64-encode, send to a new edge function `parse-file` that uses the backend parser (PyMuPDF for PDF, python-docx for DOCX)
+  - Show "Parsing..." status for larger files before compilation begins
+  - Fallback: if edge function is unavailable, show "File parsing requires the backend API."
 
 ### 2. Expandable Widget Pattern
 
@@ -54,11 +83,11 @@ Behavior:
 
 Context: `ExpandableWidgetProvider` wraps the engram page, tracks which widget (if any) is expanded via `expandedId` state.
 
-Widgets that adopt this:
-- SourceTree (left)
-- AgentTimeline / Timeline (right)
-- AskBar (bottom)
-- Knowledge Gaps (right, below timeline)
+Widgets that adopt this pattern (refactor existing standalone panels):
+- SourceTree (left) — currently absolute-positioned with its own state
+- AgentTimeline (right) — currently absolute-positioned with its own state
+- AskBar (bottom) — currently absolute-positioned with its own state
+- Knowledge Gaps (right, below timeline) — new widget
 
 ### 3. Syntax Highlighting
 
@@ -71,13 +100,15 @@ Widgets that adopt this:
   - Numbers: `#76808F` (steel)
   - Functions: `text-emphasis`
   - Default text: `text-primary`
-- In ArticleContent.tsx, detect code blocks with language annotation, apply highlight.js
+- In ArticleContent.tsx (`code` component, line 67-81):
+  - Detect code blocks with language annotation (`className?.includes("language-")`)
+  - Apply highlight.js to the block content
 - Language label: top-right corner, `text-ghost`, mono, 10px
 - Copy button: appears on hover, top-right next to language label, copies code to clipboard
 
 ### 4. Voronoi Confidence Heatmap (Stats Page)
 
-Replaces the confidence histogram on the Stats page.
+Replaces the confidence histogram on the Stats page (currently a basic bar chart at `health/page.tsx` lines 90-109).
 
 - Package: `d3-voronoi-treemap`
 - Data: all articles for the engram, grouped as a flat list
@@ -147,12 +178,12 @@ The snapshot captures:
 
 ### 7. Timeline Redesign — Vertical Stratigraphy + Version Control
 
-Replaces both the timeline page and the AgentTimeline widget.
+Replaces both the timeline page (`timeline/page.tsx` — currently a basic chronological list with 8px dots and no interactivity) and the AgentTimeline widget.
 
-**Data source:** `engram_snapshots` table (each snapshot = one event on the timeline)
+**Data source:** `engram_snapshots` table (each snapshot = one event on the timeline). Depends on item 6.
 
 **Visual design:**
-- 1px vertical line, `border-emphasis`, left-aligned (not centered)
+- 1px vertical line, `border-emphasis`, left-aligned (not centered — current implementation already uses left alignment at `left-[72px]`)
 - Event nodes: 6px circles on the line, colored by trigger_type:
   - feed: `text-secondary` (#888888)
   - query_fileback: `text-tertiary` (#555555)
@@ -185,6 +216,8 @@ Replaces both the timeline page and the AgentTimeline widget.
 
 ### 8. Semantic Search (OpenAI + pgvector)
 
+Extends the existing ArticleSearch component (`ArticleSearch.tsx`), which already has working full-text search via Supabase `textSearch` with 300ms debounce.
+
 **Database changes:**
 ```sql
 -- Enable pgvector extension
@@ -213,6 +246,21 @@ create index idx_articles_embedding on articles using ivfflat (embedding vector_
 
 **Integration with Ask page:**
 - Query engine already consults articles — semantic search improves which articles are selected as relevant context
+
+## Dependency Graph
+
+```
+1 (Quick Wins) ─── no dependencies, do first
+2 (Expandable Widgets) ─── no dependencies, can parallel with 1
+3 (Syntax Highlighting) ─── no dependencies, can parallel with 1-2
+4 (Voronoi Heatmap) ─── depends on 1b (Stats rename)
+5 (Knowledge Gaps) ─── depends on 2 (expandable widget pattern)
+6 (Snapshots) ─── no dependencies, can parallel with 1-5
+7 (Timeline Redesign) ─── depends on 6 (snapshots) and 2 (expandable widgets)
+8 (Semantic Search) ─── no dependencies, can parallel with others
+```
+
+Suggested execution order: 1 → 2+3+6 in parallel → 4+5 → 7 → 8
 
 ## Design Constraints
 

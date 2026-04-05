@@ -82,9 +82,9 @@ Engrams is in active development. Phase 1 (Core Loop) is ~95% complete. Phase 2 
 ## Known Issues & Rough Edges
 
 ### Placeholder Implementations (need removal or completion)
-- **AskBar.tsx**: Contains placeholder response text ("Thinking... compilation engine will process this") — not wired to actual query engine
-- **AgentTimeline.tsx**: Shows hardcoded placeholder agent runs and open questions when no real data exists
-- **FeedPage.tsx**: Shows "PDF and DOCX support is coming" message — frontend blocks file types the backend can handle
+- **AgentTimeline.tsx**: Shows hardcoded placeholder agent runs (lines 59-63) and open questions (lines 173-176) when no real data exists
+- **SourceTree.tsx**: Shows 6 hardcoded transformer papers (lines 58-65) and fake article counts (line 68) when no sources exist
+- **FeedPage.tsx**: Shows "PDF and DOCX support is coming" message — frontend blocks file types the backend can handle. Note: AddSourceButton already accepts PDF/DOCX/PPTX in its file input but reads them as text (broken for binary formats)
 
 ### Hardcoded Values
 - EngineGraph camera Z position: `300 + Math.min(count * 5, 600)` — arbitrary scaling
