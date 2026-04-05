@@ -38,6 +38,30 @@ function timeAgo(date: string): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+function FullWindowPanel({ isOpen, close, children }: { isOpen: boolean; close: () => void; children: React.ReactNode }) {
+  return (
+    <div
+      className="fixed inset-0 z-40"
+      style={{ opacity: isOpen ? 1 : 0, pointerEvents: isOpen ? "auto" : "none", transition: "opacity 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+    >
+      <div className="absolute inset-0 bg-void/80 backdrop-blur-sm" onClick={close} />
+      <div
+        className="absolute inset-0 flex items-stretch justify-center"
+        style={{ transform: isOpen ? "scale(1)" : "scale(0.97)", transition: "transform 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+      >
+        <div className="w-full max-w-3xl h-full overflow-y-auto scrollbar-hidden relative">
+          <div className="sticky top-0 z-10 flex justify-end p-4">
+            <button onClick={close} className="bg-surface/80 backdrop-blur-md border border-border rounded-sm p-2 text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
+          </div>
+          <div className="px-6 pb-12">{children}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AgentTimeline({ engramId, engramSlug }: { engramId: string; engramSlug: string }) {
   const router = useRouter()
   const { openId, toggle, close } = usePanelContext()
@@ -72,20 +96,15 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
 
       if (articlesRes.data && articlesRes.data.length > 0) {
         setAvgConfidence(articlesRes.data.reduce((s, a) => s + (a.confidence ?? 0), 0) / articlesRes.data.length)
-
         setArticles(articlesRes.data.map(a => ({
-          slug: a.slug,
-          title: a.title ?? a.slug,
-          confidence: a.confidence ?? 0,
+          slug: a.slug, title: a.title ?? a.slug, confidence: a.confidence ?? 0,
           wordCount: (a.content_md ?? "").split(/\s+/).length,
           sourceCount: (a.source_ids as string[] ?? []).length,
         })))
 
         // Build voronoi heatmap for preview
         const cells: ArticleCell[] = articlesRes.data.map(a => ({
-          slug: a.slug,
-          title: a.title ?? a.slug,
-          confidence: a.confidence ?? 0,
+          slug: a.slug, title: a.title ?? a.slug, confidence: a.confidence ?? 0,
           weight: Math.max((a.content_md ?? "").split(/\s+/).length * Math.max((a.source_ids as string[] ?? []).length, 1), 100),
         }))
 
@@ -94,17 +113,14 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
           const { voronoiTreemap } = await import("d3-voronoi-treemap")
           // @ts-expect-error - no types
           const { hierarchy } = await import("d3-hierarchy")
-          const W = 200, H = 60
-          const r = 8, steps = 8
+          const W = 200, H = 60, r = 8, steps = 8
           const clipPoly: number[][] = []
           for (let i = steps; i >= 0; i--) { const a = Math.PI / 2 + (Math.PI / 2) * (i / steps); clipPoly.push([r + r * Math.cos(a), r + r * Math.sin(a)]) }
           for (let i = steps; i >= 0; i--) { const a = (Math.PI / 2) * (i / steps); clipPoly.push([W - r + r * Math.cos(a), r + r * Math.sin(a)]) }
           for (let i = steps; i >= 0; i--) { const a = -(Math.PI / 2) * (1 - i / steps); clipPoly.push([W - r + r * Math.cos(a), H - r + r * Math.sin(a)]) }
           for (let i = steps; i >= 0; i--) { const a = Math.PI + (Math.PI / 2) * (i / steps); clipPoly.push([r + r * Math.cos(a), H - r + r * Math.sin(a)]) }
-          const root = hierarchy({ children: cells.map(c => ({ ...c, value: c.weight })) })
-            .sum((d: { value?: number }) => d.value ?? 0)
-          const treemap = voronoiTreemap().clip(clipPoly)
-          treemap(root)
+          const root = hierarchy({ children: cells.map(c => ({ ...c, value: c.weight })) }).sum((d: { value?: number }) => d.value ?? 0)
+          voronoiTreemap().clip(clipPoly)(root)
           const result: { article: ArticleCell; path: string }[] = []
           for (const leaf of root.leaves()) {
             const polygon = leaf.polygon
@@ -134,14 +150,11 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
   }
 
   const confColor = avgConfidence > 0.8 ? "text-confidence-high" : avgConfidence > 0.5 ? "text-confidence-mid" : "text-confidence-low"
-
-  const isActivityOpen = openId === "activity"
-  const isStatsOpen = openId === "stats"
-  const anyOpen = isActivityOpen || isStatsOpen
+  const anyOpen = openId !== null
 
   return (
     <>
-      {/* Preview widgets */}
+      {/* Preview widgets — clicking anywhere opens the panel */}
       <div
         className="absolute top-3 right-3 z-30 max-w-[200px] pointer-events-auto space-y-2 animate-slide-in-right"
         style={{
@@ -151,9 +164,9 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
           transition: "opacity 180ms ease-out",
         }}
       >
-        {/* Activity preview */}
-        <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
-          <button onClick={() => toggle("activity")} className="text-[9px] font-mono text-text-ghost tracking-widest uppercase hover:text-text-tertiary transition-colors duration-120 cursor-pointer">Activity</button>
+        {/* Activity preview — entire card clickable */}
+        <div onClick={() => toggle("activity")} className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5 cursor-pointer">
+          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
           <div className="mt-2 space-y-1.5">
             {runs.length === 0 ? (
               <p className="font-mono text-[10px] text-text-ghost">No activity yet.</p>
@@ -161,9 +174,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
               <div key={r.id} className="flex items-start gap-2">
                 <div className={`w-1 h-1 rounded-full mt-1 shrink-0 ${statusColor(r.status)}`} />
                 <div className="min-w-0">
-                  <span className="font-mono text-[10px] text-text-tertiary block truncate">
-                    {typeLabel[r.agent_type] ?? r.agent_type} &middot; {r.summary}
-                  </span>
+                  <span className="font-mono text-[10px] text-text-tertiary block truncate">{typeLabel[r.agent_type] ?? r.agent_type} &middot; {r.summary}</span>
                   <span className="font-mono text-[9px] text-text-ghost">{timeAgo(r.started_at)}</span>
                 </div>
               </div>
@@ -171,9 +182,9 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
           </div>
         </div>
 
-        {/* Stats preview */}
-        <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
-          <button onClick={() => toggle("stats")} className="text-[9px] font-mono text-text-ghost tracking-widest uppercase hover:text-text-tertiary transition-colors duration-120 cursor-pointer">Stats</button>
+        {/* Stats preview — entire card clickable */}
+        <div onClick={() => toggle("stats")} className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5 cursor-pointer">
+          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
           <div className="mt-2 flex justify-between text-center">
             <div><span className="block font-mono text-sm text-text-emphasis">{sourceCount}</span><span className="font-mono text-[8px] text-text-ghost">sources</span></div>
             <div><span className="block font-mono text-sm text-text-emphasis">{edgeCount}</span><span className="font-mono text-[8px] text-text-ghost">links</span></div>
@@ -181,20 +192,16 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
           </div>
           {voronoiCells.length > 0 && (
             <div className="mt-3">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[8px] font-mono text-text-ghost">Confidence</span>
-              </div>
-              <svg viewBox="0 0 200 60" className="w-full" style={{ height: "60px" }}>
+              <span className="text-[8px] font-mono text-text-ghost">Confidence</span>
+              <svg viewBox="0 0 200 60" className="w-full mt-1.5" style={{ height: "60px" }}>
                 {voronoiCells.map(({ article, path }) => (
                   <path key={article.slug} d={path} fill={confidenceColor(article.confidence)}
                     fillOpacity={hoveredSlug === article.slug ? 0.9 : 0.55}
                     stroke={hoveredSlug === article.slug ? "var(--color-border-emphasis)" : "var(--color-border)"}
                     strokeWidth={hoveredSlug === article.slug ? "1" : "0.5"}
-                    className="cursor-pointer"
                     style={{ transition: "fill-opacity 120ms ease-out, stroke 120ms ease-out" }}
-                    onMouseEnter={() => setHoveredSlug(article.slug)}
+                    onMouseEnter={(e) => { e.stopPropagation(); setHoveredSlug(article.slug) }}
                     onMouseLeave={() => setHoveredSlug(null)}
-                    onClick={() => router.push(`/app/${engramSlug}/article/${article.slug}`)}
                   />
                 ))}
               </svg>
@@ -215,79 +222,47 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
         </div>
       </div>
 
-      {/* Activity expanded panel */}
-      <div
-        className="fixed top-0 right-0 h-full z-40 pointer-events-none"
-        style={{ width: isActivityOpen ? "420px" : "0px", transition: "width 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}
-      >
-        {isActivityOpen && <div className="fixed inset-0 z-[-1] pointer-events-auto" onClick={close} />}
-        <div
-          className="h-full bg-surface/95 backdrop-blur-xl border-l border-border-emphasis overflow-y-auto scrollbar-hidden pointer-events-auto"
-          style={{ opacity: isActivityOpen ? 1 : 0, transform: isActivityOpen ? "translateX(0)" : "translateX(20px)", transition: "opacity 250ms cubic-bezier(0.16, 1, 0.3, 1), transform 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}
-        >
-          <div className="sticky top-0 z-10 flex justify-end p-3">
-            <button onClick={close} className="text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-            </button>
-          </div>
-          <div className="px-5 pb-8">
-            <h2 className="font-heading text-lg text-text-emphasis mb-6">Activity</h2>
-            {allRuns.length === 0 ? (
-              <p className="text-sm text-text-secondary">No activity yet.</p>
-            ) : (
-              <div className="relative">
-                <div className="absolute left-[2px] top-2 bottom-2 w-px bg-border-emphasis" />
-                <div className="space-y-4">
-                  {allRuns.map((r) => (
-                    <div key={r.id} className="flex items-start gap-3 pl-0">
-                      <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${statusColor(r.status)}`} />
-                      <div className="min-w-0">
-                        <p className="text-[13px] text-text-secondary">{typeLabel[r.agent_type] ?? r.agent_type} · {r.summary}</p>
-                        <span className="text-[10px] font-mono text-text-ghost">{timeAgo(r.started_at)}</span>
-                      </div>
-                    </div>
-                  ))}
+      {/* Activity — full window */}
+      <FullWindowPanel isOpen={openId === "activity"} close={close}>
+        <h2 className="font-heading text-lg text-text-emphasis mb-6">Activity</h2>
+        {allRuns.length === 0 ? (
+          <p className="text-sm text-text-secondary">No activity yet.</p>
+        ) : (
+          <div className="relative">
+            <div className="absolute left-[2px] top-2 bottom-2 w-px bg-border-emphasis" />
+            <div className="space-y-4">
+              {allRuns.map((r) => (
+                <div key={r.id} className="flex items-start gap-3">
+                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${statusColor(r.status)}`} />
+                  <div className="min-w-0">
+                    <p className="text-[13px] text-text-secondary">{typeLabel[r.agent_type] ?? r.agent_type} · {r.summary}</p>
+                    <span className="text-[10px] font-mono text-text-ghost">{timeAgo(r.started_at)}</span>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Stats expanded panel */}
-      <div
-        className="fixed top-0 right-0 h-full z-40 pointer-events-none"
-        style={{ width: isStatsOpen ? "420px" : "0px", transition: "width 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}
-      >
-        {isStatsOpen && <div className="fixed inset-0 z-[-1] pointer-events-auto" onClick={close} />}
-        <div
-          className="h-full bg-surface/95 backdrop-blur-xl border-l border-border-emphasis overflow-y-auto scrollbar-hidden pointer-events-auto"
-          style={{ opacity: isStatsOpen ? 1 : 0, transform: isStatsOpen ? "translateX(0)" : "translateX(20px)", transition: "opacity 250ms cubic-bezier(0.16, 1, 0.3, 1), transform 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}
-        >
-          <div className="sticky top-0 z-10 flex justify-end p-3">
-            <button onClick={close} className="text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-            </button>
-          </div>
-          <div className="px-5 pb-8">
-            <h2 className="font-heading text-lg text-text-emphasis mb-6">Stats</h2>
-            <div className="grid grid-cols-3 gap-4 mb-8">
-              <div className="border border-border p-3"><div className="font-mono text-xl text-text-emphasis">{sourceCount}</div><div className="mt-1 text-[10px] font-mono text-text-ghost uppercase">Sources</div></div>
-              <div className="border border-border p-3"><div className="font-mono text-xl text-text-emphasis">{edgeCount}</div><div className="mt-1 text-[10px] font-mono text-text-ghost uppercase">Links</div></div>
-              <div className="border border-border p-3"><div className={`font-mono text-xl ${confColor}`}>{avgConfidence > 0 ? `${(avgConfidence * 100).toFixed(0)}%` : "—"}</div><div className="mt-1 text-[10px] font-mono text-text-ghost uppercase">Avg conf</div></div>
+              ))}
             </div>
-            {articles.length > 0 && <VoronoiHeatmap articles={articles} engramSlug={engramSlug} />}
-            {openQuestions.length > 0 && (
-              <div className="mt-8">
-                <h3 className="text-xs text-text-tertiary uppercase tracking-widest font-mono mb-3">Open questions</h3>
-                <div className="space-y-2">
-                  {openQuestions.map((q, i) => <p key={i} className="text-sm text-text-secondary">{q}</p>)}
-                </div>
-              </div>
-            )}
           </div>
+        )}
+      </FullWindowPanel>
+
+      {/* Stats — full window */}
+      <FullWindowPanel isOpen={openId === "stats"} close={close}>
+        <h2 className="font-heading text-lg text-text-emphasis mb-6">Stats</h2>
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          <div className="border border-border p-4"><div className="font-mono text-2xl text-text-emphasis">{sourceCount}</div><div className="mt-1 text-[10px] font-mono text-text-ghost uppercase">Sources</div></div>
+          <div className="border border-border p-4"><div className="font-mono text-2xl text-text-emphasis">{edgeCount}</div><div className="mt-1 text-[10px] font-mono text-text-ghost uppercase">Links</div></div>
+          <div className="border border-border p-4"><div className={`font-mono text-2xl ${confColor}`}>{avgConfidence > 0 ? `${(avgConfidence * 100).toFixed(0)}%` : "—"}</div><div className="mt-1 text-[10px] font-mono text-text-ghost uppercase">Avg conf</div></div>
         </div>
-      </div>
+        {articles.length > 0 && <VoronoiHeatmap articles={articles} engramSlug={engramSlug} />}
+        {openQuestions.length > 0 && (
+          <div className="mt-8">
+            <h3 className="text-xs text-text-tertiary uppercase tracking-widest font-mono mb-3">Open questions</h3>
+            <div className="space-y-2">
+              {openQuestions.map((q, i) => <p key={i} className="text-sm text-text-secondary">{q}</p>)}
+            </div>
+          </div>
+        )}
+      </FullWindowPanel>
     </>
   )
 }

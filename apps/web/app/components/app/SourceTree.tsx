@@ -94,10 +94,10 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
 
   const preview = (
     <div className="bg-surface/80 backdrop-blur-md border border-border border-l-border-emphasis rounded-sm pr-3 py-2.5 pl-0">
-      <button onClick={() => toggle("sources")} className="w-full flex items-center justify-between pl-4 pr-1 cursor-pointer hover:text-text-tertiary transition-colors duration-120">
+      <div className="flex items-center justify-between pl-4 pr-1">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
         <span className="text-[9px] font-mono text-text-ghost">{totalCount}</span>
-      </button>
+      </div>
       <div className="mt-2">
         {sources.length === 0 ? (
           <p className="pl-4 font-mono text-[10px] text-text-ghost">No sources yet.</p>

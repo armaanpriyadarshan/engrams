@@ -52,59 +52,60 @@ interface WidgetPanelProps {
 export function WidgetPanel({ id, side, preview, children, previewClassName }: WidgetPanelProps) {
   const { openId, toggle, close } = usePanelContext()
   const isOpen = openId === id
+  const anyOpen = openId !== null
 
   return (
     <>
-      {/* Preview widget */}
+      {/* Preview widget — clicking anywhere opens */}
       <div
         className={previewClassName}
+        onClick={() => toggle(id)}
         style={{
-          opacity: isOpen ? 0 : 1,
-          pointerEvents: isOpen ? "none" : "auto",
+          opacity: anyOpen ? 0 : 1,
+          pointerEvents: anyOpen ? "none" : "auto",
           transition: "opacity 180ms ease-out",
+          cursor: "pointer",
         }}
       >
         {preview}
       </div>
 
-      {/* Expanded panel */}
+      {/* Full-window expanded panel */}
       <div
-        className={`fixed top-0 ${side === "left" ? "left-0" : "right-0"} h-full z-40 pointer-events-none`}
+        className="fixed inset-0 z-40"
         style={{
-          width: isOpen ? "420px" : "0px",
-          transition: "width 250ms cubic-bezier(0.16, 1, 0.3, 1)",
+          opacity: isOpen ? 1 : 0,
+          pointerEvents: isOpen ? "auto" : "none",
+          transition: "opacity 250ms cubic-bezier(0.16, 1, 0.3, 1)",
         }}
       >
-        {/* Backdrop */}
-        {isOpen && (
-          <div
-            className="fixed inset-0 z-[-1] pointer-events-auto"
-            onClick={close}
-          />
-        )}
-
         <div
-          className={`h-full bg-surface/95 backdrop-blur-xl border-${side === "left" ? "r" : "l"} border-border-emphasis overflow-y-auto scrollbar-hidden pointer-events-auto`}
+          className="absolute inset-0 bg-void/80 backdrop-blur-sm"
+          onClick={close}
+        />
+        <div
+          className="absolute inset-0 flex items-stretch justify-center"
           style={{
-            opacity: isOpen ? 1 : 0,
-            transform: isOpen ? "translateX(0)" : `translateX(${side === "left" ? "-20px" : "20px"})`,
-            transition: "opacity 250ms cubic-bezier(0.16, 1, 0.3, 1), transform 250ms cubic-bezier(0.16, 1, 0.3, 1)",
+            transform: isOpen ? "scale(1)" : "scale(0.97)",
+            transition: "transform 250ms cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
-          {/* Close button */}
-          <div className="sticky top-0 z-10 flex justify-end p-3">
-            <button
-              onClick={close}
-              className="text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div className="px-5 pb-8">
-            {children}
+          <div className="w-full max-w-3xl h-full overflow-y-auto scrollbar-hidden relative">
+            {/* Close button */}
+            <div className="sticky top-0 z-10 flex justify-end p-4">
+              <button
+                onClick={close}
+                className="bg-surface/80 backdrop-blur-md border border-border rounded-sm p-2 text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 pb-12">
+              {children}
+            </div>
           </div>
         </div>
       </div>
