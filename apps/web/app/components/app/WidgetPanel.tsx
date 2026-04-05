@@ -37,6 +37,7 @@ export function WidgetPanelProvider({ children }: { children: ReactNode }) {
     const vh = window.innerHeight
     let minLeft = Infinity
     let maxRight = -Infinity
+    let minTop = Infinity
 
     cardsRef.current.forEach((ref) => {
       const el = ref.current
@@ -45,6 +46,7 @@ export function WidgetPanelProvider({ children }: { children: ReactNode }) {
       if (r.width === 0) return
       if (r.left < minLeft) minLeft = r.left
       if (r.right > maxRight) maxRight = r.right
+      if (r.top < minTop) minTop = r.top
     })
 
     // Fallback if no cards found
@@ -55,10 +57,10 @@ export function WidgetPanelProvider({ children }: { children: ReactNode }) {
     }
 
     return {
-      top: vh * 0.08,
+      top: minTop,
       left: minLeft,
       width: maxRight - minLeft,
-      height: vh * 0.84,
+      height: vh - minTop - 12,
     }
   }, [])
 
