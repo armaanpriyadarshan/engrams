@@ -14,6 +14,7 @@ import ViewToggle from "@/app/components/app/ViewToggle"
 import AddSourceButton from "@/app/components/app/AddSourceButton"
 import AgentTimeline from "@/app/components/app/AgentTimeline"
 import AskBar from "@/app/components/app/AskBar"
+import KnowledgeGaps from "@/app/components/app/KnowledgeGaps"
 
 const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
 
@@ -286,6 +287,7 @@ export default function EngramPage() {
       {engramId && <AgentTimeline engramId={engramId} engramSlug={engramSlug} />}
 
       {/* Bottom center: ask bar */}
+      {engramId && <KnowledgeGaps engramId={engramId} engramSlug={engramSlug} />}
       {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
 
       {/* Node context menu */}
