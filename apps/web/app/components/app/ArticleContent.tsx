@@ -1,8 +1,48 @@
 "use client"
 
+import { useRef, useCallback } from "react"
 import Link from "next/link"
 import ReactMarkdown from "react-markdown"
 import type { Components } from "react-markdown"
+import hljs from "highlight.js/lib/core"
+import javascript from "highlight.js/lib/languages/javascript"
+import typescript from "highlight.js/lib/languages/typescript"
+import python from "highlight.js/lib/languages/python"
+import bash from "highlight.js/lib/languages/bash"
+import json from "highlight.js/lib/languages/json"
+import css from "highlight.js/lib/languages/css"
+import xml from "highlight.js/lib/languages/xml"
+import sql from "highlight.js/lib/languages/sql"
+import rust from "highlight.js/lib/languages/rust"
+import go from "highlight.js/lib/languages/go"
+import java from "highlight.js/lib/languages/java"
+import cpp from "highlight.js/lib/languages/cpp"
+import markdown from "highlight.js/lib/languages/markdown"
+import yaml from "highlight.js/lib/languages/yaml"
+
+hljs.registerLanguage("javascript", javascript)
+hljs.registerLanguage("js", javascript)
+hljs.registerLanguage("typescript", typescript)
+hljs.registerLanguage("ts", typescript)
+hljs.registerLanguage("python", python)
+hljs.registerLanguage("py", python)
+hljs.registerLanguage("bash", bash)
+hljs.registerLanguage("sh", bash)
+hljs.registerLanguage("shell", bash)
+hljs.registerLanguage("json", json)
+hljs.registerLanguage("css", css)
+hljs.registerLanguage("html", xml)
+hljs.registerLanguage("xml", xml)
+hljs.registerLanguage("sql", sql)
+hljs.registerLanguage("rust", rust)
+hljs.registerLanguage("go", go)
+hljs.registerLanguage("java", java)
+hljs.registerLanguage("cpp", cpp)
+hljs.registerLanguage("c", cpp)
+hljs.registerLanguage("markdown", markdown)
+hljs.registerLanguage("md", markdown)
+hljs.registerLanguage("yaml", yaml)
+hljs.registerLanguage("yml", yaml)
 
 interface ArticleContentProps {
   contentMd: string
@@ -31,6 +71,36 @@ function processWikiLinks(text: string, engramSlug: string, linkPrefix?: string)
     }
     return part
   })
+}
+
+function CodeBlock({ html, lang, code }: { html: string; lang: string; code: string }) {
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(code)
+    if (buttonRef.current) {
+      buttonRef.current.textContent = "copied"
+      setTimeout(() => { if (buttonRef.current) buttonRef.current.textContent = "copy" }, 1500)
+    }
+  }, [code])
+
+  return (
+    <div className="relative group bg-surface-raised border border-border overflow-x-auto mb-4">
+      <div className="absolute top-0 right-0 flex items-center gap-2 px-3 py-1.5">
+        <span className="font-mono text-[10px] text-text-ghost">{lang}</span>
+        <button
+          ref={buttonRef}
+          onClick={handleCopy}
+          className="font-mono text-[10px] text-text-ghost hover:text-text-tertiary transition-colors duration-120 opacity-0 group-hover:opacity-100 cursor-pointer"
+        >
+          copy
+        </button>
+      </div>
+      <code
+        className="block p-4 pt-8 font-mono text-xs text-text-secondary hljs"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  )
 }
 
 export default function ArticleContent({ contentMd, engramSlug, linkPrefix }: ArticleContentProps) {
@@ -65,13 +135,17 @@ export default function ArticleContent({ contentMd, engramSlug, linkPrefix }: Ar
       return <em className="italic">{children}</em>
     },
     code({ children, className }) {
-      const isBlock = className?.includes("language-")
-      if (isBlock) {
-        return (
-          <code className={`block bg-surface-raised border border-border p-4 font-mono text-xs text-text-secondary overflow-x-auto mb-4 ${className ?? ""}`}>
-            {children}
-          </code>
-        )
+      const langMatch = className?.match(/language-(\w+)/)
+      const lang = langMatch?.[1]
+      if (lang) {
+        const code = String(children).replace(/\n$/, "")
+        let highlighted: string
+        try {
+          highlighted = hljs.highlight(code, { language: lang }).value
+        } catch {
+          highlighted = hljs.highlightAuto(code).value
+        }
+        return <CodeBlock html={highlighted} lang={lang} code={code} />
       }
       return (
         <code className="bg-surface-raised px-1.5 py-0.5 font-mono text-xs text-text-secondary">

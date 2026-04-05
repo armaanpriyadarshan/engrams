@@ -147,6 +147,37 @@ body {
 .scrollbar-hidden::-webkit-scrollbar { display: none; }
 .scrollbar-hidden { scrollbar-width: none; }
 
+/* highlight.js — engrams theme */
+.hljs { color: var(--color-text-primary); }
+.hljs-keyword,
+.hljs-built_in,
+.hljs-type,
+.hljs-literal,
+.hljs-selector-tag { color: #8F8A76; }
+.hljs-string,
+.hljs-addition { color: #7A8F76; }
+.hljs-comment,
+.hljs-quote,
+.hljs-meta { color: var(--color-text-ghost); }
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet { color: #76808F; }
+.hljs-title,
+.hljs-title\.function_,
+.hljs-section { color: var(--color-text-emphasis); }
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-regexp,
+.hljs-link { color: var(--color-text-secondary); }
+.hljs-deletion { color: var(--color-confidence-low); }
+.hljs-punctuation,
+.hljs-operator { color: var(--color-text-tertiary); }
+.hljs-params { color: var(--color-text-primary); }
+.hljs-tag { color: #8F8A76; }
+.hljs-name { color: #8F8A76; }
+
 a {
   color: var(--color-text-secondary);
   text-decoration: none;
