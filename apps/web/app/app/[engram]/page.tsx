@@ -182,7 +182,7 @@ export default function EngramPage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search index..."
+                placeholder="Search..."
                 className="w-full bg-transparent text-sm text-text-secondary placeholder:text-text-ghost outline-none pb-3 border-b border-border focus:border-text-tertiary transition-colors duration-150"
               />
             </div>
