@@ -17,19 +17,12 @@ interface VoronoiHeatmapProps {
 }
 
 function confidenceColor(c: number): string {
-  // Map confidence to gradient: low (warm) → mid → high (cool)
   if (c < 0.5) {
     const t = c / 0.5
-    const r = Math.round(143 + (143 - 143) * t)
-    const g = Math.round(118 + (138 - 118) * t)
-    const b = Math.round(122 + (118 - 122) * t)
-    return `rgb(${r},${g},${b})`
+    return `rgb(${Math.round(180 - 30 * t)},${Math.round(90 + 60 * t)},${Math.round(95 - 10 * t)})`
   }
   const t = (c - 0.5) / 0.5
-  const r = Math.round(143 + (122 - 143) * t)
-  const g = Math.round(138 + (143 - 138) * t)
-  const b = Math.round(118 + (118 - 118) * t)
-  return `rgb(${r},${g},${b})`
+  return `rgb(${Math.round(150 - 60 * t)},${Math.round(150 + 30 * t)},${Math.round(85 + 40 * t)})`
 }
 
 export default function VoronoiHeatmap({ articles, engramSlug }: VoronoiHeatmapProps) {
@@ -133,7 +126,7 @@ export default function VoronoiHeatmap({ articles, engramSlug }: VoronoiHeatmapP
             key={article.slug}
             d={path}
             fill={confidenceColor(article.confidence)}
-            fillOpacity={hoveredSlug === article.slug ? 0.7 : 0.35}
+            fillOpacity={hoveredSlug === article.slug ? 0.9 : 0.55}
             stroke="var(--color-border)"
             strokeWidth="1"
             className="transition-all duration-120 cursor-pointer"

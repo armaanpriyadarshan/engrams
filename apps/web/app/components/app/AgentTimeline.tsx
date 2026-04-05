@@ -22,10 +22,10 @@ interface ArticleCell {
 function confidenceColor(c: number): string {
   if (c < 0.5) {
     const t = c / 0.5
-    return `rgb(${Math.round(143)},${Math.round(118 + 20 * t)},${Math.round(122 - 4 * t)})`
+    return `rgb(${Math.round(180 - 30 * t)},${Math.round(90 + 60 * t)},${Math.round(95 - 10 * t)})`
   }
   const t = (c - 0.5) / 0.5
-  return `rgb(${Math.round(143 - 21 * t)},${Math.round(138 + 5 * t)},${Math.round(118)})`
+  return `rgb(${Math.round(150 - 60 * t)},${Math.round(150 + 30 * t)},${Math.round(85 + 40 * t)})`
 }
 
 function timeAgo(date: string): string {
@@ -196,7 +196,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
                     key={article.slug}
                     d={path}
                     fill={confidenceColor(article.confidence)}
-                    fillOpacity={hoveredSlug === article.slug ? 0.8 : 0.35}
+                    fillOpacity={hoveredSlug === article.slug ? 0.9 : 0.55}
                     stroke={hoveredSlug === article.slug ? "var(--color-border-emphasis)" : "var(--color-border)"}
                     strokeWidth={hoveredSlug === article.slug ? "1" : "0.5"}
                     className="cursor-pointer"
