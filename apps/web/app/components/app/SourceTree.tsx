@@ -107,8 +107,8 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
   return (
     <WidgetPanel
       id="sources"
-      side="left"
-      previewClassName="absolute top-3 left-3 z-30 max-w-[260px] pointer-events-auto animate-slide-in-left"
+      origin={{ top: "12px", left: "12px", width: "260px" }}
+      className="animate-slide-in-left"
       preview={preview}
     >
       <h2 className="font-heading text-lg text-text-emphasis mb-1">Sources</h2>

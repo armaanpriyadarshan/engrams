@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
-import { usePanelContext } from "./WidgetPanel"
+import { WidgetPanel, usePanelContext } from "./WidgetPanel"
 import VoronoiHeatmap from "./VoronoiHeatmap"
 
 interface AgentRun {
@@ -38,35 +38,9 @@ function timeAgo(date: string): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-function SlidePanel({ isOpen, children }: { isOpen: boolean; children: React.ReactNode }) {
-  return (
-    <div
-      className="absolute top-0 right-0 h-full z-40"
-      style={{
-        width: isOpen ? "380px" : "0px",
-        pointerEvents: isOpen ? "auto" : "none",
-        transition: "width 250ms cubic-bezier(0.16, 1, 0.3, 1)",
-      }}
-    >
-      <div
-        className="h-full bg-surface/95 backdrop-blur-xl border-l border-border overflow-y-auto scrollbar-hidden"
-        style={{
-          opacity: isOpen ? 1 : 0,
-          transform: isOpen ? "translateX(0)" : "translateX(12px)",
-          transition: "opacity 200ms ease-out, transform 250ms cubic-bezier(0.16, 1, 0.3, 1)",
-        }}
-      >
-        <div className="px-5 pt-4 pb-8">
-          {children}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function AgentTimeline({ engramId, engramSlug }: { engramId: string; engramSlug: string }) {
   const router = useRouter()
-  const { openId, toggle } = usePanelContext()
+  const { openId } = usePanelContext()
   const [runs, setRuns] = useState<AgentRun[]>([])
   const [allRuns, setAllRuns] = useState<AgentRun[]>([])
   const [sourceCount, setSourceCount] = useState(0)
@@ -79,7 +53,6 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
 
   useEffect(() => {
     const supabase = createClient()
-
     Promise.all([
       supabase.from("compilation_runs").select("id, trigger_type, status, articles_created, articles_updated, started_at").eq("engram_id", engramId).order("started_at", { ascending: false }).limit(5),
       supabase.from("compilation_runs").select("id, trigger_type, status, articles_created, articles_updated, started_at").eq("engram_id", engramId).order("started_at", { ascending: false }).limit(50),
@@ -95,7 +68,6 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
       })
       if (runsRes.data) setRuns(runsRes.data.map(mapRun))
       if (allRunsRes.data) setAllRuns(allRunsRes.data.map(mapRun))
-
       if (articlesRes.data && articlesRes.data.length > 0) {
         setAvgConfidence(articlesRes.data.reduce((s, a) => s + (a.confidence ?? 0), 0) / articlesRes.data.length)
         setArticles(articlesRes.data.map(a => ({
@@ -103,12 +75,10 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
           wordCount: (a.content_md ?? "").split(/\s+/).length,
           sourceCount: (a.source_ids as string[] ?? []).length,
         })))
-
         const cells: ArticleCell[] = articlesRes.data.map(a => ({
           slug: a.slug, title: a.title ?? a.slug, confidence: a.confidence ?? 0,
           weight: Math.max((a.content_md ?? "").split(/\s+/).length * Math.max((a.source_ids as string[] ?? []).length, 1), 100),
         }))
-
         try {
           // @ts-expect-error - no types
           const { voronoiTreemap } = await import("d3-voronoi-treemap")
@@ -138,73 +108,72 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
     })
   }, [engramId])
 
-  const typeLabel: Record<string, string> = {
-    feed: "Fed", compiler: "Compiled", linter: "Linted", freshener: "Freshened",
-    discoverer: "Discovered", deep: "Deep compile", targeted: "Targeted", lint: "Linted",
-  }
+  const typeLabel: Record<string, string> = { feed: "Fed", compiler: "Compiled", linter: "Linted", freshener: "Freshened", discoverer: "Discovered", deep: "Deep compile", targeted: "Targeted", lint: "Linted" }
   const statusColor = (s: string) => s === "completed" ? "bg-confidence-high" : s === "running" ? "bg-agent-active" : s === "failed" ? "bg-danger" : "bg-text-ghost"
   const confColor = avgConfidence > 0.8 ? "text-confidence-high" : avgConfidence > 0.5 ? "text-confidence-mid" : "text-confidence-low"
-  const anyOpen = openId !== null
 
+  const activityPreview = (
+    <div className="bg-surface/80 backdrop-blur-md border border-border border-r-border-emphasis rounded-sm px-3 py-2.5">
+      <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
+      <div className="mt-2 space-y-1.5">
+        {runs.length === 0 ? (
+          <p className="font-mono text-[10px] text-text-ghost">No activity yet.</p>
+        ) : runs.map((r) => (
+          <div key={r.id} className="flex items-start gap-2">
+            <div className={`w-1 h-1 rounded-full mt-1 shrink-0 ${statusColor(r.status)}`} />
+            <div className="min-w-0">
+              <span className="font-mono text-[10px] text-text-tertiary block truncate">{typeLabel[r.agent_type] ?? r.agent_type} &middot; {r.summary}</span>
+              <span className="font-mono text-[9px] text-text-ghost">{timeAgo(r.started_at)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  const statsPreview = (
+    <div className="bg-surface/80 backdrop-blur-md border border-border border-r-border-emphasis rounded-sm px-3 py-2.5">
+      <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
+      <div className="mt-2 flex justify-between text-center">
+        <div><span className="block font-mono text-sm text-text-emphasis">{sourceCount}</span><span className="font-mono text-[8px] text-text-ghost">sources</span></div>
+        <div><span className="block font-mono text-sm text-text-emphasis">{edgeCount}</span><span className="font-mono text-[8px] text-text-ghost">links</span></div>
+        <div><span className={`block font-mono text-sm ${confColor}`}>{avgConfidence > 0 ? `${(avgConfidence * 100).toFixed(0)}%` : "—"}</span><span className="font-mono text-[8px] text-text-ghost">avg conf</span></div>
+      </div>
+      {voronoiCells.length > 0 && (
+        <div className="mt-3">
+          <span className="text-[8px] font-mono text-text-ghost">Confidence</span>
+          <svg viewBox="0 0 200 60" className="w-full mt-1.5" style={{ height: "60px" }}>
+            {voronoiCells.map(({ article, path }) => (
+              <path key={article.slug} d={path} fill={confidenceColor(article.confidence)}
+                fillOpacity={hoveredSlug === article.slug ? 0.9 : 0.55}
+                stroke={hoveredSlug === article.slug ? "var(--color-border-emphasis)" : "var(--color-border)"}
+                strokeWidth={hoveredSlug === article.slug ? "1" : "0.5"}
+                style={{ transition: "fill-opacity 120ms ease-out, stroke 120ms ease-out" }}
+                onMouseEnter={(e) => { e.stopPropagation(); setHoveredSlug(article.slug) }}
+                onMouseLeave={() => setHoveredSlug(null)}
+              />
+            ))}
+          </svg>
+          {hoveredSlug && (() => {
+            const cell = voronoiCells.find(c => c.article.slug === hoveredSlug)
+            return cell ? <p className="mt-1 text-[8px] font-mono text-text-tertiary truncate">{cell.article.title} · {Math.round(cell.article.confidence * 100)}%</p> : null
+          })()}
+        </div>
+      )}
+    </div>
+  )
+
+  // Activity widget sits at top-right, Stats widget sits below it (~120px down)
   return (
     <>
-      {/* Previews */}
-      <div
-        className="absolute top-3 right-3 z-30 max-w-[200px] pointer-events-auto space-y-2 animate-slide-in-right"
-        style={{ animationDelay: "300ms", opacity: anyOpen ? 0 : 1, pointerEvents: anyOpen ? "none" : "auto", transition: "opacity 180ms ease-out" }}
+      <WidgetPanel
+        id="activity"
+        origin={{ top: "12px", right: "12px", width: "200px" }}
+        className="animate-slide-in-right"
+        preview={activityPreview}
       >
-        <div onClick={() => toggle("activity")} className="bg-surface/80 backdrop-blur-md border border-border border-r-border-emphasis rounded-sm px-3 py-2.5 cursor-pointer">
-          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
-          <div className="mt-2 space-y-1.5">
-            {runs.length === 0 ? (
-              <p className="font-mono text-[10px] text-text-ghost">No activity yet.</p>
-            ) : runs.map((r) => (
-              <div key={r.id} className="flex items-start gap-2">
-                <div className={`w-1 h-1 rounded-full mt-1 shrink-0 ${statusColor(r.status)}`} />
-                <div className="min-w-0">
-                  <span className="font-mono text-[10px] text-text-tertiary block truncate">{typeLabel[r.agent_type] ?? r.agent_type} &middot; {r.summary}</span>
-                  <span className="font-mono text-[9px] text-text-ghost">{timeAgo(r.started_at)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div onClick={() => toggle("stats")} className="bg-surface/80 backdrop-blur-md border border-border border-r-border-emphasis rounded-sm px-3 py-2.5 cursor-pointer">
-          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
-          <div className="mt-2 flex justify-between text-center">
-            <div><span className="block font-mono text-sm text-text-emphasis">{sourceCount}</span><span className="font-mono text-[8px] text-text-ghost">sources</span></div>
-            <div><span className="block font-mono text-sm text-text-emphasis">{edgeCount}</span><span className="font-mono text-[8px] text-text-ghost">links</span></div>
-            <div><span className={`block font-mono text-sm ${confColor}`}>{avgConfidence > 0 ? `${(avgConfidence * 100).toFixed(0)}%` : "—"}</span><span className="font-mono text-[8px] text-text-ghost">avg conf</span></div>
-          </div>
-          {voronoiCells.length > 0 && (
-            <div className="mt-3">
-              <span className="text-[8px] font-mono text-text-ghost">Confidence</span>
-              <svg viewBox="0 0 200 60" className="w-full mt-1.5" style={{ height: "60px" }}>
-                {voronoiCells.map(({ article, path }) => (
-                  <path key={article.slug} d={path} fill={confidenceColor(article.confidence)}
-                    fillOpacity={hoveredSlug === article.slug ? 0.9 : 0.55}
-                    stroke={hoveredSlug === article.slug ? "var(--color-border-emphasis)" : "var(--color-border)"}
-                    strokeWidth={hoveredSlug === article.slug ? "1" : "0.5"}
-                    style={{ transition: "fill-opacity 120ms ease-out, stroke 120ms ease-out" }}
-                    onMouseEnter={(e) => { e.stopPropagation(); setHoveredSlug(article.slug) }}
-                    onMouseLeave={() => setHoveredSlug(null)}
-                  />
-                ))}
-              </svg>
-              {hoveredSlug && (() => {
-                const cell = voronoiCells.find(c => c.article.slug === hoveredSlug)
-                return cell ? <p className="mt-1 text-[8px] font-mono text-text-tertiary truncate">{cell.article.title} · {Math.round(cell.article.confidence * 100)}%</p> : null
-              })()}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Activity panel */}
-      <SlidePanel isOpen={openId === "activity"}>
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
-        <div className="mt-4">
+        <div className="mt-6">
           {allRuns.length === 0 ? (
             <p className="text-sm text-text-secondary">No activity yet.</p>
           ) : (
@@ -220,30 +189,28 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
             </div>
           )}
         </div>
-      </SlidePanel>
+      </WidgetPanel>
 
-      {/* Stats panel */}
-      <SlidePanel isOpen={openId === "stats"}>
+      <WidgetPanel
+        id="stats"
+        origin={{ top: "130px", right: "12px", width: "200px" }}
+        className="animate-slide-in-right"
+        preview={statsPreview}
+      >
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="mt-6 grid grid-cols-3 gap-3">
           <div className="border border-border p-3"><div className="font-mono text-lg text-text-emphasis">{sourceCount}</div><div className="text-[9px] font-mono text-text-ghost uppercase mt-0.5">Sources</div></div>
           <div className="border border-border p-3"><div className="font-mono text-lg text-text-emphasis">{edgeCount}</div><div className="text-[9px] font-mono text-text-ghost uppercase mt-0.5">Links</div></div>
           <div className="border border-border p-3"><div className={`font-mono text-lg ${confColor}`}>{avgConfidence > 0 ? `${(avgConfidence * 100).toFixed(0)}%` : "—"}</div><div className="text-[9px] font-mono text-text-ghost uppercase mt-0.5">Avg conf</div></div>
         </div>
-        {articles.length > 0 && (
-          <div className="mt-6">
-            <VoronoiHeatmap articles={articles} engramSlug={engramSlug} />
-          </div>
-        )}
+        {articles.length > 0 && <div className="mt-6"><VoronoiHeatmap articles={articles} engramSlug={engramSlug} /></div>}
         {openQuestions.length > 0 && (
           <div className="mt-6 pt-4 border-t border-border">
             <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Open questions</span>
-            <div className="mt-3 space-y-2">
-              {openQuestions.map((q, i) => <p key={i} className="text-xs text-text-secondary leading-relaxed">{q}</p>)}
-            </div>
+            <div className="mt-3 space-y-2">{openQuestions.map((q, i) => <p key={i} className="text-xs text-text-secondary leading-relaxed">{q}</p>)}</div>
           </div>
         )}
-      </SlidePanel>
+      </WidgetPanel>
     </>
   )
 }

@@ -86,12 +86,12 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
   return (
     <WidgetPanel
       id="gaps"
-      side="right"
-      previewClassName="absolute bottom-3 right-3 z-30 max-w-[200px] pointer-events-auto animate-slide-in-right"
+      origin={{ bottom: "12px", right: "12px", width: "200px" }}
+      className="animate-slide-in-right"
       preview={preview}
     >
-      <h2 className="font-heading text-lg text-text-emphasis mb-1">Knowledge Gaps</h2>
-      <p className="text-[10px] font-mono text-text-ghost mb-6">{gaps.length} found</p>
+      <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Knowledge Gaps</span>
+      <p className="text-[10px] font-mono text-text-ghost mt-1 mb-6">{gaps.length} found</p>
       <div className="space-y-4">
         {gaps.map((gap, i) => (
           <div key={i} className="flex items-start gap-3 border-b border-border/50 pb-4 last:border-0">
