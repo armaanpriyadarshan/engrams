@@ -12,6 +12,7 @@ interface Article {
   article_type: string | null
   tags: string[] | null
   updated_at: string
+  similarity?: number
 }
 
 interface ArticleSearchProps {
@@ -20,10 +21,13 @@ interface ArticleSearchProps {
   initialArticles: Article[]
 }
 
+type SearchMode = "text" | "semantic"
+
 export default function ArticleSearch({ engramId, engramSlug, initialArticles }: ArticleSearchProps) {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<Article[] | null>(null)
   const [searching, setSearching] = useState(false)
+  const [mode, setMode] = useState<SearchMode>("text")
 
   useEffect(() => {
     if (!query.trim()) {
@@ -34,31 +38,82 @@ export default function ArticleSearch({ engramId, engramSlug, initialArticles }:
     const timeout = setTimeout(async () => {
       setSearching(true)
       const supabase = createClient()
-      const { data } = await supabase
-        .from("articles")
-        .select("slug, title, summary, confidence, article_type, tags, updated_at")
-        .eq("engram_id", engramId)
-        .textSearch("fts", query, { type: "websearch" })
-        .order("updated_at", { ascending: false })
 
-      setResults(data ?? [])
+      if (mode === "semantic") {
+        // Semantic search via edge function
+        const { data, error } = await supabase.functions.invoke("semantic-search", {
+          body: { engram_id: engramId, query: query.trim(), limit: 10 },
+        })
+
+        if (error || !data?.results) {
+          // Fallback to text search
+          const { data: textData } = await supabase
+            .from("articles")
+            .select("slug, title, summary, confidence, article_type, tags, updated_at")
+            .eq("engram_id", engramId)
+            .textSearch("fts", query, { type: "websearch" })
+            .order("updated_at", { ascending: false })
+          setResults(textData ?? [])
+        } else {
+          setResults(data.results.map((r: { slug: string; title: string; summary: string | null; confidence: number | null; article_type: string | null; tags: string[] | null; updated_at: string; similarity: number }) => ({
+            slug: r.slug,
+            title: r.title,
+            summary: r.summary,
+            confidence: r.confidence,
+            article_type: r.article_type,
+            tags: r.tags,
+            updated_at: r.updated_at,
+            similarity: r.similarity,
+          })))
+        }
+      } else {
+        // Text search
+        const { data } = await supabase
+          .from("articles")
+          .select("slug, title, summary, confidence, article_type, tags, updated_at")
+          .eq("engram_id", engramId)
+          .textSearch("fts", query, { type: "websearch" })
+          .order("updated_at", { ascending: false })
+        setResults(data ?? [])
+      }
+
       setSearching(false)
     }, 300)
 
     return () => clearTimeout(timeout)
-  }, [query, engramId])
+  }, [query, engramId, mode])
 
   const articles = results ?? initialArticles
 
   return (
     <>
       <div className="mb-6">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search articles"
-          className="w-full bg-surface border border-border px-4 py-2.5 text-sm text-text-primary font-mono placeholder:text-text-ghost outline-none focus:border-border-emphasis transition-colors duration-[180ms]"
-        />
+        <div className="flex items-center gap-3">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search articles"
+            className="flex-1 bg-surface border border-border px-4 py-2.5 text-sm text-text-primary font-mono placeholder:text-text-ghost outline-none focus:border-border-emphasis transition-colors duration-[180ms]"
+          />
+          <div className="flex bg-surface border border-border">
+            <button
+              onClick={() => setMode("text")}
+              className={`px-2.5 py-2 text-[10px] font-mono uppercase tracking-wider cursor-pointer transition-colors duration-120 ${
+                mode === "text" ? "text-text-emphasis bg-surface-raised" : "text-text-ghost hover:text-text-tertiary"
+              }`}
+            >
+              Text
+            </button>
+            <button
+              onClick={() => setMode("semantic")}
+              className={`px-2.5 py-2 text-[10px] font-mono uppercase tracking-wider cursor-pointer transition-colors duration-120 ${
+                mode === "semantic" ? "text-text-emphasis bg-surface-raised" : "text-text-ghost hover:text-text-tertiary"
+              }`}
+            >
+              Semantic
+            </button>
+          </div>
+        </div>
       </div>
 
       {articles.length === 0 ? (
@@ -88,8 +143,15 @@ export default function ArticleSearch({ engramId, engramSlug, initialArticles }:
                   backgroundColor: (a.confidence ?? 0) > 0.8 ? "var(--color-confidence-high)"
                     : (a.confidence ?? 0) > 0.5 ? "var(--color-confidence-mid)" : "var(--color-confidence-low)",
                 }} />
-                <div>
-                  <h2 className="font-heading text-sm text-text-emphasis">{a.title}</h2>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h2 className="font-heading text-sm text-text-emphasis">{a.title}</h2>
+                    {a.similarity != null && (
+                      <span className="text-[10px] font-mono text-text-ghost shrink-0">
+                        {Math.round(a.similarity * 100)}% match
+                      </span>
+                    )}
+                  </div>
                   {a.summary && <p className="mt-1 text-xs text-text-tertiary leading-relaxed">{a.summary}</p>}
                   {a.tags && a.tags.length > 0 && (
                     <div className="mt-2 flex gap-2">
