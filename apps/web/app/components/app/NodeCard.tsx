@@ -91,7 +91,7 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPref
       </div>
 
       {/* Content — scrollable */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto scrollbar-hidden px-4 py-4">
         {loading ? (
           <p className="text-xs font-mono text-text-ghost">Loading...</p>
         ) : article ? (

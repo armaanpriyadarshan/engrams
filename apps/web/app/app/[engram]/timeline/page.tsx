@@ -45,7 +45,7 @@ export default async function TimelinePage({ params }: { params: Promise<{ engra
   legacyEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto scrollbar-hidden">
       <div className="max-w-2xl mx-auto px-6 py-10">
         <h1 className="font-heading text-lg text-text-emphasis mb-8">Timeline</h1>
         <TimelineView

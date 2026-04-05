@@ -38,7 +38,7 @@ export default function SlidePanel({ isOpen, onClose, children }: SlidePanelProp
             &times;
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 pb-6">
+        <div className="flex-1 overflow-y-auto scrollbar-hidden px-5 pb-6">
           {children}
         </div>
       </div>

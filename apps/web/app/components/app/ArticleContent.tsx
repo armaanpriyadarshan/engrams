@@ -84,7 +84,7 @@ function CodeBlock({ html, lang, code }: { html: string; lang: string; code: str
   }, [code])
 
   return (
-    <div className="relative group bg-surface-raised border border-border overflow-x-auto mb-4">
+    <div className="relative group bg-surface-raised border border-border overflow-x-auto scrollbar-hidden mb-4">
       <div className="absolute top-0 right-0 flex items-center gap-2 px-3 py-1.5">
         <span className="font-mono text-[10px] text-text-ghost">{lang}</span>
         <button

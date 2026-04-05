@@ -47,7 +47,7 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
     <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 w-full max-w-xl px-6 pointer-events-auto animate-slide-in-down" style={{ animationDelay: "400ms" }}>
       <div className="bg-surface/90 backdrop-blur-md border border-border-emphasis rounded-sm overflow-hidden">
         {answer && (
-          <div className="px-4 py-3 border-b border-border max-h-[40vh] overflow-y-auto">
+          <div className="px-4 py-3 border-b border-border max-h-[40vh] overflow-y-auto scrollbar-hidden">
             <div className="prose-engram leading-[1.6] text-xs text-text-secondary">
               <ArticleContent contentMd={answer} engramSlug={engramSlug} />
             </div>

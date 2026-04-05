@@ -37,7 +37,7 @@ export default async function PublishedArticlePage({
     .contains("related_slugs", [articleSlug])
 
   return (
-    <div className="max-w-[660px] mx-auto px-6 py-10 overflow-y-auto h-full">
+    <div className="max-w-[660px] mx-auto px-6 py-10 overflow-y-auto scrollbar-hidden h-full">
       <Link
         href={`/e/${slug}`}
         className="text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-150 font-mono"

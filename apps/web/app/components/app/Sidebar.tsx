@@ -113,7 +113,7 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
 
       {showExpanded && (
         <div className="flex flex-col h-full min-w-[224px]" style={{ opacity: expandedOpacity, transition: "opacity 150ms ease-out" }}>
-          <nav className="flex-1 overflow-y-auto">
+          <nav className="flex-1 overflow-y-auto scrollbar-hidden">
             <button onClick={collapse} className="w-full flex items-center justify-between px-5 pt-4 pb-3 cursor-pointer group">
               <span className="text-[10px] font-mono text-text-ghost tracking-widest uppercase group-hover:text-text-tertiary transition-colors duration-150">Your engrams</span>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"

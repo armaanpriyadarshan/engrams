@@ -60,7 +60,7 @@ export default async function StatsPage({ params }: { params: Promise<{ engram: 
   ]
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto scrollbar-hidden">
     <div className="max-w-3xl mx-auto px-6 py-10">
       <h1 className="font-heading text-lg text-text-emphasis mb-8">Stats</h1>
 
