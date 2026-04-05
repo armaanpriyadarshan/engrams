@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import Link from "next/link"
+import { WidgetPanel } from "./WidgetPanel"
 
 interface Source {
   id: string
@@ -11,6 +13,12 @@ interface Source {
   status: string
   created_at: string
   metadata: Record<string, unknown> | null
+}
+
+interface ArticleRef {
+  slug: string
+  title: string
+  source_ids: string[]
 }
 
 function extractDomain(url: string | null): string | null {
@@ -27,100 +35,101 @@ function timeAgo(date: string): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-export default function SourceTree({ engramId }: { engramId: string }) {
+export default function SourceTree({ engramId, engramSlug }: { engramId: string; engramSlug: string }) {
   const [sources, setSources] = useState<Source[]>([])
+  const [allSources, setAllSources] = useState<Source[]>([])
   const [totalCount, setTotalCount] = useState(0)
-  const [articleCounts, setArticleCounts] = useState<Record<string, number>>({})
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [articleRefs, setArticleRefs] = useState<ArticleRef[]>([])
+
 
   useEffect(() => {
     const supabase = createClient()
     Promise.all([
       supabase.from("sources").select("id, title, source_type, source_url, status, created_at, metadata").eq("engram_id", engramId).order("created_at", { ascending: false }).limit(6),
+      supabase.from("sources").select("id, title, source_type, source_url, status, created_at, metadata").eq("engram_id", engramId).order("created_at", { ascending: false }),
       supabase.from("sources").select("id", { count: "exact" }).eq("engram_id", engramId),
-      supabase.from("articles").select("source_ids").eq("engram_id", engramId),
-    ]).then(([sourcesRes, countRes, articlesRes]) => {
+      supabase.from("articles").select("slug, title, source_ids").eq("engram_id", engramId),
+    ]).then(([sourcesRes, allSourcesRes, countRes, articlesRes]) => {
       if (sourcesRes.data) setSources(sourcesRes.data)
+      if (allSourcesRes.data) setAllSources(allSourcesRes.data)
       if (countRes.count) setTotalCount(countRes.count)
-      // Count how many articles each source contributed to
-      if (articlesRes.data) {
-        const counts: Record<string, number> = {}
-        articlesRes.data.forEach(a => {
-          (a.source_ids as string[] ?? []).forEach(sid => {
-            counts[sid] = (counts[sid] ?? 0) + 1
-          })
-        })
-        setArticleCounts(counts)
-      }
+      if (articlesRes.data) setArticleRefs(articlesRes.data.map(a => ({ slug: a.slug, title: a.title ?? a.slug, source_ids: a.source_ids as string[] ?? [] })))
     })
   }, [engramId])
 
-  const getCounts = (id: string) => articleCounts[id] ?? 0
+  const getArticlesForSource = (sourceId: string) =>
+    articleRefs.filter(a => a.source_ids.includes(sourceId))
+
+  const preview = (
+    <div className="px-3 py-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
+        <span className="text-[9px] font-mono text-text-ghost">{totalCount}</span>
+      </div>
+      <div className="mt-2 space-y-1">
+        {sources.length === 0 ? (
+          <p className="font-mono text-[10px] text-text-ghost">No sources yet.</p>
+        ) : sources.map((s) => {
+          const domain = extractDomain(s.source_url)
+          const typeLabel = s.source_type === "url" ? (domain?.includes("arxiv") ? "arxiv" : "url") : s.source_type
+          const meta = s.metadata as Record<string, string> | null
+          return (
+            <div key={s.id}>
+              <p className="text-[11px] text-text-primary truncate leading-tight">{s.title ?? s.source_type}</p>
+              <p className="text-[9px] font-mono text-text-ghost truncate">
+                {typeLabel}{meta?.author ? ` · ${meta.author}` : ""}{meta?.year ? ` · ${meta.year}` : ""}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 
   return (
-    <div className="absolute top-3 left-3 z-30 max-w-[260px] pointer-events-auto animate-slide-in-left" style={{ animationDelay: "200ms" }}>
-      <div className="bg-surface/80 backdrop-blur-md border border-border border-l-border-emphasis rounded-sm pr-3 py-2.5 pl-0">
-        <div className="flex items-center justify-between pl-4 pr-1">
-          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
-          <span className="text-[9px] font-mono text-text-ghost">{totalCount}</span>
-        </div>
-        <div className="mt-2">
-          {sources.length === 0 ? (
-            <p className="pl-4 font-mono text-[10px] text-text-ghost">No sources yet.</p>
-          ) : sources.map((s, i) => {
-            const isLast = i === sources.length - 1
+    <WidgetPanel
+      id="sources"
+      className="absolute top-3 left-3 max-w-[260px] animate-slide-in-left border-l-border-emphasis"
+      preview={preview}
+    >
+      <div className="flex items-center justify-between mb-6">
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
+        <span className="text-[9px] font-mono text-text-ghost">{totalCount}</span>
+      </div>
+      {allSources.length === 0 ? (
+        <p className="text-sm text-text-secondary">No sources yet. <Link href={`/app/${engramSlug}/feed`} className="hover:text-text-emphasis transition-colors duration-120">Feed one.</Link></p>
+      ) : (
+        <div className="space-y-5">
+          {allSources.map((s) => {
             const domain = extractDomain(s.source_url)
             const typeLabel = s.source_type === "url" ? (domain?.includes("arxiv") ? "arxiv" : "url") : s.source_type
             const meta = s.metadata as Record<string, string> | null
-            const artCount = getCounts(s.id)
-            const isHovered = hoveredId === s.id
-
+            const related = getArticlesForSource(s.id)
             return (
-              <div
-                key={s.id}
-                className={`relative ${isLast ? "" : "pb-2"}`}
-                onMouseEnter={() => setHoveredId(s.id)}
-                onMouseLeave={() => setHoveredId(null)}
-              >
-                <div className="min-w-0 pl-4">
-                  {s.source_url ? (
-                    <a href={s.source_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-text-primary hover:text-text-emphasis truncate leading-tight block transition-colors duration-150">
-                      {s.title ?? s.source_type}
-                    </a>
-                  ) : (
-                    <p className="text-[11px] text-text-primary truncate leading-tight">
-                      {s.title ?? s.source_type}
-                    </p>
-                  )}
-                  <p className="text-[9px] font-mono text-text-ghost mt-0.5 truncate">
-                    {typeLabel}
-                    {meta?.author && <span> · {meta.author}</span>}
-                    {meta?.year && <span> · {meta.year}</span>}
-                  </p>
-                </div>
-
-                {/* Hover detail card */}
-                {isHovered && (
-                  <div className="absolute left-full top-0 ml-2 z-50 w-56 bg-surface/95 backdrop-blur-md border border-border rounded-sm p-3">
-                    <p className="text-[11px] text-text-emphasis leading-tight">{s.title}</p>
-                    {meta?.author && <p className="text-[9px] font-mono text-text-tertiary mt-1">{meta.author}{meta?.year ? `, ${meta.year}` : ""}</p>}
-                    {meta?.claim && <p className="text-[10px] text-text-secondary mt-1.5 leading-snug">{meta.claim as string}</p>}
-                    {s.source_url && (
-                      <a href={s.source_url} target="_blank" rel="noopener noreferrer" className="text-[8px] font-mono text-text-ghost hover:text-text-tertiary mt-1.5 block truncate transition-colors duration-150">
-                        {s.source_url}
-                      </a>
-                    )}
-                    <div className="flex items-center gap-3 mt-2 pt-1.5 border-t border-border">
-                      <span className="text-[8px] font-mono text-text-ghost">{artCount} article{artCount !== 1 ? "s" : ""} informed</span>
-                      <span className="text-[8px] font-mono text-text-ghost">{timeAgo(s.created_at)}</span>
-                    </div>
+              <div key={s.id} className="border-b border-border/50 pb-5 last:border-0 last:pb-0">
+                <p className="text-sm text-text-primary">{s.title ?? s.source_type}</p>
+                <p className="text-[10px] font-mono text-text-ghost mt-0.5">
+                  {typeLabel}{meta?.author ? ` · ${meta.author}` : ""}{meta?.year ? ` · ${meta.year}` : ""} · {timeAgo(s.created_at)}
+                </p>
+                {related.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {related.map(a => (
+                      <Link
+                        key={a.slug}
+                        href={`/app/${engramSlug}/article/${a.slug}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[10px] font-mono text-text-ghost hover:text-text-secondary border border-border/60 px-1.5 py-0.5 transition-colors duration-120"
+                      >
+                        {a.title}
+                      </Link>
+                    ))}
                   </div>
                 )}
               </div>
             )
           })}
         </div>
-      </div>
-    </div>
+      )}
+    </WidgetPanel>
   )
 }
