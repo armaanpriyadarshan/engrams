@@ -283,7 +283,7 @@ export default function EngramPage() {
 
       <ViewToggle onViewChange={setView} />
       {engramId && <AddSourceButton engramId={engramId} />}
-      {engramId && <AgentTimeline engramId={engramId} />}
+      {engramId && <AgentTimeline engramId={engramId} engramSlug={engramSlug} />}
 
       {/* Bottom center: ask bar */}
       {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
