@@ -1,17 +1,21 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode, type RefObject } from "react"
 
 interface PanelContextType {
   openId: string | null
   open: (id: string) => void
   close: () => void
+  registerCard: (id: string, ref: RefObject<HTMLDivElement | null>) => void
+  getTargetRect: () => { top: number; left: number; width: number; height: number }
 }
 
 const PanelContext = createContext<PanelContextType>({
   openId: null,
   open: () => {},
   close: () => {},
+  registerCard: () => {},
+  getTargetRect: () => ({ top: 0, left: 0, width: 0, height: 0 }),
 })
 
 export function usePanelContext() {
@@ -20,9 +24,43 @@ export function usePanelContext() {
 
 export function WidgetPanelProvider({ children }: { children: ReactNode }) {
   const [openId, setOpenId] = useState<string | null>(null)
+  const cardsRef = useRef<Map<string, RefObject<HTMLDivElement | null>>>(new Map())
 
   const open = useCallback((id: string) => setOpenId(id), [])
   const close = useCallback(() => setOpenId(null), [])
+
+  const registerCard = useCallback((id: string, ref: RefObject<HTMLDivElement | null>) => {
+    cardsRef.current.set(id, ref)
+  }, [])
+
+  const getTargetRect = useCallback(() => {
+    const vh = window.innerHeight
+    let minLeft = Infinity
+    let maxRight = -Infinity
+
+    cardsRef.current.forEach((ref) => {
+      const el = ref.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      if (r.width === 0) return
+      if (r.left < minLeft) minLeft = r.left
+      if (r.right > maxRight) maxRight = r.right
+    })
+
+    // Fallback if no cards found
+    if (minLeft === Infinity || maxRight === -Infinity) {
+      const vw = window.innerWidth
+      const w = Math.min(520, vw - 48)
+      return { top: vh * 0.08, left: (vw - w) / 2, width: w, height: vh * 0.84 }
+    }
+
+    return {
+      top: vh * 0.08,
+      left: minLeft,
+      width: maxRight - minLeft,
+      height: vh * 0.84,
+    }
+  }, [])
 
   useEffect(() => {
     if (!openId) return
@@ -32,7 +70,7 @@ export function WidgetPanelProvider({ children }: { children: ReactNode }) {
   }, [openId, close])
 
   return (
-    <PanelContext.Provider value={{ openId, open, close }}>
+    <PanelContext.Provider value={{ openId, open, close, registerCard, getTargetRect }}>
       {children}
     </PanelContext.Provider>
   )
@@ -46,7 +84,7 @@ interface WidgetPanelProps {
 }
 
 export function WidgetPanel({ id, preview, children, className }: WidgetPanelProps) {
-  const { openId, open, close } = usePanelContext()
+  const { openId, open, close, registerCard, getTargetRect } = usePanelContext()
   const cardRef = useRef<HTMLDivElement>(null)
   const isMe = openId === id
   const otherOpen = openId !== null && !isMe
@@ -55,21 +93,18 @@ export function WidgetPanel({ id, preview, children, className }: WidgetPanelPro
   const [rect, setRect] = useState({ top: 0, left: 0, width: 0, height: 0 })
   const [target, setTarget] = useState({ top: 0, left: 0, width: 0, height: 0 })
 
-  const getTarget = () => {
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    const w = Math.min(520, vw - 48)
-    return { top: vh * 0.08, left: (vw - w) / 2, width: w, height: vh * 0.84 }
-  }
+  // Register this card with the provider
+  useEffect(() => {
+    registerCard(id, cardRef)
+  }, [id, registerCard])
 
   const handleOpen = () => {
     if (!cardRef.current || phase) return
     const r = cardRef.current.getBoundingClientRect()
     setRect({ top: r.top, left: r.left, width: r.width, height: r.height })
-    setTarget(getTarget())
+    setTarget(getTargetRect())
     setPhase("opening")
     open(id)
-    // Animate to target next frame
     requestAnimationFrame(() => requestAnimationFrame(() => {
       setPhase("open")
     }))
@@ -83,7 +118,6 @@ export function WidgetPanel({ id, preview, children, className }: WidgetPanelPro
     setTimeout(() => { setPhase(null); close() }, 200)
   }, [close])
 
-  // If provider closed us externally (Escape), trigger close animation
   useEffect(() => {
     if (!isMe && phase === "open") {
       if (!cardRef.current) { setPhase(null); return }
@@ -96,32 +130,20 @@ export function WidgetPanel({ id, preview, children, className }: WidgetPanelPro
 
   const isVisible = phase !== null
 
-  // Box position: opening goes card→target, open=target, closing goes target→card
-  const box = (() => {
-    if (phase === "opening") return rect // start at card, will transition to target
-    if (phase === "open") return target
-    if (phase === "closing") return rect
-    return rect
-  })()
+  const displayBox = phase === "open" ? target : rect
 
-  // Transition: opening=250ms to target, closing=200ms to card
-  const transition = phase === "opening"
-    ? "none" // set card rect with no transition, then open phase applies target
-    : phase === "open"
-      ? "top 250ms ease-out, left 250ms ease-out, width 250ms ease-out, height 250ms ease-out"
-      : phase === "closing"
-        ? "top 200ms ease-out, left 200ms ease-out, width 200ms ease-out, height 200ms ease-out"
-        : "none"
-
-  // For opening: we set card rect first (no transition), then on "open" phase we set target with transition
-  const displayBox = phase === "open" ? target : box
+  const transition = phase === "open"
+    ? "top 250ms ease-out, left 250ms ease-out, width 250ms ease-out, height 250ms ease-out"
+    : phase === "closing"
+      ? "top 200ms ease-out, left 200ms ease-out, width 200ms ease-out, height 200ms ease-out"
+      : "none"
 
   const previewVisible = phase === null || phase === "opening" || phase === "closing"
   const contentVisible = phase === "open"
 
   return (
     <>
-      {/* Card — stays in DOM for layout, hidden when modal is showing */}
+      {/* Card in flow */}
       <div
         ref={cardRef}
         className={`bg-surface border border-border rounded-sm ${className ?? ""}`}
@@ -144,13 +166,13 @@ export function WidgetPanel({ id, preview, children, className }: WidgetPanelPro
           onClick={handleClose}
           style={{
             backgroundColor: "rgba(5,5,5,0.6)",
-            opacity: phase === "closing" ? 0 : phase === "opening" ? 0 : 1,
+            opacity: phase === "closing" || phase === "opening" ? 0 : 1,
             transition: phase === "closing" ? "opacity 200ms ease-out" : "opacity 250ms ease-out",
           }}
         />
       )}
 
-      {/* Modal — interpolates from card rect to centered target */}
+      {/* Modal — morphs from card rect to target rect */}
       {isVisible && (
         <div
           className="fixed z-50 bg-surface border border-border overflow-hidden"
@@ -163,7 +185,7 @@ export function WidgetPanel({ id, preview, children, className }: WidgetPanelPro
             borderRadius: "1px",
           }}
         >
-          {/* Preview — visible during open/close morph, fades out 0-100ms */}
+          {/* Preview fades out 0-100ms */}
           <div
             style={{
               opacity: previewVisible ? 1 : 0,
@@ -176,7 +198,7 @@ export function WidgetPanel({ id, preview, children, className }: WidgetPanelPro
             {preview}
           </div>
 
-          {/* Full content — fades in 100-250ms */}
+          {/* Full content fades in 100-250ms */}
           <div
             className="overflow-y-auto scrollbar-hidden absolute inset-0"
             style={{
