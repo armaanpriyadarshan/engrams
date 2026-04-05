@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { createSnapshot } from "@/lib/snapshots"
 import Link from "next/link"
 import ArticleContent from "@/app/components/app/ArticleContent"
 
@@ -93,6 +94,10 @@ export default function AskPage() {
       const created = compileResult?.articles_created ?? 0
       const updated = compileResult?.articles_updated ?? 0
       setFileStatus(`Compiled. ${created} created. ${updated} updated.`)
+      await createSnapshot(supabase, engramId, "query_fileback", `${created} created. ${updated} updated.`, {
+        articles_created: created,
+        articles_updated: updated,
+      }, source.id)
       router.refresh()
     }
     setFiling(false)

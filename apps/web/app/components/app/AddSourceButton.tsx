@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import { createSnapshot } from "@/lib/snapshots"
 
 type FeedTab = "url" | "text" | "file"
 
@@ -64,6 +65,10 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
       const created = result?.articles_created ?? 0
       const updated = result?.articles_updated ?? 0
       setMessage({ type: "ok", text: `${created} created. ${updated} updated.` })
+      await createSnapshot(supabase, engramId, "feed", `${created} created. ${updated} updated.`, {
+        articles_created: created,
+        articles_updated: updated,
+      }, source.id)
       router.refresh()
     }
     setSubmitting(false)

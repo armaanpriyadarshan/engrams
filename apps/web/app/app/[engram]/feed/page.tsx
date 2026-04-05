@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { createSnapshot } from "@/lib/snapshots"
 
 export default function FeedPage() {
   const params = useParams()
@@ -69,6 +70,11 @@ export default function FeedPage() {
       const updated = compileResult?.articles_updated ?? 0
       const edges = compileResult?.edges_created ?? 0
       setMessage(`Compilation complete. ${created} created. ${updated} updated. ${edges} connections found.`)
+      await createSnapshot(supabase, engram.id, "feed", `${created} created. ${updated} updated.`, {
+        articles_created: created,
+        articles_updated: updated,
+        edges_created: edges,
+      }, source.id)
       router.refresh()
     }
     setCompiling(false)
