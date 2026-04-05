@@ -75,6 +75,8 @@ export default function FeedPage() {
         articles_updated: updated,
         edges_created: edges,
       }, source.id)
+      // Generate embeddings for new/updated articles
+      supabase.functions.invoke("generate-embedding", { body: { engram_id: engram.id } })
       router.refresh()
     }
     setCompiling(false)

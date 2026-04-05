@@ -69,6 +69,8 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
         articles_created: created,
         articles_updated: updated,
       }, source.id)
+      // Generate embeddings for new/updated articles
+      supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
       router.refresh()
     }
     setSubmitting(false)

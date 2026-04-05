@@ -98,6 +98,7 @@ export default function AskPage() {
         articles_created: created,
         articles_updated: updated,
       }, source.id)
+      supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
       router.refresh()
     }
     setFiling(false)
