@@ -80,9 +80,20 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
           // @ts-expect-error - no types
           const { hierarchy } = await import("d3-hierarchy")
           const W = 200, H = 60
+          // Rounded rectangle clip path for organic shape
+          const r = 8, steps = 8
+          const clipPoly: number[][] = []
+          // Top-left corner
+          for (let i = steps; i >= 0; i--) { const a = Math.PI / 2 + (Math.PI / 2) * (i / steps); clipPoly.push([r + r * Math.cos(a), r + r * Math.sin(a)]) }
+          // Top-right corner
+          for (let i = steps; i >= 0; i--) { const a = (Math.PI / 2) * (i / steps); clipPoly.push([W - r + r * Math.cos(a), r + r * Math.sin(a)]) }
+          // Bottom-right corner
+          for (let i = steps; i >= 0; i--) { const a = -(Math.PI / 2) * (1 - i / steps); clipPoly.push([W - r + r * Math.cos(a), H - r + r * Math.sin(a)]) }
+          // Bottom-left corner
+          for (let i = steps; i >= 0; i--) { const a = Math.PI + (Math.PI / 2) * (i / steps); clipPoly.push([r + r * Math.cos(a), H - r + r * Math.sin(a)]) }
           const root = hierarchy({ children: cells.map(c => ({ ...c, value: c.weight })) })
             .sum((d: { value?: number }) => d.value ?? 0)
-          const treemap = voronoiTreemap().clip([[0, 0], [W, 0], [W, H], [0, H]])
+          const treemap = voronoiTreemap().clip(clipPoly)
           treemap(root)
           const result: { article: ArticleCell; path: string }[] = []
           for (const leaf of root.leaves()) {
@@ -164,32 +175,46 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
 
         {/* Confidence heatmap */}
         {voronoiCells.length > 0 && (
-          <div className="mt-3 relative">
-            <svg viewBox="0 0 200 60" className="w-full" style={{ height: "60px" }}>
-              {voronoiCells.map(({ article, path }) => (
-                <path
-                  key={article.slug}
-                  d={path}
-                  fill={confidenceColor(article.confidence)}
-                  fillOpacity={hoveredSlug === article.slug ? 0.7 : 0.35}
-                  stroke="var(--color-border)"
-                  strokeWidth="0.5"
-                  className="transition-all duration-120 cursor-pointer"
-                  onMouseEnter={() => setHoveredSlug(article.slug)}
-                  onMouseLeave={() => setHoveredSlug(null)}
-                  onClick={() => router.push(`/app/${engramSlug}/article/${article.slug}`)}
-                />
-              ))}
-            </svg>
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[8px] font-mono text-text-ghost">Confidence</span>
+              <div className="relative group/info">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-ghost group-hover/info:text-text-tertiary transition-colors duration-120 cursor-pointer">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                <div className="absolute right-0 top-4 z-50 w-44 bg-surface-raised border border-border p-2 text-[9px] text-text-secondary leading-relaxed opacity-0 pointer-events-none group-hover/info:opacity-100 group-hover/info:pointer-events-auto transition-opacity duration-120">
+                  Each cell is an article. Size reflects depth. Color shows confidence: warm = lower, cool = higher.
+                </div>
+              </div>
+            </div>
+            <div className="relative">
+              <svg viewBox="0 0 200 60" className="w-full" style={{ height: "60px" }}>
+                {voronoiCells.map(({ article, path }) => (
+                  <path
+                    key={article.slug}
+                    d={path}
+                    fill={confidenceColor(article.confidence)}
+                    fillOpacity={hoveredSlug === article.slug ? 0.8 : 0.35}
+                    stroke={hoveredSlug === article.slug ? "var(--color-border-emphasis)" : "var(--color-border)"}
+                    strokeWidth={hoveredSlug === article.slug ? "1" : "0.5"}
+                    className="cursor-pointer"
+                    style={{ transition: "fill-opacity 120ms ease-out, stroke 120ms ease-out, stroke-width 120ms ease-out" }}
+                    onMouseEnter={() => setHoveredSlug(article.slug)}
+                    onMouseLeave={() => setHoveredSlug(null)}
+                    onClick={() => router.push(`/app/${engramSlug}/article/${article.slug}`)}
+                  />
+                ))}
+              </svg>
+            </div>
             {hoveredSlug && (() => {
               const cell = voronoiCells.find(c => c.article.slug === hoveredSlug)
               if (!cell) return null
               return (
-                <div className="absolute -bottom-1 left-0 right-0 text-center">
-                  <span className="text-[8px] font-mono text-text-ghost">
-                    {cell.article.title} · {Math.round(cell.article.confidence * 100)}%
-                  </span>
-                </div>
+                <p className="mt-1 text-[8px] font-mono text-text-tertiary truncate">
+                  {cell.article.title} · {Math.round(cell.article.confidence * 100)}%
+                </p>
               )
             })()}
           </div>
