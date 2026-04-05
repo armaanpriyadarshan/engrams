@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
+import VoronoiHeatmap from "@/app/components/app/VoronoiHeatmap"
 
 export default async function StatsPage({ params }: { params: Promise<{ engram: string }> }) {
   const { engram: engramSlug } = await params
@@ -14,7 +15,7 @@ export default async function StatsPage({ params }: { params: Promise<{ engram: 
   if (!engram) notFound()
 
   const [articlesResult, sourcesResult, edgesResult] = await Promise.all([
-    supabase.from("articles").select("confidence, tags, article_type, updated_at").eq("engram_id", engram.id),
+    supabase.from("articles").select("slug, title, confidence, tags, article_type, updated_at, content_md, source_ids").eq("engram_id", engram.id),
     supabase.from("sources").select("id", { count: "exact", head: true }).eq("engram_id", engram.id),
     supabase.from("edges").select("id", { count: "exact", head: true }).eq("engram_id", engram.id),
   ])
@@ -44,21 +45,6 @@ export default async function StatsPage({ params }: { params: Promise<{ engram: 
   const sortedTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1])
   const maxTagCount = sortedTags[0]?.[1] ?? 1
 
-  // Confidence distribution
-  const confBuckets = [
-    { label: "0-30%", min: 0, max: 0.3, color: "bg-confidence-low", count: 0 },
-    { label: "30-50%", min: 0.3, max: 0.5, color: "bg-confidence-low", count: 0 },
-    { label: "50-70%", min: 0.5, max: 0.7, color: "bg-confidence-mid", count: 0 },
-    { label: "70-90%", min: 0.7, max: 0.9, color: "bg-confidence-high", count: 0 },
-    { label: "90-100%", min: 0.9, max: 1.01, color: "bg-confidence-high", count: 0 },
-  ]
-  for (const a of articles) {
-    const c = a.confidence ?? 0
-    for (const bucket of confBuckets) {
-      if (c >= bucket.min && c < bucket.max) { bucket.count++; break }
-    }
-  }
-
   // Article type distribution
   const typeCounts = new Map<string, number>()
   for (const a of articles) {
@@ -87,24 +73,19 @@ export default async function StatsPage({ params }: { params: Promise<{ engram: 
         ))}
       </div>
 
-      {/* Confidence distribution */}
+      {/* Confidence map */}
       {articleCount > 0 && (
         <div className="mb-10">
-          <h2 className="text-xs text-text-tertiary uppercase tracking-widest font-mono mb-4">Confidence distribution</h2>
-          <div className="space-y-2">
-            {confBuckets.map((bucket) => (
-              <div key={bucket.label} className="flex items-center gap-3">
-                <span className="text-[10px] font-mono text-text-ghost w-12 shrink-0">{bucket.label}</span>
-                <div className="flex-1 h-2 bg-surface-raised">
-                  <div
-                    className={`h-full ${bucket.color} transition-all duration-300`}
-                    style={{ width: `${articleCount > 0 ? (bucket.count / articleCount) * 100 : 0}%` }}
-                  />
-                </div>
-                <span className="text-[10px] font-mono text-text-ghost w-6 text-right">{bucket.count}</span>
-              </div>
-            ))}
-          </div>
+          <VoronoiHeatmap
+            engramSlug={engramSlug}
+            articles={articles.map((a) => ({
+              slug: a.slug,
+              title: a.title ?? a.slug,
+              confidence: a.confidence ?? 0,
+              wordCount: (a.content_md ?? "").split(/\s+/).length,
+              sourceCount: (a.source_ids as string[] ?? []).length,
+            }))}
+          />
         </div>
       )}
 
