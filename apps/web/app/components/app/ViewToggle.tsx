@@ -19,7 +19,7 @@ export default function ViewToggle({ onViewChange }: { onViewChange?: (view: "gr
           className={`px-3 py-1.5 transition-colors duration-150 cursor-pointer ${
             view === "graph" ? "text-text-emphasis bg-surface-elevated" : "text-text-ghost hover:text-text-tertiary"
           }`}
-          title="Map"
+          title="Graph"
         >
           {/* Network/graph icon */}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
