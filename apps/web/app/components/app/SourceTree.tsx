@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import Link from "next/link"
 
 interface Source {
   id: string
@@ -27,7 +28,7 @@ function timeAgo(date: string): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-export default function SourceTree({ engramId }: { engramId: string }) {
+export default function SourceTree({ engramId, engramSlug }: { engramId: string; engramSlug: string }) {
   const [sources, setSources] = useState<Source[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [articleCounts, setArticleCounts] = useState<Record<string, number>>({})
@@ -60,10 +61,10 @@ export default function SourceTree({ engramId }: { engramId: string }) {
   return (
     <div className="absolute top-3 left-3 z-30 max-w-[260px] pointer-events-auto animate-slide-in-left" style={{ animationDelay: "200ms" }}>
       <div className="bg-surface/80 backdrop-blur-md border border-border border-l-border-emphasis rounded-sm pr-3 py-2.5 pl-0">
-        <div className="flex items-center justify-between pl-4 pr-1">
+        <Link href={`/app/${engramSlug}/sources`} className="flex items-center justify-between pl-4 pr-1 hover:text-text-tertiary transition-colors duration-120">
           <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
           <span className="text-[9px] font-mono text-text-ghost">{totalCount}</span>
-        </div>
+        </Link>
         <div className="mt-2">
           {sources.length === 0 ? (
             <p className="pl-4 font-mono text-[10px] text-text-ghost">No sources yet.</p>

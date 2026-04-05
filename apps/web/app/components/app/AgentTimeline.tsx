@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 interface AgentRun {
   id: string
@@ -134,7 +135,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
     <div className="absolute top-3 right-3 z-30 max-w-[200px] pointer-events-auto space-y-2 animate-slide-in-right" style={{ animationDelay: "300ms" }}>
       {/* Activity */}
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
+        <Link href={`/app/${engramSlug}/timeline`} className="text-[9px] font-mono text-text-ghost tracking-widest uppercase hover:text-text-tertiary transition-colors duration-120">Activity</Link>
         <div className="mt-2 space-y-1.5">
           {items.length === 0 ? (
             <p className="font-mono text-[10px] text-text-ghost">No activity yet.</p>
@@ -154,7 +155,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
 
       {/* Stats */}
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
+        <Link href={`/app/${engramSlug}/stats`} className="text-[9px] font-mono text-text-ghost tracking-widest uppercase hover:text-text-tertiary transition-colors duration-120">Stats</Link>
 
         {/* Stats — numbers on top, labels below */}
         <div className="mt-2 flex justify-between text-center">

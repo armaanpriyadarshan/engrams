@@ -280,7 +280,7 @@ export default function EngramPage() {
 
       {/* ── Overlay layout ── */}
 
-      {engramId && <SourceTree engramId={engramId} />}
+      {engramId && <SourceTree engramId={engramId} engramSlug={engramSlug} />}
 
       <ViewToggle onViewChange={setView} />
       {engramId && <AddSourceButton engramId={engramId} />}
