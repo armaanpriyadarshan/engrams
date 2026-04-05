@@ -55,8 +55,6 @@ export default function SourceTree({ engramId }: { engramId: string }) {
     })
   }, [engramId])
 
-  const items = sources
-  const displayCount = totalCount
   const getCounts = (id: string) => articleCounts[id] ?? 0
 
   return (
@@ -64,13 +62,13 @@ export default function SourceTree({ engramId }: { engramId: string }) {
       <div className="bg-surface/80 backdrop-blur-md border border-border border-l-border-emphasis rounded-sm pr-3 py-2.5 pl-0">
         <div className="flex items-center justify-between pl-4 pr-1">
           <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
-          <span className="text-[9px] font-mono text-text-ghost">{displayCount}</span>
+          <span className="text-[9px] font-mono text-text-ghost">{totalCount}</span>
         </div>
         <div className="mt-2">
-          {items.length === 0 ? (
-            <p className="text-[10px] text-text-ghost pl-4">No sources yet.</p>
-          ) : items.map((s, i) => {
-            const isLast = i === items.length - 1
+          {sources.length === 0 ? (
+            <p className="pl-4 font-mono text-[10px] text-text-ghost">No sources yet.</p>
+          ) : sources.map((s, i) => {
+            const isLast = i === sources.length - 1
             const domain = extractDomain(s.source_url)
             const typeLabel = s.source_type === "url" ? (domain?.includes("arxiv") ? "arxiv" : "url") : s.source_type
             const meta = s.metadata as Record<string, string> | null

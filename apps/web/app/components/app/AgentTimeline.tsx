@@ -79,26 +79,24 @@ export default function AgentTimeline({ engramId }: { engramId: string }) {
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
         <div className="mt-2 space-y-1.5">
           {items.length === 0 ? (
-            <p className="text-[10px] text-text-ghost">No activity yet.</p>
-          ) : (
-            items.map((r) => (
-              <div key={r.id} className="flex items-start gap-2">
-                <div className={`w-1 h-1 rounded-full mt-1 shrink-0 ${statusColor(r.status)}`} />
-                <div className="min-w-0">
-                  <span className="font-mono text-[10px] text-text-tertiary block truncate">
-                    {typeLabel[r.agent_type] ?? r.agent_type} &middot; {r.summary}
-                  </span>
-                  <span className="font-mono text-[9px] text-text-ghost">{timeAgo(r.started_at)}</span>
-                </div>
+            <p className="font-mono text-[10px] text-text-ghost">No activity yet.</p>
+          ) : items.map((r) => (
+            <div key={r.id} className="flex items-start gap-2">
+              <div className={`w-1 h-1 rounded-full mt-1 shrink-0 ${statusColor(r.status)}`} />
+              <div className="min-w-0">
+                <span className="font-mono text-[10px] text-text-tertiary block truncate">
+                  {typeLabel[r.agent_type] ?? r.agent_type} &middot; {r.summary}
+                </span>
+                <span className="font-mono text-[9px] text-text-ghost">{timeAgo(r.started_at)}</span>
               </div>
-            ))
-          )}
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Health */}
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-2.5">
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Health</span>
 
         {/* Stats — numbers on top, labels below */}
         <div className="mt-2 flex justify-between text-center">
