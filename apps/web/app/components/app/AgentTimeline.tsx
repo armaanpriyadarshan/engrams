@@ -39,8 +39,8 @@ function timeAgo(date: string): string {
 export default function AgentTimeline({ engramId, engramSlug }: { engramId: string; engramSlug: string }) {
   const router = useRouter()
   const [runs, setRuns] = useState<AgentRun[]>([])
-  const [articleCount, setArticleCount] = useState(0)
   const [sourceCount, setSourceCount] = useState(0)
+  const [edgeCount, setEdgeCount] = useState(0)
   const [avgConfidence, setAvgConfidence] = useState(0)
   const [openQuestions, setOpenQuestions] = useState<string[]>([])
   const [voronoiCells, setVoronoiCells] = useState<{ article: ArticleCell; path: string }[]>([])
@@ -53,8 +53,9 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
       supabase.from("compilation_runs").select("id, trigger_type, status, articles_created, articles_updated, started_at").eq("engram_id", engramId).order("started_at", { ascending: false }).limit(5),
       supabase.from("articles").select("slug, title, confidence, content_md, source_ids", { count: "exact" }).eq("engram_id", engramId),
       supabase.from("sources").select("id", { count: "exact" }).eq("engram_id", engramId),
+      supabase.from("edges").select("id", { count: "exact" }).eq("engram_id", engramId),
       supabase.from("engrams").select("config").eq("id", engramId).single(),
-    ]).then(async ([runsRes, articlesRes, sourcesRes, engramRes]) => {
+    ]).then(async ([runsRes, articlesRes, sourcesRes, edgesRes, engramRes]) => {
       if (runsRes.data) {
         setRuns(runsRes.data.map(d => ({
           id: d.id, agent_type: d.trigger_type, status: d.status,
@@ -62,7 +63,6 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
           started_at: d.started_at,
         })))
       }
-      if (articlesRes.count) setArticleCount(articlesRes.count)
       if (articlesRes.data && articlesRes.data.length > 0) {
         setAvgConfidence(articlesRes.data.reduce((s, a) => s + (a.confidence ?? 0), 0) / articlesRes.data.length)
 
@@ -108,6 +108,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
         } catch { /* silently fail */ }
       }
       if (sourcesRes.count) setSourceCount(sourcesRes.count)
+      if (edgesRes.count) setEdgeCount(edgesRes.count)
       const questions = (engramRes.data?.config as Record<string, unknown>)?.open_questions
       if (Array.isArray(questions)) setOpenQuestions(questions.slice(0, 3))
     })
@@ -158,12 +159,12 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
         {/* Stats — numbers on top, labels below */}
         <div className="mt-2 flex justify-between text-center">
           <div>
-            <span className="block font-mono text-sm text-text-emphasis">{articleCount}</span>
-            <span className="font-mono text-[8px] text-text-ghost">articles</span>
-          </div>
-          <div>
             <span className="block font-mono text-sm text-text-emphasis">{sourceCount}</span>
             <span className="font-mono text-[8px] text-text-ghost">sources</span>
+          </div>
+          <div>
+            <span className="block font-mono text-sm text-text-emphasis">{edgeCount}</span>
+            <span className="font-mono text-[8px] text-text-ghost">links</span>
           </div>
           <div>
             <span className={`block font-mono text-sm ${confColor}`}>
