@@ -64,10 +64,9 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
       {!loading && gaps.length > 0 && (
         <div className="mt-2 space-y-1.5">
           {gaps.slice(0, 4).map((gap) => (
-            <div key={gap.id} className="flex items-start gap-2">
-              <div className="w-1 h-1 rounded-full bg-confidence-mid mt-1.5 shrink-0" />
-              <p className="text-[10px] text-text-tertiary leading-tight line-clamp-2">{gap.question}</p>
-            </div>
+            <p key={gap.id} className="text-[10px] text-text-tertiary leading-tight line-clamp-2">
+              <span className="text-text-ghost mr-1">&ndash;</span>{gap.question}
+            </p>
           ))}
         </div>
       )}
