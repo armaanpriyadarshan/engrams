@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useState, useCallback, useEffect, useRef } from "react"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { createSnapshot } from "@/lib/snapshots"
 import Link from "next/link"
@@ -26,9 +26,12 @@ interface PastQuery {
 export default function AskPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const engramSlug = params.engram as string
+  const prefillQ = searchParams.get("q")
+  const autoAsked = useRef(false)
 
-  const [question, setQuestion] = useState("")
+  const [question, setQuestion] = useState(prefillQ ?? "")
   const [asking, setAsking] = useState(false)
   const [result, setResult] = useState<QueryResult | null>(null)
   const [error, setError] = useState("")
@@ -142,6 +145,14 @@ export default function AskPage() {
       .limit(10)
     setHistory(queries ?? [])
   }, [question, engramId, compileAnswer])
+
+  // Auto-submit if ?q= param is present
+  useEffect(() => {
+    if (prefillQ && engramId && !autoAsked.current) {
+      autoAsked.current = true
+      ask(prefillQ)
+    }
+  }, [prefillQ, engramId, ask])
 
   const loadPastQuery = (q: PastQuery) => {
     setQuestion(q.question)
