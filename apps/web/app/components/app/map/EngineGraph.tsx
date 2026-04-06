@@ -176,14 +176,30 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     const edgeCount = edgeList.length
     const eSrc = new Uint16Array(edgeCount)
     const eTgt = new Uint16Array(edgeCount)
+    // Relation → color mapping
+    const relationColors: Record<string, [number, number, number]> = {
+      related: [0.33, 0.33, 0.33],
+      causation: [0.56, 0.16, 0.16],
+      contradiction: [0.56, 0.45, 0.16],
+      evolution: [0.16, 0.45, 0.56],
+      supports: [0.30, 0.45, 0.30],
+    }
+    const defaultEdgeColor: [number, number, number] = [0.33, 0.33, 0.33]
+    const edgeColors = new Float32Array(edgeCount * 6) // 2 verts per edge, 3 components each
     for (let i = 0; i < edgeCount; i++) {
       eSrc[i] = edgeList[i].sourceIdx
       eTgt[i] = edgeList[i].targetIdx
+      const col = relationColors[edgeList[i].relation] ?? defaultEdgeColor
+      const w = Math.max(0.3, Math.min(1.0, edgeList[i].weight))
+      const i6 = i * 6
+      edgeColors[i6] = col[0] * w; edgeColors[i6 + 1] = col[1] * w; edgeColors[i6 + 2] = col[2] * w
+      edgeColors[i6 + 3] = col[0] * w; edgeColors[i6 + 4] = col[1] * w; edgeColors[i6 + 5] = col[2] * w
     }
     const edgePositions = new Float32Array(edgeCount * 6)
     const edgeGeo = new THREE.BufferGeometry()
     edgeGeo.setAttribute("position", new THREE.BufferAttribute(edgePositions, 3))
-    const edgeMat = new THREE.LineBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.18 })
+    edgeGeo.setAttribute("color", new THREE.BufferAttribute(edgeColors, 3))
+    const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.18 })
     scene.add(new THREE.LineSegments(edgeGeo, edgeMat))
 
     // ── Nodes ──
@@ -194,6 +210,16 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     const driftOff = new Float32Array(count)
     const driftSpd = new Float32Array(count)
     const depthArr = new Float32Array(count)
+
+    // Type → color mapping (muted, fits dark monochrome)
+    const typeColors: Record<string, [number, number, number]> = {
+      concept: [0.42, 0.50, 0.94],    // blue
+      process: [0.94, 0.62, 0.30],    // amber
+      event: [0.62, 0.85, 0.55],      // green
+      synthesis: [0.78, 0.42, 0.78],   // purple
+    }
+    const defaultColor: [number, number, number] = [0.65, 0.68, 0.72]
+    const nodeColors = new Float32Array(count * 3)
 
     for (let i = 0; i < count; i++) {
       const d = data.nodes[i].depth
@@ -212,6 +238,10 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       driftOff[i] = i * 1.618
       driftSpd[i] = 0.6 + (((i * 7) % 11) / 11) * 0.8
       depthArr[i] = d
+      const col = typeColors[data.nodes[i].articleType] ?? defaultColor
+      nodeColors[i3] = col[0]
+      nodeColors[i3 + 1] = col[1]
+      nodeColors[i3 + 2] = col[2]
     }
 
     const nodeGeo = new THREE.BufferGeometry()
@@ -219,6 +249,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
     nodeGeo.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1))
     nodeGeo.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1))
     nodeGeo.setAttribute("aFade", new THREE.BufferAttribute(fadeCurrent, 1))
+    nodeGeo.setAttribute("aColor", new THREE.BufferAttribute(nodeColors, 3))
 
     const nodeMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -229,10 +260,12 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       },
       vertexShader: `
         attribute float aSize, aPhase, aFade;
+        attribute vec3 aColor;
         uniform float uTime;
         uniform vec2 uMouse, uRippleOrigin;
         uniform float uRippleTime;
         varying float vPulse, vMouseProx, vDepth, vFade;
+        varying vec3 vColor;
 
         void main() {
           float pulse = 0.85 + 0.15 * sin(uTime * 0.6 + aPhase);
@@ -248,6 +281,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
 
           vPulse = clamp(pulse, 0.0, 1.4);
           vFade = aFade;
+          vColor = aColor;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           vDepth = smoothstep(-1400.0, -700.0, mv.z);
           gl_PointSize = aSize * (0.85 + vPulse * 0.3) * (500.0 / -mv.z);
@@ -256,14 +290,15 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       `,
       fragmentShader: `
         varying float vPulse, vMouseProx, vDepth, vFade;
+        varying vec3 vColor;
 
         void main() {
           float d = length(gl_PointCoord - 0.5);
           if (d > 0.5) discard;
           float core = exp(-d * 30.0);
           float a = (exp(-d * 2.5) * 0.06 + exp(-d * 5.0) * 0.18 + exp(-d * 12.0) * 0.5 + core) * vPulse * vDepth * vFade;
-          vec3 col = mix(vec3(0.6, 0.63, 0.7), vec3(0.95, 0.92, 0.88), core);
-          col = mix(col, vec3(1.0, 0.98, 0.96), vMouseProx * 0.5);
+          vec3 col = mix(vColor * 0.7, vColor, core);
+          col = mix(col, vec3(1.0, 0.98, 0.96), vMouseProx * 0.4);
           gl_FragColor = vec4(col, a);
         }
       `,
