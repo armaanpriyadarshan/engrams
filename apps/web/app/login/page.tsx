@@ -34,7 +34,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <h1 className="font-heading text-2xl text-text-emphasis">Sign in to your account</h1>
-      <p className="mt-3 text-sm text-text-secondary">Your knowledge, compiled.</p>
+      <p className="mt-3 text-sm text-text-secondary">Feed sources. Ask questions. Knowledge compounds.</p>
 
       <form onSubmit={handleEmailLogin} className="mt-10 w-full max-w-xs space-y-4">
         <div>

@@ -314,9 +314,33 @@ export default function EngramPage() {
   if (!loading && graphData && graphData.nodes.length === 0) {
     return (
       <WidgetPanelProvider>
-      <div className="w-full h-full flex flex-col items-center justify-center relative">
+      <div
+        className="w-full h-full flex flex-col items-center justify-center relative"
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDrop={handleDrop}
+      >
+        {dropping && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-void/60 pointer-events-none">
+            <p className="text-sm text-text-secondary">Drop to feed.</p>
+          </div>
+        )}
+        {dropMessage && !dropping && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+            <p className="text-xs font-mono text-agent-active bg-surface/90 backdrop-blur-md border border-border px-4 py-2 rounded-sm">{dropMessage}</p>
+          </div>
+        )}
         <p className="text-text-secondary text-sm">Nothing here yet.</p>
-        <p className="mt-2 text-sm text-text-tertiary">Add a source to begin.</p>
+        <p className="mt-2 text-sm text-text-tertiary">Paste a URL, drop a file, or click Feed to begin.</p>
+        <div className="mt-6 flex gap-3">
+          <Link href={`/app/${engramSlug}/feed`} className="bg-surface border border-border-emphasis px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:border-text-tertiary transition-all duration-120">
+            Feed a source
+          </Link>
+          <Link href={`/app/${engramSlug}/ask`} className="bg-surface border border-border px-4 py-2 text-xs text-text-ghost hover:text-text-secondary transition-all duration-120">
+            Ask a question
+          </Link>
+        </div>
         {engramId && <AddSourceButton engramId={engramId} />}
         {engramId && <CompilationToast engramId={engramId} />}
       </div>

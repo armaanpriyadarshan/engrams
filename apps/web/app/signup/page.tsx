@@ -45,7 +45,10 @@ export default function SignupPage() {
       <div className="min-h-dvh flex flex-col items-center justify-center px-6">
         <h1 className="font-heading text-2xl text-text-emphasis">Check your email</h1>
         <p className="mt-3 text-sm text-text-secondary max-w-xs text-center">
-          A confirmation link has been sent to {email}.
+          A confirmation link has been sent to {email}. Click it to finish creating your account.
+        </p>
+        <p className="mt-4 text-xs text-text-ghost max-w-xs text-center">
+          Not seeing it? Check your spam folder.
         </p>
       </div>
     )
@@ -54,7 +57,7 @@ export default function SignupPage() {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <h1 className="font-heading text-2xl text-text-emphasis">Create an account</h1>
-      <p className="mt-3 text-sm text-text-secondary">Your knowledge, compiled.</p>
+      <p className="mt-3 text-sm text-text-secondary">Feed sources. Ask questions. Knowledge compounds.</p>
 
       <form onSubmit={handleSignup} className="mt-10 w-full max-w-xs space-y-4">
         <div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, type ReactNode } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 
 const KnowledgeGraph = dynamic(() => import("./KnowledgeGraph"), { ssr: false })
@@ -507,6 +508,18 @@ function AntiFeatureSection() {
 }
 
 function CloseSection() {
+  const router = useRouter()
+  const [engramName, setEngramName] = useState("")
+
+  const handleBegin = () => {
+    const name = engramName.trim()
+    if (name) {
+      router.push(`/signup?engram=${encodeURIComponent(name)}`)
+    } else {
+      router.push("/signup")
+    }
+  }
+
   return (
     <ScrollSection className="min-h-dvh flex flex-col items-center justify-center px-6">
       <Reveal duration={1400}>
@@ -516,9 +529,18 @@ function CloseSection() {
       </Reveal>
       <Reveal delay={400} duration={1000}>
         <div className="mt-14 flex flex-col sm:flex-row gap-3 w-full max-w-sm">
-          <input type="text" placeholder="Name your engram"
-            className="flex-1 bg-surface border border-border-emphasis px-4 py-3 text-sm text-text-primary placeholder:text-text-ghost outline-none focus:border-text-tertiary transition-colors duration-[180ms]" />
-          <button className="bg-text-primary text-void px-6 py-3 text-sm font-medium cursor-pointer hover:bg-text-emphasis hover:scale-[1.02] active:scale-[0.98] transition-all duration-120">
+          <input
+            type="text"
+            value={engramName}
+            onChange={(e) => setEngramName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleBegin() }}
+            placeholder="Name your engram"
+            className="flex-1 bg-surface border border-border-emphasis px-4 py-3 text-sm text-text-primary placeholder:text-text-ghost outline-none focus:border-text-tertiary transition-colors duration-[180ms]"
+          />
+          <button
+            onClick={handleBegin}
+            className="bg-text-primary text-void px-6 py-3 text-sm font-medium cursor-pointer hover:bg-text-emphasis hover:scale-[1.02] active:scale-[0.98] transition-all duration-120"
+          >
             Begin
           </button>
         </div>
@@ -530,9 +552,8 @@ function CloseSection() {
 function Footer() {
   return (
     <footer className="py-20 flex justify-center gap-8 text-xs text-text-ghost">
-      {["Pricing", "Docs", "GitHub", "Twitter"].map((link) => (
-        <span key={link} className="cursor-pointer hover:text-text-tertiary transition-colors duration-120">{link}</span>
-      ))}
+      <Link href="/signup" className="hover:text-text-tertiary transition-colors duration-120">Get started</Link>
+      <Link href="/login" className="hover:text-text-tertiary transition-colors duration-120">Sign in</Link>
     </footer>
   )
 }
