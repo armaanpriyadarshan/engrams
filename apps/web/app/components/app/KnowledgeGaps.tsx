@@ -55,7 +55,7 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
   const preview = (
     <div className="px-3 py-2.5">
       <div className="flex items-center justify-between">
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Open questions</span>
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Knowledge Gaps</span>
         <span className="text-[9px] font-mono text-text-ghost">{loading ? "..." : gaps.length}</span>
       </div>
       {!loading && gaps.length === 0 && (
@@ -153,14 +153,6 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
                 </div>
               )}
 
-              {/* Action: research this question */}
-              <Link
-                href={`/app/${engramSlug}/ask?q=${encodeURIComponent(gap.question)}`}
-                onClick={(e) => e.stopPropagation()}
-                className="text-[10px] font-mono text-text-ghost hover:text-text-secondary border-b border-transparent hover:border-text-ghost transition-colors duration-120 mt-3 inline-block"
-              >
-                Research this question
-              </Link>
             </div>
           ))}
         </div>
