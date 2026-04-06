@@ -85,6 +85,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
     const ripple = { x: 0, y: 0, time: -100 }
     const unprojVec = new THREE.Vector3()
     let currentHovered = -1
+    let currentHoveredEdge = -1
 
     const screenToWorld = (cx: number, cy: number) => {
       const rect = container.getBoundingClientRect()
@@ -410,8 +411,32 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
         }
       }
 
+      // Edge hover detection (point-to-line-segment distance)
+      let hoveredEdge = -1
+      if (closest < 0 && edgeCount > 0) {
+        let bestEdgeDist = 8 // px threshold
+        for (let ei = 0; ei < edgeCount; ei++) {
+          const s3 = eSrc[ei] * 3, t3 = eTgt[ei] * 3
+          projVec.set(nodePositions[s3], nodePositions[s3 + 1], nodePositions[s3 + 2]).project(camera)
+          const sx1 = (projVec.x * 0.5 + 0.5) * rect.width + rect.left
+          const sy1 = (-projVec.y * 0.5 + 0.5) * rect.height + rect.top
+          projVec.set(nodePositions[t3], nodePositions[t3 + 1], nodePositions[t3 + 2]).project(camera)
+          const sx2 = (projVec.x * 0.5 + 0.5) * rect.width + rect.left
+          const sy2 = (-projVec.y * 0.5 + 0.5) * rect.height + rect.top
+          // Point-to-segment distance
+          const dx = sx2 - sx1, dy = sy2 - sy1
+          const len2 = dx * dx + dy * dy
+          if (len2 < 1) continue
+          const t2 = Math.max(0, Math.min(1, ((mouse.screenX - sx1) * dx + (mouse.screenY - sy1) * dy) / len2))
+          const px = sx1 + t2 * dx, py = sy1 + t2 * dy
+          const d2 = Math.hypot(mouse.screenX - px, mouse.screenY - py)
+          if (d2 < bestEdgeDist) { bestEdgeDist = d2; hoveredEdge = ei }
+        }
+      }
+
       // Update hover fade targets (combined with filter visibility)
-      if (closest !== currentHovered) {
+      if (closest !== currentHovered || hoveredEdge !== currentHoveredEdge) {
+        currentHoveredEdge = hoveredEdge
         currentHovered = closest
         if (closest >= 0) {
           const nbs = neighbors.get(closest) ?? new Set()
@@ -420,7 +445,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
             const filterOk = !vis || vis[i] === 1
             fadeTarget[i] = (i === closest || nbs.has(i)) ? 1.0 : (filterOk ? 0.08 : 0.02)
           }
-          // Show tooltip
+          // Show tooltip for node
           const i3 = closest * 3
           projVec.set(nodePositions[i3], nodePositions[i3 + 1], nodePositions[i3 + 2])
           projVec.project(camera)
@@ -434,6 +459,30 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
           const tags = node.tags.slice(0, 3).join(", ")
           tooltip.innerHTML = `<span style="color:var(--color-text-emphasis)">${node.title}</span><br/><span style="font-family:var(--font-mono);font-size:9px;color:var(--color-text-ghost)">${conf}%${node.articleType !== "concept" ? " · " + node.articleType : ""}${tags ? " · " + tags : ""}</span>`
           container.style.cursor = "pointer"
+        } else if (hoveredEdge >= 0) {
+          // Show tooltip for edge
+          const edge = edgeList[hoveredEdge]
+          const fromNode = data.nodes[edge.sourceIdx]
+          const toNode = data.nodes[edge.targetIdx]
+          const s3 = edge.sourceIdx * 3, t3 = edge.targetIdx * 3
+          projVec.set(
+            (nodePositions[s3] + nodePositions[t3]) / 2,
+            (nodePositions[s3 + 1] + nodePositions[t3 + 1]) / 2,
+            (nodePositions[s3 + 2] + nodePositions[t3 + 2]) / 2,
+          ).project(camera)
+          const tx = (projVec.x * 0.5 + 0.5) * rect.width
+          const ty = (-projVec.y * 0.5 + 0.5) * rect.height
+          tooltip.style.left = `${tx}px`
+          tooltip.style.top = `${ty - 12}px`
+          tooltip.style.opacity = "1"
+          tooltip.innerHTML = `<span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-secondary)">${fromNode.title} <span style="color:var(--color-text-ghost)">${edge.relation}</span> ${toNode.title}</span>`
+          container.style.cursor = "default"
+          // Highlight the two connected nodes
+          const vis = nodeVisibleRef.current
+          for (let i = 0; i < count; i++) {
+            const filterOk = !vis || vis[i] === 1
+            fadeTarget[i] = (i === edge.sourceIdx || i === edge.targetIdx) ? 1.0 : (filterOk ? 0.12 : 0.02)
+          }
         } else {
           const vis = nodeVisibleRef.current
           for (let i = 0; i < count; i++) fadeTarget[i] = (!vis || vis[i] === 1) ? 1.0 : 0.04
@@ -527,6 +576,19 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
         className="absolute font-heading text-sm text-text-emphasis pointer-events-none transition-opacity duration-120 -translate-x-1/2 text-center leading-tight bg-surface/90 backdrop-blur-sm border border-border px-3 py-1.5 rounded-sm"
         style={{ opacity: 0, transform: "translateX(-50%) translateY(-100%)", marginTop: "-8px" }}
       />
+      {/* Legend */}
+      <div className="absolute bottom-3 right-3 pointer-events-none">
+        <div className="bg-surface/70 backdrop-blur-sm border border-border rounded-sm px-3 py-2 space-y-1.5">
+          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: "rgb(107,128,240)" }} /><span className="text-[9px] font-mono text-text-ghost">concept</span></div>
+          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: "rgb(240,158,77)" }} /><span className="text-[9px] font-mono text-text-ghost">process</span></div>
+          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: "rgb(158,217,140)" }} /><span className="text-[9px] font-mono text-text-ghost">event</span></div>
+          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: "rgb(199,107,199)" }} /><span className="text-[9px] font-mono text-text-ghost">synthesis</span></div>
+          <div className="border-t border-border/50 my-1" />
+          <div className="flex items-center gap-2"><div className="w-3 h-px" style={{ backgroundColor: "rgb(85,85,85)" }} /><span className="text-[9px] font-mono text-text-ghost">related</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-px" style={{ backgroundColor: "rgb(143,89,41)" }} /><span className="text-[9px] font-mono text-text-ghost">requires</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-px" style={{ backgroundColor: "rgb(41,115,143)" }} /><span className="text-[9px] font-mono text-text-ghost">extends</span></div>
+        </div>
+      </div>
     </div>
   )
 }
