@@ -15,7 +15,16 @@ import AddSourceButton from "@/app/components/app/AddSourceButton"
 import AgentTimeline from "@/app/components/app/AgentTimeline"
 import AskBar from "@/app/components/app/AskBar"
 import KnowledgeGaps from "@/app/components/app/KnowledgeGaps"
-import { WidgetPanelProvider } from "@/app/components/app/WidgetPanel"
+import { WidgetPanelProvider, usePanelContext } from "@/app/components/app/WidgetPanel"
+
+function HideWhenPanelOpen({ children }: { children: React.ReactNode }) {
+  const { openId } = usePanelContext()
+  return (
+    <div style={{ opacity: openId ? 0 : 1, pointerEvents: openId ? "none" : "auto", transition: "opacity 180ms ease-out" }}>
+      {children}
+    </div>
+  )
+}
 
 const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
 
@@ -291,8 +300,10 @@ export default function EngramPage() {
         </div>
       )}
 
-      <ViewToggle onViewChange={setView} />
-      {engramId && <AddSourceButton engramId={engramId} />}
+      <HideWhenPanelOpen>
+        <ViewToggle onViewChange={setView} />
+        {engramId && <AddSourceButton engramId={engramId} />}
+      </HideWhenPanelOpen>
       {engramId && <AgentTimeline engramId={engramId} engramSlug={engramSlug} />}
       {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
 

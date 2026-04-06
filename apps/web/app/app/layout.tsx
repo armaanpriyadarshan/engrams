@@ -32,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main className="flex-1 overflow-hidden relative">
           {children}
         </main>
-        <div className="absolute bottom-3 left-4 text-[10px] font-mono text-text-ghost pointer-events-none z-40">
+        <div className="absolute bottom-3 left-4 text-[10px] font-mono text-text-ghost pointer-events-none z-20">
           {totalNodes} nodes &middot; {totalEdges} edges
         </div>
       </div>
