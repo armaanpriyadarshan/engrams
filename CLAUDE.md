@@ -20,11 +20,14 @@ engrams/
 
 ## Tech Stack
 
-- **Frontend:** Next.js 14+ (App Router), TypeScript, Tailwind CSS
-- **Backend:** FastAPI (Python), Celery + Redis (async jobs)
-- **Database:** Supabase (Postgres + Auth + Realtime + Storage)
-- **LLM:** OpenAI API (GPT-4o for compilation/queries, GPT-4o-mini for lightweight)
-- **Visualizations:** Three.js / WebGL (knowledge graph), D3 (heatmaps, timelines)
+- **Frontend:** Next.js 16 (App Router), TypeScript, Tailwind CSS 4
+- **Backend:** Supabase Edge Functions (Deno/TypeScript) — serverless, no separate server needed
+- **Database:** Supabase (Postgres + Auth + Realtime + Storage + Vault + pg_cron)
+- **LLM:** OpenAI API (GPT-4o-mini for compilation/queries)
+- **Visualizations:** Three.js / WebGL (knowledge graph), d3-force (graph layout)
+- **Integrations:** GitHub, Notion, Google Drive via OAuth + Edge Functions
+- **Scheduling:** pg_cron for automated sync (every 30 min)
+- **Future scaling:** FastAPI backend in packages/api/ (Python, Celery + Redis) for when Edge Functions aren't enough
 - **Desktop:** Tauri (Rust)
 - **Mobile:** Expo (React Native)
 - **Extension:** Chrome MV3

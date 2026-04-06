@@ -11,8 +11,8 @@ export default function OAuthCallbackPage() {
   const service = params.service as string
   const engramSlug = params.engram as string
   const code = searchParams.get("code")
+  const state = searchParams.get("state") // engram_id
   const error = searchParams.get("error")
-  const engramId = searchParams.get("state") || ""
 
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading")
   const [message, setMessage] = useState("")
@@ -23,37 +23,34 @@ export default function OAuthCallbackPage() {
       setMessage(`Authorization denied: ${error}`)
       return
     }
-    if (!code) {
+    if (!code || !state) {
       setStatus("error")
       setMessage("No authorization code received.")
       return
     }
 
-    const redirectUri = `${window.location.origin}/app/${engramSlug}/settings/callback/${service}`
     const supabase = createClient()
+    const redirectUri = `${window.location.origin}/app/${engramSlug}/settings/callback/${service}`
 
-    supabase.functions.invoke("manage-integration", {
+    supabase.functions.invoke("integration-auth", {
       body: {
-        action: "exchange-code",
-        engram_id: engramId,
+        action: "callback",
         service,
-        code,
+        engram_id: state,
         redirect_uri: redirectUri,
+        code,
       },
     }).then(({ data, error: fnError }) => {
-      if (fnError || data?.error) {
+      if (fnError || !data) {
         setStatus("error")
-        setMessage(data?.error || "Failed to connect.")
+        setMessage("Failed to connect. Try again.")
       } else {
         setStatus("success")
         setMessage(`${service} connected.`)
-        setTimeout(() => router.push(`/app/${engramSlug}`), 1500)
+        setTimeout(() => router.push(`/app/${engramSlug}/settings`), 1500)
       }
-    }).catch(() => {
-      setStatus("error")
-      setMessage("Connection failed.")
     })
-  }, [code, error, service, engramSlug, engramId, router])
+  }, [code, error, state, service, engramSlug, router])
 
   return (
     <div className="h-full flex items-center justify-center">
@@ -64,17 +61,17 @@ export default function OAuthCallbackPage() {
         {status === "success" && (
           <>
             <p className="text-sm text-confidence-high">{message}</p>
-            <p className="mt-2 text-xs text-text-tertiary">Redirecting...</p>
+            <p className="mt-2 text-xs text-text-tertiary">Redirecting to settings...</p>
           </>
         )}
         {status === "error" && (
           <>
             <p className="text-sm text-danger">{message}</p>
             <button
-              onClick={() => router.push(`/app/${engramSlug}`)}
+              onClick={() => router.push(`/app/${engramSlug}/settings`)}
               className="mt-4 text-xs font-mono text-text-secondary hover:text-text-emphasis transition-colors duration-120 cursor-pointer"
             >
-              Back to engram
+              Back to settings
             </button>
           </>
         )}
