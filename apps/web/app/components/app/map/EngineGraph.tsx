@@ -184,6 +184,8 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
     // Relation → color mapping
     const relationColors: Record<string, [number, number, number]> = {
       related: [0.33, 0.33, 0.33],
+      requires: [0.56, 0.35, 0.16],
+      extends: [0.16, 0.45, 0.56],
       causation: [0.56, 0.16, 0.16],
       contradiction: [0.56, 0.45, 0.16],
       evolution: [0.16, 0.45, 0.56],
