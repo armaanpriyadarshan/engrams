@@ -13,6 +13,41 @@ interface EngineGraphProps {
   nodeVisible?: Uint8Array | null
 }
 
+const nodeTypeDisplay: Record<string, { label: string; color: string }> = {
+  concept: { label: "concept", color: "rgb(107,128,240)" },
+  process: { label: "process", color: "rgb(240,158,77)" },
+  event: { label: "event", color: "rgb(158,217,140)" },
+  synthesis: { label: "synthesis", color: "rgb(199,107,199)" },
+}
+const edgeTypeDisplay: Record<string, { label: string; color: string }> = {
+  related: { label: "related", color: "rgb(85,85,85)" },
+  requires: { label: "requires", color: "rgb(143,89,41)" },
+  extends: { label: "extends", color: "rgb(41,115,143)" },
+  causation: { label: "causation", color: "rgb(143,41,41)" },
+  contradiction: { label: "contradiction", color: "rgb(143,115,41)" },
+  evolution: { label: "evolution", color: "rgb(41,115,143)" },
+  supports: { label: "supports", color: "rgb(77,115,77)" },
+}
+
+function GraphLegend({ data }: { data: GraphData }) {
+  const nodeTypes = [...new Set(data.nodes.map(n => n.articleType))].filter(t => t in nodeTypeDisplay)
+  const edgeTypes = [...new Set(data.edges.map(e => e.relation))].filter(r => r in edgeTypeDisplay)
+  if (nodeTypes.length === 0 && edgeTypes.length === 0) return null
+  return (
+    <div className="absolute bottom-3 right-3 pointer-events-none">
+      <div className="bg-surface/70 backdrop-blur-sm border border-border rounded-sm px-3 py-2 space-y-1.5">
+        {nodeTypes.map(t => (
+          <div key={t} className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: nodeTypeDisplay[t].color }} /><span className="text-[9px] font-mono text-text-ghost">{nodeTypeDisplay[t].label}</span></div>
+        ))}
+        {edgeTypes.length > 0 && nodeTypes.length > 0 && <div className="border-t border-border/50 my-1" />}
+        {edgeTypes.map(r => (
+          <div key={r} className="flex items-center gap-2"><div className="w-3 h-px" style={{ backgroundColor: edgeTypeDisplay[r].color }} /><span className="text-[9px] font-mono text-text-ghost">{edgeTypeDisplay[r].label}</span></div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function EngineGraph({ data, positions, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -475,7 +510,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
           tooltip.style.left = `${tx}px`
           tooltip.style.top = `${ty - 12}px`
           tooltip.style.opacity = "1"
-          tooltip.innerHTML = `<span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-secondary)">${fromNode.title} <span style="color:var(--color-text-ghost)">${edge.relation}</span> ${toNode.title}</span>`
+          tooltip.innerHTML = `<span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-secondary)">${fromNode.title} <span style="color:var(--color-text-ghost)">&mdash; ${edge.relation} &mdash;</span> ${toNode.title}</span>`
           container.style.cursor = "default"
           // Highlight the two connected nodes
           const vis = nodeVisibleRef.current
@@ -576,19 +611,8 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
         className="absolute font-heading text-sm text-text-emphasis pointer-events-none transition-opacity duration-120 -translate-x-1/2 text-center leading-tight bg-surface/90 backdrop-blur-sm border border-border px-3 py-1.5 rounded-sm"
         style={{ opacity: 0, transform: "translateX(-50%) translateY(-100%)", marginTop: "-8px" }}
       />
-      {/* Legend */}
-      <div className="absolute bottom-3 right-3 pointer-events-none">
-        <div className="bg-surface/70 backdrop-blur-sm border border-border rounded-sm px-3 py-2 space-y-1.5">
-          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: "rgb(107,128,240)" }} /><span className="text-[9px] font-mono text-text-ghost">concept</span></div>
-          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: "rgb(240,158,77)" }} /><span className="text-[9px] font-mono text-text-ghost">process</span></div>
-          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: "rgb(158,217,140)" }} /><span className="text-[9px] font-mono text-text-ghost">event</span></div>
-          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: "rgb(199,107,199)" }} /><span className="text-[9px] font-mono text-text-ghost">synthesis</span></div>
-          <div className="border-t border-border/50 my-1" />
-          <div className="flex items-center gap-2"><div className="w-3 h-px" style={{ backgroundColor: "rgb(85,85,85)" }} /><span className="text-[9px] font-mono text-text-ghost">related</span></div>
-          <div className="flex items-center gap-2"><div className="w-3 h-px" style={{ backgroundColor: "rgb(143,89,41)" }} /><span className="text-[9px] font-mono text-text-ghost">requires</span></div>
-          <div className="flex items-center gap-2"><div className="w-3 h-px" style={{ backgroundColor: "rgb(41,115,143)" }} /><span className="text-[9px] font-mono text-text-ghost">extends</span></div>
-        </div>
-      </div>
+      {/* Legend — only shows types/relations present in the graph */}
+      <GraphLegend data={data} />
     </div>
   )
 }
