@@ -69,8 +69,9 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
         articles_created: created,
         articles_updated: updated,
       }, source.id)
-      // Generate embeddings for new/updated articles
+      // Generate embeddings + detect gaps in background
       supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
+      supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: source.id } })
       router.refresh()
     }
     setSubmitting(false)

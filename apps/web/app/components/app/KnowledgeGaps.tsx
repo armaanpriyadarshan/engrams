@@ -3,145 +3,67 @@
 import { useEffect, useState, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { WidgetPanel } from "./WidgetPanel"
 
 interface Gap {
-  type: "missing" | "low_confidence" | "orphan" | "thin_answer"
-  slug?: string
-  label: string
-  detail: string
-  actionLabel: string
-  actionHref?: string
-  sourceId?: string
+  id: string
+  question: string
+  evidence: string
+  related_slugs: string[]
+  source_refs: string[]
+  confidence_context: string | null
+  suggested_sources: string[]
+  status: string
+  created_at: string
+}
+
+interface RelatedArticle {
+  slug: string
+  title: string
+  confidence: number
 }
 
 export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: string; engramSlug: string }) {
-  const router = useRouter()
   const [gaps, setGaps] = useState<Gap[]>([])
-  const [recompiling, setRecompiling] = useState<string | null>(null)
+  const [articles, setArticles] = useState<RelatedArticle[]>([])
+  const [loading, setLoading] = useState(true)
+  const [detecting, setDetecting] = useState(false)
 
-  useEffect(() => {
+  const loadGaps = useCallback(async () => {
     const supabase = createClient()
+    const [gapsRes, articlesRes] = await Promise.all([
+      supabase.from("knowledge_gaps").select("*").eq("engram_id", engramId).eq("status", "open").order("created_at", { ascending: false }),
+      supabase.from("articles").select("slug, title, confidence").eq("engram_id", engramId),
+    ])
+    setGaps(gapsRes.data ?? [])
+    setArticles(articlesRes.data ?? [])
+    setLoading(false)
+  }, [engramId])
 
-    Promise.all([
-      supabase.from("articles").select("slug, title, confidence, content_md, source_ids, related_slugs").eq("engram_id", engramId),
-      supabase.from("edges").select("from_slug, to_slug").eq("engram_id", engramId),
-      supabase.from("queries").select("question, answer_md, articles_consulted").eq("engram_id", engramId).eq("status", "completed"),
-    ]).then(([articlesRes, edgesRes, queriesRes]) => {
-      const articles = articlesRes.data ?? []
-      const edges = edgesRes.data ?? []
-      const queries = queriesRes.data ?? []
-      const found: Gap[] = []
-      const slugSet = new Set(articles.map(a => a.slug))
+  useEffect(() => { loadGaps() }, [loadGaps])
 
-      // Missing articles: [[slug]] references to non-existent articles
-      const wikiLinkPattern = /\[\[([^\]]+)\]\]/g
-      for (const a of articles) {
-        const content = a.content_md ?? ""
-        let match
-        while ((match = wikiLinkPattern.exec(content)) !== null) {
-          const ref = match[1]
-          if (!slugSet.has(ref)) {
-            found.push({
-              type: "missing",
-              label: ref.replace(/-/g, " "),
-              detail: `Referenced in "${a.title ?? a.slug}".`,
-              actionLabel: "Research",
-              actionHref: `/app/${engramSlug}/ask?q=${encodeURIComponent(ref.replace(/-/g, " "))}`,
-            })
-          }
-        }
-      }
-
-      // Low confidence
-      for (const a of articles) {
-        if ((a.confidence ?? 0) < 0.5) {
-          found.push({
-            type: "low_confidence",
-            slug: a.slug,
-            label: a.title ?? a.slug,
-            detail: `${Math.round((a.confidence ?? 0) * 100)}% confidence.`,
-            actionLabel: "View article",
-            actionHref: `/app/${engramSlug}/article/${a.slug}`,
-          })
-        }
-      }
-
-      // Orphans: articles with zero edges
-      const connectedSlugs = new Set<string>()
-      for (const e of edges) { connectedSlugs.add(e.from_slug); connectedSlugs.add(e.to_slug) }
-      for (const a of articles) {
-        if (!connectedSlugs.has(a.slug)) {
-          const sourceIds = a.source_ids as string[] ?? []
-          found.push({
-            type: "orphan",
-            slug: a.slug,
-            label: a.title ?? a.slug,
-            detail: "No connections to other articles.",
-            actionLabel: sourceIds.length > 0 ? "Recompile" : "View article",
-            actionHref: sourceIds.length > 0 ? undefined : `/app/${engramSlug}/article/${a.slug}`,
-            sourceId: sourceIds[0],
-          })
-        }
-      }
-
-      // Thin answers
-      for (const q of queries) {
-        const consulted = q.articles_consulted as string[] ?? []
-        const answerLen = (q.answer_md ?? "").length
-        if (consulted.length === 0 || answerLen < 100) {
-          found.push({
-            type: "thin_answer",
-            label: q.question,
-            detail: consulted.length === 0 ? "No articles consulted." : "Answer was thin.",
-            actionLabel: "Ask again",
-            actionHref: `/app/${engramSlug}/ask?q=${encodeURIComponent(q.question)}`,
-          })
-        }
-      }
-
-      // Deduplicate
-      const seen = new Set<string>()
-      setGaps(found.filter(g => {
-        const key = `${g.type}:${g.label}`
-        if (seen.has(key)) return false
-        seen.add(key)
-        return true
-      }))
-    })
-  }, [engramId, engramSlug])
-
-  const handleRecompile = useCallback(async (sourceId: string) => {
-    setRecompiling(sourceId)
+  const runDetection = useCallback(async () => {
+    setDetecting(true)
     const supabase = createClient()
-    await supabase.functions.invoke("compile-source", { body: { source_id: sourceId } })
-    supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
-    setRecompiling(null)
-    router.refresh()
-  }, [engramId, router])
+    await supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId } })
+    await loadGaps()
+    setDetecting(false)
+  }, [engramId, loadGaps])
 
-  const typeCounts = { missing: 0, low_confidence: 0, orphan: 0, thin_answer: 0 }
-  for (const g of gaps) typeCounts[g.type]++
-
-  const typeLabel: Record<string, string> = { missing: "Missing", low_confidence: "Low conf", orphan: "Orphan", thin_answer: "Thin" }
-  const typeColor: Record<string, string> = { missing: "bg-confidence-low", low_confidence: "bg-confidence-mid", orphan: "bg-text-ghost", thin_answer: "bg-agent-active" }
-
-  const summaryParts: string[] = []
-  if (typeCounts.missing > 0) summaryParts.push(`${typeCounts.missing} missing`)
-  if (typeCounts.low_confidence > 0) summaryParts.push(`${typeCounts.low_confidence} weak`)
-  if (typeCounts.orphan > 0) summaryParts.push(`${typeCounts.orphan} orphan`)
-  if (typeCounts.thin_answer > 0) summaryParts.push(`${typeCounts.thin_answer} thin`)
+  const getArticle = (slug: string) => articles.find(a => a.slug === slug)
 
   const preview = (
     <div className="px-3 py-2.5">
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Gaps</span>
-        <span className="text-[9px] font-mono text-text-ghost">{gaps.length}</span>
+        <span className="text-[9px] font-mono text-text-ghost">{loading ? "..." : gaps.length}</span>
       </div>
-      <p className="mt-1.5 text-[10px] text-text-ghost truncate">
-        {gaps.length === 0 ? "No gaps found." : summaryParts.join(" · ")}
-      </p>
+      {!loading && gaps.length === 0 && (
+        <p className="mt-1.5 text-[10px] text-text-ghost">No open questions.</p>
+      )}
+      {!loading && gaps.length > 0 && (
+        <p className="mt-1.5 text-[10px] text-text-tertiary truncate">{gaps[0].question}</p>
+      )}
     </div>
   )
 
@@ -151,55 +73,92 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
       className="absolute bottom-3 left-3 max-w-[260px] animate-slide-in-left border-l-border-emphasis"
       preview={preview}
     >
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Knowledge Gaps</span>
-        <span className="text-[9px] font-mono text-text-ghost">{gaps.length}</span>
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Open Questions</span>
+        <button
+          onClick={(e) => { e.stopPropagation(); runDetection() }}
+          disabled={detecting}
+          className="text-[9px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer disabled:opacity-30"
+        >
+          {detecting ? "Analyzing..." : "Detect"}
+        </button>
       </div>
 
-      {gaps.length === 0 && (
-        <p className="text-xs text-text-tertiary mt-4">No gaps found. Your engram is healthy.</p>
+      {loading && <p className="text-xs text-text-ghost">Loading...</p>}
+
+      {!loading && gaps.length === 0 && (
+        <div>
+          <p className="text-xs text-text-tertiary">No open research questions.</p>
+          <p className="text-[10px] text-text-ghost mt-2">Gaps are detected automatically after compilation, or you can run detection manually.</p>
+        </div>
       )}
 
-      {/* Summary bar */}
-      {gaps.length > 0 && <div className="flex gap-3 mb-6">
-        {(["missing", "low_confidence", "orphan", "thin_answer"] as const).map(type => (
-          typeCounts[type] > 0 && (
-            <div key={type} className="flex items-center gap-1.5">
-              <div className={`w-1 h-1 rounded-full ${typeColor[type]}`} />
-              <span className="text-[10px] font-mono text-text-ghost">{typeCounts[type]} {typeLabel[type].toLowerCase()}</span>
-            </div>
-          )
-        ))}
-      </div>}
+      {!loading && gaps.length > 0 && (
+        <div className="space-y-6">
+          {gaps.map((gap) => (
+            <div key={gap.id} className="border-b border-border/50 pb-5 last:border-0 last:pb-0">
+              {/* Question */}
+              <p className="text-sm text-text-emphasis leading-relaxed">{gap.question}</p>
 
-      {gaps.length > 0 && <div className="space-y-0">
-        {gaps.map((gap, i) => (
-          <div key={i} className="flex items-start gap-3 border-b border-border/50 py-3 first:pt-0 last:border-0">
-            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${typeColor[gap.type]}`} />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-text-secondary">{gap.label}</p>
-              <p className="text-[10px] font-mono text-text-ghost mt-0.5">{gap.detail}</p>
-              {gap.actionHref ? (
-                <Link
-                  href={gap.actionHref}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-[10px] font-mono text-text-ghost hover:text-text-secondary border-b border-transparent hover:border-text-ghost transition-colors duration-120 mt-1.5 inline-block"
-                >
-                  {gap.actionLabel}
-                </Link>
-              ) : gap.sourceId ? (
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleRecompile(gap.sourceId!) }}
-                  disabled={recompiling === gap.sourceId}
-                  className="text-[10px] font-mono text-text-ghost hover:text-text-secondary border-b border-transparent hover:border-text-ghost transition-colors duration-120 mt-1.5 cursor-pointer disabled:opacity-30"
-                >
-                  {recompiling === gap.sourceId ? "Recompiling..." : gap.actionLabel}
-                </button>
-              ) : null}
+              {/* Evidence */}
+              <p className="text-[11px] text-text-secondary mt-2 leading-relaxed">{gap.evidence}</p>
+
+              {/* Confidence context */}
+              {gap.confidence_context && (
+                <p className="text-[10px] font-mono text-confidence-mid mt-2">{gap.confidence_context}</p>
+              )}
+
+              {/* Related articles */}
+              {gap.related_slugs.length > 0 && (
+                <div className="mt-3">
+                  <span className="text-[9px] font-mono text-text-ghost uppercase">Bordering articles</span>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {gap.related_slugs.map(slug => {
+                      const art = getArticle(slug)
+                      return (
+                        <Link
+                          key={slug}
+                          href={`/app/${engramSlug}/article/${slug}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[10px] font-mono text-text-ghost hover:text-text-secondary border border-border/60 px-1.5 py-0.5 transition-colors duration-120 flex items-center gap-1.5"
+                        >
+                          <span>{art?.title ?? slug.replace(/-/g, " ")}</span>
+                          {art && (
+                            <span className={`text-[8px] ${art.confidence > 0.7 ? "text-confidence-high" : art.confidence > 0.4 ? "text-confidence-mid" : "text-confidence-low"}`}>
+                              {Math.round(art.confidence * 100)}%
+                            </span>
+                          )}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Suggested sources */}
+              {gap.suggested_sources.length > 0 && (
+                <div className="mt-3">
+                  <span className="text-[9px] font-mono text-text-ghost uppercase">To fill this gap</span>
+                  <div className="mt-1.5 space-y-1">
+                    {gap.suggested_sources.map((s, i) => (
+                      <p key={i} className="text-[10px] text-text-ghost">{s}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action: research this question */}
+              <Link
+                href={`/app/${engramSlug}/ask?q=${encodeURIComponent(gap.question)}`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-[10px] font-mono text-text-ghost hover:text-text-secondary border-b border-transparent hover:border-text-ghost transition-colors duration-120 mt-3 inline-block"
+              >
+                Research this question
+              </Link>
             </div>
-          </div>
-        ))}
-      </div>}
+          ))}
+        </div>
+      )}
     </WidgetPanel>
   )
 }

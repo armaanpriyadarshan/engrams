@@ -102,6 +102,7 @@ export default function AskPage() {
         articles_updated: updated,
       }, source.id)
       supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
+      supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: source.id } })
       router.refresh()
     }
     setFiling(false)
