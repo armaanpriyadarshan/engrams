@@ -62,7 +62,7 @@ export default function ArticlePreview({ slug, engramSlug, engramId }: ArticlePr
     <div>
       <Link
         href={`/app/${engramSlug}/article/${slug}`}
-        className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-150"
+        className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120"
       >
         Open full article &rarr;
       </Link>

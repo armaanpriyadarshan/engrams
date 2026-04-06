@@ -104,19 +104,19 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
             <button
               onClick={handleSampleProject}
               disabled={loadingSample}
-              className="mt-2 w-full group border border-border hover:border-border-emphasis bg-surface p-4 text-left transition-all duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-default"
+              className="mt-2 w-full group border border-border hover:border-border-emphasis bg-surface p-4 text-left transition-all duration-120 cursor-pointer disabled:opacity-40 disabled:cursor-default"
             >
               <div className="flex items-start gap-3">
                 <div className="w-2 h-2 mt-1.5 rounded-full shrink-0 bg-confidence-high" />
                 <div className="min-w-0 flex-1">
-                  <span className="block text-sm text-text-primary group-hover:text-text-emphasis transition-colors duration-150">
+                  <span className="block text-sm text-text-primary group-hover:text-text-emphasis transition-colors duration-120">
                     {loadingSample ? "Forming..." : "Coffee"}
                   </span>
                   <span className="block text-xs text-text-tertiary mt-1 leading-relaxed">
                     Processing methods, espresso extraction, third wave movement. 3 sources, ready to compile.
                   </span>
                 </div>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-ghost group-hover:text-text-tertiary mt-1 shrink-0 transition-colors duration-150">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-ghost group-hover:text-text-tertiary mt-1 shrink-0 transition-colors duration-120">
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
               </div>
@@ -139,12 +139,12 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleCreateBlank() }}
                 placeholder="Name your engram"
-                className="flex-1 bg-surface border border-border px-3 py-2.5 text-sm text-text-primary placeholder:text-text-ghost outline-none focus:border-border-emphasis transition-colors duration-150"
+                className="flex-1 bg-surface border border-border px-3 py-2.5 text-sm text-text-primary placeholder:text-text-ghost outline-none focus:border-border-emphasis transition-colors duration-120"
               />
               <button
                 onClick={handleCreateBlank}
                 disabled={creating || !newName.trim()}
-                className="bg-text-primary text-void px-4 py-2.5 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-20 disabled:cursor-default transition-colors duration-150 shrink-0"
+                className="bg-text-primary text-void px-4 py-2.5 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-20 disabled:cursor-default transition-colors duration-120 shrink-0"
               >
                 {creating ? "..." : "Form"}
               </button>

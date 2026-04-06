@@ -185,8 +185,8 @@ function NavBar({ visible }: { visible: boolean }) {
       pointerEvents: visible ? "auto" : "none",
       transition: "opacity 600ms ease-out",
     }}>
-      <Link href="/" className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150">engrams</Link>
-      <Link href="/login" className="text-sm text-text-tertiary hover:text-text-emphasis transition-colors duration-150">Sign in</Link>
+      <Link href="/" className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120">engrams</Link>
+      <Link href="/login" className="text-sm text-text-tertiary hover:text-text-emphasis transition-colors duration-120">Sign in</Link>
     </div>
   )
 }
@@ -364,10 +364,10 @@ function AskSection() {
             <div className="mt-12 space-y-5 leading-[1.7] text-[15px] border-l border-border pl-5">
               <p className="text-text-primary">
                 The symbolic-connectionist debate represents the deepest fault line in AI research.{" "}
-                <span className="text-text-secondary hover:text-text-emphasis transition-colors duration-150 border-b border-border cursor-pointer">Symbolic AI</span>{" "}
+                <span className="text-text-secondary hover:text-text-emphasis transition-colors duration-120 border-b border-border cursor-pointer">Symbolic AI</span>{" "}
                 treats intelligence as the manipulation of discrete symbols according to explicit rules &mdash;
                 programs that reason through logic, search, and knowledge representation.{" "}
-                <span className="text-text-secondary hover:text-text-emphasis transition-colors duration-150 border-b border-border cursor-pointer">Connectionist approaches</span>{" "}
+                <span className="text-text-secondary hover:text-text-emphasis transition-colors duration-120 border-b border-border cursor-pointer">Connectionist approaches</span>{" "}
                 treat intelligence as an emergent property of distributed numerical computation &mdash;
                 networks that learn patterns from data without explicit programming.
               </p>
@@ -393,7 +393,7 @@ function AskSection() {
             transform: showFiled ? "translateY(0)" : "translateY(10px)",
             transition: "opacity 500ms ease-out 200ms, transform 500ms ease-out 200ms",
           }}>
-            <p className="font-heading text-2xl md:text-3xl text-text-emphasis">Every question makes it smarter.</p>
+            <p className="font-heading text-2xl md:text-3xl text-text-emphasis">Every question compounds the knowledge.</p>
           </div>
         </div>
       </ScrollSection>
@@ -518,7 +518,7 @@ function CloseSection() {
         <div className="mt-14 flex flex-col sm:flex-row gap-3 w-full max-w-sm">
           <input type="text" placeholder="Name your engram"
             className="flex-1 bg-surface border border-border-emphasis px-4 py-3 text-sm text-text-primary placeholder:text-text-ghost outline-none focus:border-text-tertiary transition-colors duration-[180ms]" />
-          <button className="bg-text-primary text-void px-6 py-3 text-sm font-medium cursor-pointer hover:bg-text-emphasis hover:scale-[1.02] active:scale-[0.98] transition-all duration-150">
+          <button className="bg-text-primary text-void px-6 py-3 text-sm font-medium cursor-pointer hover:bg-text-emphasis hover:scale-[1.02] active:scale-[0.98] transition-all duration-120">
             Begin
           </button>
         </div>
@@ -531,7 +531,7 @@ function Footer() {
   return (
     <footer className="py-20 flex justify-center gap-8 text-xs text-text-ghost">
       {["Pricing", "Docs", "GitHub", "Twitter"].map((link) => (
-        <span key={link} className="cursor-pointer hover:text-text-tertiary transition-colors duration-150">{link}</span>
+        <span key={link} className="cursor-pointer hover:text-text-tertiary transition-colors duration-120">{link}</span>
       ))}
     </footer>
   )

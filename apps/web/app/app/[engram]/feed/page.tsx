@@ -115,7 +115,7 @@ export default function FeedPage() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`text-xs font-mono transition-colors duration-150 cursor-pointer ${
+            className={`text-xs font-mono transition-colors duration-120 cursor-pointer ${
               activeTab === tab.id ? "text-text-emphasis" : "text-text-tertiary hover:text-text-secondary"
             }`}
           >
@@ -136,7 +136,7 @@ export default function FeedPage() {
           <button
             onClick={() => submit("url", url)}
             disabled={submitting || !url.trim()}
-            className="mt-4 bg-text-primary text-void px-5 py-2.5 text-sm font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-150"
+            className="mt-4 bg-text-primary text-void px-5 py-2.5 text-sm font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-120"
           >
             {submitting ? "Adding..." : "Feed"}
           </button>
@@ -155,7 +155,7 @@ export default function FeedPage() {
           <button
             onClick={() => submit("text", text)}
             disabled={submitting || !text.trim()}
-            className="mt-4 bg-text-primary text-void px-5 py-2.5 text-sm font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-150"
+            className="mt-4 bg-text-primary text-void px-5 py-2.5 text-sm font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-120"
           >
             {submitting ? "Adding..." : "Feed"}
           </button>
@@ -175,7 +175,7 @@ export default function FeedPage() {
               if (file) handleFile(file)
             }}
             onClick={() => fileRef.current?.click()}
-            className={`border border-dashed px-6 py-16 text-center cursor-pointer transition-all duration-200 ease-out ${
+            className={`border border-dashed px-6 py-16 text-center cursor-pointer transition-all duration-180 ease-out ${
               isDragging
                 ? "border-border-emphasis bg-surface-raised"
                 : "border-border hover:border-border-emphasis"

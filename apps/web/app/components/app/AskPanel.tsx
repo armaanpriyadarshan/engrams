@@ -136,7 +136,7 @@ export default function AskPanel({ engramId, engramSlug, prefill, allEngrams }: 
         {result && (
           <button
             onClick={() => { setResult(null); setQuestion(""); setError(""); setFileStatus("") }}
-            className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer"
+            className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer"
           >
             New question
           </button>
@@ -163,7 +163,7 @@ export default function AskPanel({ engramId, engramSlug, prefill, allEngrams }: 
       <button
         onClick={() => ask()}
         disabled={asking || !question.trim()}
-        className="mt-2 bg-text-primary text-void px-4 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-150"
+        className="mt-2 bg-text-primary text-void px-4 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-120"
       >
         {asking ? "Researching..." : "Ask"}
       </button>
@@ -183,7 +183,7 @@ export default function AskPanel({ engramId, engramSlug, prefill, allEngrams }: 
               <div className="space-y-0.5">
                 {result.articles_consulted.map((slug) => (
                   <Link key={slug} href={`/app/${engramSlug}/article/${slug}`}
-                    className="block text-xs text-text-secondary hover:text-text-emphasis transition-colors duration-150">
+                    className="block text-xs text-text-secondary hover:text-text-emphasis transition-colors duration-120">
                     {slug.replace(/-/g, " ")}
                   </Link>
                 ))}
@@ -196,7 +196,7 @@ export default function AskPanel({ engramId, engramSlug, prefill, allEngrams }: 
               <h3 className="text-[10px] text-text-tertiary uppercase tracking-widest font-mono mb-2">Follow up</h3>
               {result.suggested_followups.map((f, i) => (
                 <button key={i} onClick={() => { setQuestion(f); ask(f) }}
-                  className="block text-xs text-text-secondary hover:text-text-emphasis transition-colors duration-150 cursor-pointer text-left mb-1">
+                  className="block text-xs text-text-secondary hover:text-text-emphasis transition-colors duration-120 cursor-pointer text-left mb-1">
                   {f}
                 </button>
               ))}
@@ -207,7 +207,7 @@ export default function AskPanel({ engramId, engramSlug, prefill, allEngrams }: 
             <p className={`mt-3 text-[10px] font-mono ${filing ? "text-agent-active" : "text-text-tertiary"}`}>{fileStatus}</p>
           ) : (
             <button onClick={() => compileAnswer(result.answer_md, question)} disabled={filing}
-              className="mt-3 text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer">
+              className="mt-3 text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer">
               File as article
             </button>
           )}
@@ -223,7 +223,7 @@ export default function AskPanel({ engramId, engramSlug, prefill, allEngrams }: 
               setResult({ query_id: q.id, answer_md: q.answer_md ?? "", articles_consulted: q.articles_consulted ?? [], suggested_followups: q.suggested_followups ?? [] })
               setFileStatus("")
             }}
-              className="block text-xs text-text-secondary hover:text-text-emphasis transition-colors duration-150 cursor-pointer text-left truncate w-full mb-1">
+              className="block text-xs text-text-secondary hover:text-text-emphasis transition-colors duration-120 cursor-pointer text-left truncate w-full mb-1">
               {q.question}
             </button>
           ))}

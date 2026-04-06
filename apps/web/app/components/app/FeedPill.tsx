@@ -96,7 +96,7 @@ export default function FeedPill({ engramId }: FeedPillProps) {
       {!expanded && (
         <button
           onClick={() => setExpanded(true)}
-          className="bg-surface-raised border border-border hover:border-border-emphasis px-5 py-2.5 text-xs font-mono text-text-secondary hover:text-text-emphasis transition-all duration-150 cursor-pointer whitespace-nowrap animate-fade-in"
+          className="bg-surface-raised border border-border hover:border-border-emphasis px-5 py-2.5 text-xs font-mono text-text-secondary hover:text-text-emphasis transition-all duration-120 cursor-pointer whitespace-nowrap animate-fade-in"
         >
           + Feed source
         </button>
@@ -111,7 +111,7 @@ export default function FeedPill({ engramId }: FeedPillProps) {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`text-[10px] font-mono transition-colors duration-150 cursor-pointer uppercase ${
+              className={`text-[10px] font-mono transition-colors duration-120 cursor-pointer uppercase ${
                 activeTab === tab ? "text-text-emphasis" : "text-text-ghost hover:text-text-tertiary"
               }`}
             >
@@ -133,7 +133,7 @@ export default function FeedPill({ engramId }: FeedPillProps) {
             <button
               onClick={() => submit("url", url)}
               disabled={submitting || !url.trim()}
-              className="bg-text-primary text-void px-3 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-150 shrink-0"
+              className="bg-text-primary text-void px-3 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-120 shrink-0"
             >
               Feed
             </button>
@@ -153,7 +153,7 @@ export default function FeedPill({ engramId }: FeedPillProps) {
             <button
               onClick={() => submit("text", text)}
               disabled={submitting || !text.trim()}
-              className="mt-2 bg-text-primary text-void px-3 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-150"
+              className="mt-2 bg-text-primary text-void px-3 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-120"
             >
               Feed
             </button>
@@ -171,7 +171,7 @@ export default function FeedPill({ engramId }: FeedPillProps) {
               if (file) handleFile(file)
             }}
             onClick={() => fileRef.current?.click()}
-            className={`border border-dashed px-4 py-8 text-center cursor-pointer transition-all duration-200 ${
+            className={`border border-dashed px-4 py-8 text-center cursor-pointer transition-all duration-180 ease-out ${
               isDragging ? "border-border-emphasis bg-surface-elevated" : "border-border hover:border-border-emphasis"
             }`}
           >

@@ -55,7 +55,7 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
               <div className="mt-2 flex flex-wrap gap-2">
                 {articlesConsulted.map((slug) => (
                   <Link key={slug} href={`/app/${engramSlug}/article/${slug}`}
-                    className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-150">
+                    className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120">
                     {slug.replace(/-/g, " ")}
                   </Link>
                 ))}
@@ -65,7 +65,7 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
               <div className="mt-2 flex flex-wrap gap-2">
                 {followups.map((f, i) => (
                   <button key={i} onClick={() => { setQuery(f); handleSubmit(f) }}
-                    className="text-[10px] text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer">
+                    className="text-[10px] text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer">
                     {f}
                   </button>
                 ))}
@@ -73,7 +73,7 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
             )}
             <button
               onClick={clear}
-              className="mt-2 text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer"
+              className="mt-2 text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer"
             >
               Clear
             </button>
@@ -96,7 +96,7 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
           <button
             onClick={() => handleSubmit()}
             disabled={submitting || !query.trim()}
-            className="px-4 py-3 text-text-tertiary hover:text-text-emphasis disabled:opacity-20 transition-colors duration-150 cursor-pointer"
+            className="px-4 py-3 text-text-tertiary hover:text-text-emphasis disabled:opacity-20 transition-colors duration-120 cursor-pointer"
           >
             {submitting ? (
               <span className="text-[10px] font-mono text-agent-active">...</span>

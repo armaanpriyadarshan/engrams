@@ -123,7 +123,7 @@ export default function ArticleSearch({ engramId, engramSlug, initialArticles }:
           </p>
           {!query.trim() && (
             <p className="mt-2 text-sm text-text-tertiary">
-              <Link href={`/app/${engramSlug}/feed`} className="text-text-secondary hover:text-text-emphasis transition-colors duration-150">
+              <Link href={`/app/${engramSlug}/feed`} className="text-text-secondary hover:text-text-emphasis transition-colors duration-120">
                 Feed a source
               </Link>
               {" "}to begin.
@@ -136,7 +136,7 @@ export default function ArticleSearch({ engramId, engramSlug, initialArticles }:
             <Link
               key={a.slug}
               href={`/app/${engramSlug}/article/${a.slug}`}
-              className="block border border-border hover:border-border-emphasis bg-surface p-4 transition-colors duration-150"
+              className="block border border-border hover:border-border-emphasis bg-surface p-4 transition-colors duration-120"
             >
               <div className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 mt-2 rounded-full shrink-0" style={{

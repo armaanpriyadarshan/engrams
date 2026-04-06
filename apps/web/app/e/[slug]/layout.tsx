@@ -29,7 +29,7 @@ export default async function PublishedLayout({
       >
         <span className="font-heading text-sm text-text-emphasis">{engram.name}</span>
         <div className="flex-1" />
-        <Link href="/" className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-150">
+        <Link href="/" className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120">
           Powered by Engrams
         </Link>
       </header>

@@ -59,7 +59,7 @@ export default async function SourcesPage({ params }: { params: Promise<{ engram
           {sources.map((s) => {
             const produced = sourceArticles.get(s.id) ?? []
             return (
-              <div key={s.id} className="border border-border hover:border-border-emphasis p-4 transition-colors duration-150">
+              <div key={s.id} className="border border-border hover:border-border-emphasis p-4 transition-colors duration-120">
                 <div className="flex items-center gap-3">
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     s.status === "compiled" ? "bg-confidence-high"
@@ -80,7 +80,7 @@ export default async function SourcesPage({ params }: { params: Promise<{ engram
                         <Link
                           key={a.slug}
                           href={`/app/${engramSlug}/article/${a.slug}`}
-                          className="block text-xs text-text-secondary hover:text-text-emphasis transition-colors duration-150"
+                          className="block text-xs text-text-secondary hover:text-text-emphasis transition-colors duration-120"
                         >
                           {a.title}
                         </Link>

@@ -56,13 +56,11 @@ export function WidgetPanelProvider({ children }: { children: ReactNode }) {
       return { top: vh * 0.08, left: (vw - w) / 2, width: w, height: vh * 0.84 }
     }
 
-    const maxH = vh * 0.7
-    const naturalH = vh - minTop - 12
     return {
       top: minTop,
       left: minLeft,
       width: maxRight - minLeft,
-      height: Math.min(naturalH, maxH),
+      height: vh - minTop - 12,
     }
   }, [])
 

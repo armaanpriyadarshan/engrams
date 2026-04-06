@@ -55,7 +55,7 @@ function WikiLink({ slug, engramSlug, linkPrefix }: { slug: string; engramSlug: 
   return (
     <Link
       href={`${base}/article/${slug}`}
-      className="text-text-secondary hover:text-text-emphasis transition-colors duration-150 border-b border-border hover:border-text-tertiary"
+      className="text-text-secondary hover:text-text-emphasis transition-colors duration-120 border-b border-border hover:border-text-tertiary"
     >
       {slug.replace(/-/g, " ")}
     </Link>
@@ -165,7 +165,7 @@ export default function ArticleContent({ contentMd, engramSlug, linkPrefix }: Ar
     },
     a({ href, children }) {
       return (
-        <a href={href} target="_blank" rel="noopener noreferrer" className="text-text-secondary hover:text-text-emphasis transition-colors duration-150 border-b border-border hover:border-text-tertiary">
+        <a href={href} target="_blank" rel="noopener noreferrer" className="text-text-secondary hover:text-text-emphasis transition-colors duration-120 border-b border-border hover:border-text-tertiary">
           {children}
         </a>
       )

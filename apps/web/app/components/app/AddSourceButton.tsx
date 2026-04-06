@@ -125,7 +125,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
       <div className="absolute top-[52px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-slide-in-up" style={{ animationDelay: "250ms" }}>
         <button
           onClick={() => setOpen(true)}
-          className="bg-surface/80 backdrop-blur-md border border-border-emphasis hover:border-text-tertiary rounded-sm px-4 py-2 flex items-center gap-2 text-xs text-text-secondary hover:text-text-emphasis transition-all duration-150 cursor-pointer"
+          className="bg-surface/80 backdrop-blur-md border border-border-emphasis hover:border-text-tertiary rounded-sm px-4 py-2 flex items-center gap-2 text-xs text-text-secondary hover:text-text-emphasis transition-all duration-120 cursor-pointer"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -147,7 +147,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
               <button
                 key={t.id}
                 onClick={() => { setTab(t.id); setMessage(null) }}
-                className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors duration-150 cursor-pointer ${
+                className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors duration-120 cursor-pointer ${
                   tab === t.id ? "text-text-emphasis" : "text-text-ghost hover:text-text-tertiary"
                 }`}
               >
@@ -156,7 +156,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
               </button>
             ))}
           </div>
-          <button onClick={close} className="text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer">
+          <button onClick={close} className="text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
@@ -174,12 +174,12 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") submitUrl(); if (e.key === "Escape") close() }}
                 placeholder="https://"
-                className="flex-1 bg-surface border border-border px-3 py-2 text-xs text-text-primary placeholder:text-text-ghost outline-none focus:border-border-emphasis transition-colors duration-150"
+                className="flex-1 bg-surface border border-border px-3 py-2 text-xs text-text-primary placeholder:text-text-ghost outline-none focus:border-border-emphasis transition-colors duration-120"
               />
               <button
                 onClick={submitUrl}
                 disabled={submitting || !url.trim()}
-                className="bg-text-primary text-void px-4 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-20 disabled:cursor-default transition-colors duration-150 shrink-0"
+                className="bg-text-primary text-void px-4 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-20 disabled:cursor-default transition-colors duration-120 shrink-0"
               >
                 {submitting ? "..." : "Feed"}
               </button>
@@ -195,7 +195,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
                 onKeyDown={(e) => { if (e.key === "Escape") close() }}
                 placeholder="Paste text, notes, or content..."
                 rows={5}
-                className="w-full bg-surface border border-border px-3 py-2 text-xs text-text-primary placeholder:text-text-ghost outline-none focus:border-border-emphasis transition-colors duration-150 resize-none leading-relaxed"
+                className="w-full bg-surface border border-border px-3 py-2 text-xs text-text-primary placeholder:text-text-ghost outline-none focus:border-border-emphasis transition-colors duration-120 resize-none leading-relaxed"
               />
               <div className="flex justify-between items-center mt-2">
                 <span className="text-[10px] font-mono text-text-ghost">
@@ -204,7 +204,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
                 <button
                   onClick={submitText}
                   disabled={submitting || !text.trim()}
-                  className="bg-text-primary text-void px-4 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-20 disabled:cursor-default transition-colors duration-150"
+                  className="bg-text-primary text-void px-4 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-20 disabled:cursor-default transition-colors duration-120"
                 >
                   {submitting ? "..." : "Feed"}
                 </button>
@@ -218,7 +218,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileRef.current?.click()}
-              className={`border border-dashed px-4 py-8 text-center cursor-pointer transition-colors duration-150 ${
+              className={`border border-dashed px-4 py-8 text-center cursor-pointer transition-colors duration-120 ${
                 dragOver ? "border-text-tertiary bg-surface-raised" : "border-border hover:border-border-emphasis"
               }`}
             >

@@ -470,7 +470,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       <div ref={containerRef} className="w-full h-full" />
       <div
         ref={tooltipRef}
-        className="absolute font-heading text-sm text-text-emphasis pointer-events-none transition-opacity duration-150 -translate-x-1/2 whitespace-nowrap"
+        className="absolute font-heading text-sm text-text-emphasis pointer-events-none transition-opacity duration-120 -translate-x-1/2 whitespace-nowrap"
         style={{ opacity: 0 }}
       />
     </div>

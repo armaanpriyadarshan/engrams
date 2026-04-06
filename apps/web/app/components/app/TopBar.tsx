@@ -13,13 +13,13 @@ export function TopBar() {
     <>
       <CompilationPulse engramSlug={engramSlug} />
       <header className="h-11 shrink-0 border-b border-border flex items-center px-5 gap-3">
-        <Link href="/app" className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150">
+        <Link href="/app" className="font-heading text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120">
           engrams
         </Link>
         {engramSlug && (
           <>
             <span className="text-text-ghost text-xs">/</span>
-            <Link href={`/app/${engramSlug}`} className="font-mono text-xs text-text-tertiary hover:text-text-secondary transition-colors duration-150">
+            <Link href={`/app/${engramSlug}`} className="font-mono text-xs text-text-tertiary hover:text-text-secondary transition-colors duration-120">
               {engramSlug}
             </Link>
           </>

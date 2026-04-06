@@ -33,7 +33,7 @@ export default function SlidePanel({ isOpen, onClose, children }: SlidePanelProp
         <div className="flex items-center justify-end px-4 py-3 shrink-0">
           <button
             onClick={onClose}
-            className="text-text-ghost hover:text-text-secondary transition-colors duration-150 cursor-pointer text-sm font-mono"
+            className="text-text-ghost hover:text-text-secondary transition-colors duration-120 cursor-pointer text-sm font-mono"
           >
             &times;
           </button>

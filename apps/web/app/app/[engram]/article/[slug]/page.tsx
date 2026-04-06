@@ -35,7 +35,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ engram
     <div className="max-w-[660px] mx-auto px-6 py-10 h-full overflow-y-auto scrollbar-hidden">
       <Link
         href={`/app/${engramSlug}`}
-        className="text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-150 font-mono"
+        className="text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-120 font-mono"
       >
         &larr; back
       </Link>
@@ -76,7 +76,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ engram
               <Link
                 key={b.slug}
                 href={`/app/${engramSlug}/article/${b.slug}`}
-                className="block text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150"
+                className="block text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120"
               >
                 {b.title}
               </Link>

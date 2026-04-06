@@ -85,7 +85,7 @@ export default function SettingsForm({ engram }: { engram: Engram }) {
             <button
               key={color}
               onClick={() => { setAccentColor(color); save({ accent_color: color }) }}
-              className="w-6 h-6 rounded-full cursor-pointer transition-all duration-150"
+              className="w-6 h-6 rounded-full cursor-pointer transition-all duration-120"
               style={{
                 backgroundColor: color,
                 boxShadow: accentColor === color ? `0 0 0 2px var(--color-void), 0 0 0 4px ${color}` : "none",
@@ -112,7 +112,7 @@ export default function SettingsForm({ engram }: { engram: Engram }) {
                 save({ visibility: opt.value })
               }}
               disabled={opt.disabled}
-              className={`w-full text-left border p-4 transition-colors duration-150 ${
+              className={`w-full text-left border p-4 transition-colors duration-120 ${
                 visibility === opt.value
                   ? "border-border-emphasis bg-surface-raised"
                   : opt.disabled
@@ -136,7 +136,7 @@ export default function SettingsForm({ engram }: { engram: Engram }) {
               <code className="text-xs font-mono text-text-secondary flex-1 truncate">{origin}/e/{engram.slug}</code>
               <button
                 onClick={() => navigator.clipboard.writeText(`${origin}/e/${engram.slug}`)}
-                className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-150 cursor-pointer shrink-0"
+                className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer shrink-0"
               >
                 Copy
               </button>
@@ -191,7 +191,7 @@ export default function SettingsForm({ engram }: { engram: Engram }) {
         <button
           onClick={handleDelete}
           disabled={deleteConfirm !== engram.name || deleting}
-          className="bg-danger/80 text-text-bright px-4 py-2 text-xs font-medium cursor-pointer hover:bg-danger disabled:opacity-30 disabled:cursor-default transition-colors duration-150"
+          className="bg-danger/80 text-text-bright px-4 py-2 text-xs font-medium cursor-pointer hover:bg-danger disabled:opacity-30 disabled:cursor-default transition-colors duration-120"
         >
           {deleting ? "Deleting..." : "Delete engram"}
         </button>

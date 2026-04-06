@@ -91,7 +91,7 @@ export default function SignupPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-text-primary text-void py-2.5 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-150"
+          className="w-full bg-text-primary text-void py-2.5 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-120"
         >
           {loading ? "Creating account..." : "Sign up"}
         </button>
@@ -105,7 +105,7 @@ export default function SignupPage() {
 
       <button
         onClick={handleGoogleLogin}
-        className="mt-6 w-full max-w-xs flex items-center justify-center gap-3 border border-border-emphasis px-4 py-2.5 text-xs text-text-primary hover:border-text-tertiary hover:text-text-emphasis transition-colors duration-150 cursor-pointer"
+        className="mt-6 w-full max-w-xs flex items-center justify-center gap-3 border border-border-emphasis px-4 py-2.5 text-xs text-text-primary hover:border-text-tertiary hover:text-text-emphasis transition-colors duration-120 cursor-pointer"
       >
         <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
@@ -118,7 +118,7 @@ export default function SignupPage() {
 
       <p className="mt-8 text-xs text-text-tertiary">
         Already have an account?{" "}
-        <Link href="/login" className="text-text-secondary hover:text-text-emphasis transition-colors duration-150">
+        <Link href="/login" className="text-text-secondary hover:text-text-emphasis transition-colors duration-120">
           Sign in
         </Link>
       </p>

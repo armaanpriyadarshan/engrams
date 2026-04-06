@@ -16,7 +16,7 @@ export default function ViewToggle({ onViewChange }: { onViewChange?: (view: "gr
       <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm flex">
         <button
           onClick={() => toggle("graph")}
-          className={`px-3 py-1.5 transition-colors duration-150 cursor-pointer ${
+          className={`px-3 py-1.5 transition-colors duration-120 cursor-pointer ${
             view === "graph" ? "text-text-emphasis bg-surface-elevated" : "text-text-ghost hover:text-text-tertiary"
           }`}
           title="Graph"
@@ -37,7 +37,7 @@ export default function ViewToggle({ onViewChange }: { onViewChange?: (view: "gr
         <div className="w-px bg-border" />
         <button
           onClick={() => toggle("wiki")}
-          className={`px-3 py-1.5 transition-colors duration-150 cursor-pointer ${
+          className={`px-3 py-1.5 transition-colors duration-120 cursor-pointer ${
             view === "wiki" ? "text-text-emphasis bg-surface-elevated" : "text-text-ghost hover:text-text-tertiary"
           }`}
           title="Wiki"

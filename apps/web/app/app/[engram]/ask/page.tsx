@@ -186,7 +186,7 @@ export default function AskPage() {
         <button
           onClick={() => ask()}
           disabled={asking || !question.trim()}
-          className="bg-text-primary text-void px-5 py-2.5 text-sm font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-150"
+          className="bg-text-primary text-void px-5 py-2.5 text-sm font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-30 disabled:cursor-default transition-colors duration-120"
         >
           {asking ? "Researching..." : "Ask"}
         </button>
@@ -213,7 +213,7 @@ export default function AskPage() {
                   <Link
                     key={slug}
                     href={`/app/${engramSlug}/article/${slug}`}
-                    className="block text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150"
+                    className="block text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120"
                   >
                     {slug.replace(/-/g, " ")}
                   </Link>
@@ -233,7 +233,7 @@ export default function AskPage() {
                       setQuestion(followup)
                       ask(followup)
                     }}
-                    className="block text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150 cursor-pointer text-left"
+                    className="block text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120 cursor-pointer text-left"
                   >
                     {followup}
                   </button>
@@ -251,7 +251,7 @@ export default function AskPage() {
               <button
                 onClick={() => compileAnswer(result.answer_md, question)}
                 disabled={filing}
-                className="text-xs font-mono text-text-tertiary hover:text-text-emphasis transition-colors duration-150 cursor-pointer"
+                className="text-xs font-mono text-text-tertiary hover:text-text-emphasis transition-colors duration-120 cursor-pointer"
               >
                 File as article
               </button>
@@ -268,7 +268,7 @@ export default function AskPage() {
               <button
                 key={q.id}
                 onClick={() => loadPastQuery(q)}
-                className="block text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-150 cursor-pointer text-left truncate w-full"
+                className="block text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120 cursor-pointer text-left truncate w-full"
               >
                 {q.question}
               </button>

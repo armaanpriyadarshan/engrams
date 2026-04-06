@@ -84,7 +84,7 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPref
         <span className="text-[10px] font-mono text-text-ghost select-none">article</span>
         <button
           onClick={onClose}
-          className="text-text-ghost hover:text-text-secondary transition-colors duration-150 cursor-pointer text-sm font-mono"
+          className="text-text-ghost hover:text-text-secondary transition-colors duration-120 cursor-pointer text-sm font-mono"
         >
           &times;
         </button>
@@ -122,7 +122,7 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPref
             <div className="mt-4 pt-3 border-t border-border">
               <Link
                 href={`${linkPrefix ?? `/app/${engramSlug}`}/article/${slug}`}
-                className="text-[10px] font-mono text-text-ghost hover:text-text-emphasis transition-colors duration-150"
+                className="text-[10px] font-mono text-text-ghost hover:text-text-emphasis transition-colors duration-120"
               >
                 Open full article &rarr;
               </Link>

@@ -34,7 +34,7 @@ export default function EngramSelector({ engrams, selected, onChange }: EngramSe
           <button
             key={e.id}
             onClick={() => toggle(e.id)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono border transition-colors duration-150 cursor-pointer ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono border transition-colors duration-120 cursor-pointer ${
               isSelected
                 ? "border-border-emphasis text-text-emphasis bg-surface-raised"
                 : "border-border text-text-ghost hover:text-text-tertiary hover:border-border-emphasis"

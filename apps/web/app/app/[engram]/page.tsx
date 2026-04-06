@@ -188,7 +188,7 @@ export default function EngramPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search..."
-                className="w-full bg-transparent text-sm text-text-secondary placeholder:text-text-ghost outline-none pb-3 border-b border-border focus:border-text-tertiary transition-colors duration-150"
+                className="w-full bg-transparent text-sm text-text-secondary placeholder:text-text-ghost outline-none pb-3 border-b border-border focus:border-text-tertiary transition-colors duration-120"
               />
             </div>
 
@@ -262,7 +262,7 @@ export default function EngramPage() {
                           {node.tags.length > 0 && (
                             <div className="mt-1.5 flex gap-1.5 flex-wrap">
                               {node.tags.map((tag) => (
-                                <span key={tag} className="font-mono text-[10px] text-text-ghost border border-border rounded-full px-2 py-0.5">{tag}</span>
+                                <span key={tag} className="font-mono text-[10px] text-text-ghost border border-border px-2 py-0.5">{tag}</span>
                               ))}
                             </div>
                           )}
@@ -305,7 +305,7 @@ export default function EngramPage() {
         >
           <button
             onClick={openArticle}
-            className="block w-full text-left px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-150 cursor-pointer"
+            className="block w-full text-left px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-120 cursor-pointer"
           >
             Open article
           </button>
