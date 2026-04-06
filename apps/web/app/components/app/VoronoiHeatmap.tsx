@@ -32,26 +32,14 @@ export default function VoronoiHeatmap({ articles, engramSlug }: VoronoiHeatmapP
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null)
   const [tooltip, setTooltip] = useState<{ x: number; y: number; article: Article } | null>(null)
   const [cells, setCells] = useState<{ article: Article; path: string }[]>([])
-  const [width, setWidth] = useState(0)
-  const height = 300
+  // Fixed internal coordinate system — SVG viewBox scales to any container size
+  const VW = 600
+  const VH = 300
+  const computedRef = useRef(false)
 
-  // Measure container width
   useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setWidth(entry.contentRect.width)
-      }
-    })
-    observer.observe(el)
-    setWidth(el.clientWidth)
-    return () => observer.disconnect()
-  }, [])
-
-  // Compute voronoi treemap layout
-  useEffect(() => {
-    if (!width || articles.length === 0) return
+    if (articles.length === 0 || computedRef.current) return
+    computedRef.current = true
 
     async function compute() {
       // @ts-expect-error - d3-voronoi-treemap has no types
@@ -67,10 +55,7 @@ export default function VoronoiHeatmap({ articles, engramSlug }: VoronoiHeatmapP
       }).sum((d: { value?: number }) => d.value ?? 0)
 
       const treemap = voronoiTreemap().clip([
-        [0, 0],
-        [width, 0],
-        [width, height],
-        [0, height],
+        [0, 0], [VW, 0], [VW, VH], [0, VH],
       ])
 
       treemap(root)
@@ -86,7 +71,7 @@ export default function VoronoiHeatmap({ articles, engramSlug }: VoronoiHeatmapP
     }
 
     compute()
-  }, [articles, width])
+  }, [articles])
 
   const [infoVisible, setInfoVisible] = useState(false)
 
@@ -117,9 +102,10 @@ export default function VoronoiHeatmap({ articles, engramSlug }: VoronoiHeatmapP
       </div>
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${width || 1} ${height}`}
+        viewBox={`0 0 ${VW} ${VH}`}
+        preserveAspectRatio="xMidYMid meet"
         className="w-full"
-        style={{ height: `${height}px`, opacity: cells.length > 0 ? 1 : 0, transition: "opacity 200ms ease-out" }}
+        style={{ opacity: cells.length > 0 ? 1 : 0, transition: "opacity 200ms ease-out" }}
       >
         {cells.map(({ article, path }) => (
           <path
