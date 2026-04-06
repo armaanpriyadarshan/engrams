@@ -1,7 +1,22 @@
 # Phase 1-2 Polish — Design Spec
 
 Date: 2026-04-04
-Updated: 2026-04-04 (post-audit)
+Updated: 2026-04-06 (all items implemented)
+
+## Implementation Status
+
+All 8 work items implemented as of 2026-04-06:
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | Quick Wins (placeholders, Health→Stats, file upload) | Done |
+| 2 | Expandable Widget Pattern | Done — FLIP morph animation |
+| 3 | Syntax Highlighting | Done — highlight.js, 14 languages |
+| 4 | Voronoi Confidence Heatmap | Done — Stats page + widget preview |
+| 5 | Knowledge Gaps Widget | Done — fully functional with actions |
+| 6 | Engram-Level Snapshots | Done — table, RLS, wired into feed/ask |
+| 7 | Timeline Redesign | Done — stratigraphy + version control |
+| 8 | Semantic Search | Done — pgvector, edge functions, UI toggle |
 
 ## Scope
 
