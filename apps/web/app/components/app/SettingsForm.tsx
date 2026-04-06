@@ -3,7 +3,6 @@
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import IntegrationsSection from "./IntegrationsSection"
 
 const ACCENT_COLORS = [
   "#76808F", "#7A8F76", "#8F8A76", "#8F767A",
@@ -145,9 +144,6 @@ export default function SettingsForm({ engram }: { engram: Engram }) {
           </div>
         )}
       </div>
-
-      {/* Integrations */}
-      <IntegrationsSection engramId={engram.id} engramSlug={engram.slug} />
 
       {/* Save status */}
       {(saving || saved) && (

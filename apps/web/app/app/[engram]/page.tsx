@@ -10,11 +10,12 @@ import { useForceLayout } from "@/app/components/app/map/useForceLayout"
 import NodeCard from "@/app/components/app/NodeCard"
 import CompilationToast from "@/app/components/app/CompilationToast"
 import SourceTree from "@/app/components/app/SourceTree"
-import ViewToggle from "@/app/components/app/ViewToggle"
+import ViewToggle, { type ViewMode } from "@/app/components/app/ViewToggle"
 import AddSourceButton from "@/app/components/app/AddSourceButton"
 import AgentTimeline from "@/app/components/app/AgentTimeline"
 import AskBar from "@/app/components/app/AskBar"
 import KnowledgeGaps from "@/app/components/app/KnowledgeGaps"
+import IntegrationsSection from "@/app/components/app/IntegrationsSection"
 import { WidgetPanelProvider, usePanelContext } from "@/app/components/app/WidgetPanel"
 
 function HideWhenPanelOpen({ children }: { children: React.ReactNode }) {
@@ -57,7 +58,7 @@ export default function EngramPage() {
 
   const [engramId, setEngramId] = useState<string | null>(null)
   const [engramDescription, setEngramDescription] = useState<string | null>(null)
-  const [view, setView] = useState<"graph" | "wiki">("graph")
+  const [view, setView] = useState<ViewMode>("graph")
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -288,6 +289,13 @@ export default function EngramPage() {
               <p className="text-sm text-text-ghost mt-4">No articles match &ldquo;{searchQuery}&rdquo;</p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Connect view */}
+      {view === "connect" && engramId && (
+        <div className="h-full overflow-y-auto scrollbar-hidden">
+          <IntegrationsSection engramId={engramId} engramSlug={engramSlug} />
         </div>
       )}
 

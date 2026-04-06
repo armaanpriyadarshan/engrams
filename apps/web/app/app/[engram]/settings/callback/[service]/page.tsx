@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useParams, useSearchParams, useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 
 export default function OAuthCallbackPage() {
   const params = useParams()
@@ -11,6 +12,7 @@ export default function OAuthCallbackPage() {
   const engramSlug = params.engram as string
   const code = searchParams.get("code")
   const error = searchParams.get("error")
+  const engramId = searchParams.get("state") || ""
 
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading")
   const [message, setMessage] = useState("")
@@ -27,30 +29,31 @@ export default function OAuthCallbackPage() {
       return
     }
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
     const redirectUri = `${window.location.origin}/app/${engramSlug}/settings/callback/${service}`
+    const supabase = createClient()
 
-    fetch(`${apiUrl}/api/engrams/${searchParams.get("state") || ""}/integrations/${service}/callback`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, redirect_uri: redirectUri }),
-    })
-      .then(async (resp) => {
-        if (resp.ok) {
-          setStatus("success")
-          setMessage(`${service} connected.`)
-          setTimeout(() => router.push(`/app/${engramSlug}/settings`), 1500)
-        } else {
-          const data = await resp.json().catch(() => ({}))
-          setStatus("error")
-          setMessage(data.detail || "Failed to connect.")
-        }
-      })
-      .catch(() => {
+    supabase.functions.invoke("manage-integration", {
+      body: {
+        action: "exchange-code",
+        engram_id: engramId,
+        service,
+        code,
+        redirect_uri: redirectUri,
+      },
+    }).then(({ data, error: fnError }) => {
+      if (fnError || data?.error) {
         setStatus("error")
-        setMessage("Could not reach the API server.")
-      })
-  }, [code, error, service, engramSlug, searchParams, router])
+        setMessage(data?.error || "Failed to connect.")
+      } else {
+        setStatus("success")
+        setMessage(`${service} connected.`)
+        setTimeout(() => router.push(`/app/${engramSlug}`), 1500)
+      }
+    }).catch(() => {
+      setStatus("error")
+      setMessage("Connection failed.")
+    })
+  }, [code, error, service, engramSlug, engramId, router])
 
   return (
     <div className="h-full flex items-center justify-center">
@@ -61,17 +64,17 @@ export default function OAuthCallbackPage() {
         {status === "success" && (
           <>
             <p className="text-sm text-confidence-high">{message}</p>
-            <p className="mt-2 text-xs text-text-tertiary">Redirecting to settings...</p>
+            <p className="mt-2 text-xs text-text-tertiary">Redirecting...</p>
           </>
         )}
         {status === "error" && (
           <>
             <p className="text-sm text-danger">{message}</p>
             <button
-              onClick={() => router.push(`/app/${engramSlug}/settings`)}
-              className="mt-4 text-xs font-mono text-text-secondary hover:text-text-emphasis transition-colors duration-150 cursor-pointer"
+              onClick={() => router.push(`/app/${engramSlug}`)}
+              className="mt-4 text-xs font-mono text-text-secondary hover:text-text-emphasis transition-colors duration-120 cursor-pointer"
             >
-              Back to settings
+              Back to engram
             </button>
           </>
         )}
