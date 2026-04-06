@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import Link from "next/link"
@@ -31,16 +31,63 @@ function HideWhenPanelOpen({ children }: { children: React.ReactNode }) {
 function useDropZone(engramId: string | null) {
   const [dropping, setDropping] = useState(false)
   const [dropMessage, setDropMessage] = useState("")
+  const dragCounter = useRef(0)
   const router = useRouter()
+
+  const onDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounter.current++
+    if (dragCounter.current === 1) setDropping(true)
+  }, [])
+
+  const onDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounter.current--
+    if (dragCounter.current === 0) setDropping(false)
+  }, [])
+
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+  }, [])
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
+    dragCounter.current = 0
     setDropping(false)
     if (!engramId) return
+
+    const supabase = createClient()
+
+    // Handle dropped URL text
+    const droppedUrl = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain")
+    if (!e.dataTransfer.files.length && droppedUrl && droppedUrl.startsWith("http")) {
+      setDropMessage("Compiling...")
+      const { data: source } = await supabase.from("sources").insert({
+        engram_id: engramId, source_type: "url",
+        source_url: droppedUrl, title: droppedUrl, status: "pending",
+      }).select("id").single()
+      if (source) {
+        await supabase.rpc("increment_source_count", { eid: engramId })
+        const { data: result } = await supabase.functions.invoke("compile-source", { body: { source_id: source.id } })
+        const created = result?.articles_created ?? 0
+        const updated = result?.articles_updated ?? 0
+        setDropMessage(`${created} created. ${updated} updated.`)
+        await createSnapshot(supabase, engramId, "feed", `${created} created. ${updated} updated.`, { articles_created: created, articles_updated: updated }, source.id)
+        supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
+        supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: source.id } })
+        supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
+      } else {
+        setDropMessage("Failed.")
+      }
+      setTimeout(() => setDropMessage(""), 3000)
+      router.refresh()
+      return
+    }
+
+    // Handle dropped files
     const files = e.dataTransfer.files
     if (!files || files.length === 0) return
 
-    const supabase = createClient()
     for (const file of Array.from(files)) {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
       const name = file.name.replace(/\.[^.]+$/, "")
@@ -64,7 +111,7 @@ function useDropZone(engramId: string | null) {
 
       setDropMessage("Compiling...")
       const { data: source } = await supabase.from("sources").insert({
-        engram_id: engramId, source_type: ext === "url" ? "url" : "text",
+        engram_id: engramId, source_type: "text",
         content_md: content, title: name, status: "pending",
       }).select("id").single()
 
@@ -85,7 +132,7 @@ function useDropZone(engramId: string | null) {
     router.refresh()
   }, [engramId, router])
 
-  return { dropping, dropMessage, setDropping, handleDrop }
+  return { dropping, dropMessage, onDragEnter, onDragLeave, onDragOver, handleDrop }
 }
 
 const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
@@ -123,7 +170,7 @@ export default function EngramPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const { dropping, dropMessage, setDropping, handleDrop } = useDropZone(engramId)
+  const { dropping, dropMessage, onDragEnter, onDragLeave, onDragOver, handleDrop } = useDropZone(engramId)
 
   useEffect(() => {
     const supabase = createClient()
@@ -232,8 +279,9 @@ export default function EngramPage() {
     <WidgetPanelProvider>
     <div
       className="w-full h-full relative"
-      onDragOver={(e) => { e.preventDefault(); setDropping(true) }}
-      onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false) }}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
       onDrop={handleDrop}
     >
       {/* Drop overlay */}
