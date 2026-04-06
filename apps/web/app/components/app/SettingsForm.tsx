@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import IntegrationsSection from "./IntegrationsSection"
 
 const ACCENT_COLORS = [
   "#76808F", "#7A8F76", "#8F8A76", "#8F767A",
@@ -146,28 +147,7 @@ export default function SettingsForm({ engram }: { engram: Engram }) {
       </div>
 
       {/* Integrations */}
-      <div>
-        <label className="text-[10px] font-mono text-text-tertiary uppercase tracking-widest">Integrations</label>
-        <p className="mt-2 text-xs text-text-tertiary mb-4">Connect services to automatically sync knowledge into this engram.</p>
-        <div className="space-y-2">
-          {[
-            { service: "github", name: "GitHub", desc: "Import READMEs, docs, and issues from repositories." },
-            { service: "notion", name: "Notion", desc: "Import pages and databases from your workspace." },
-            { service: "google_drive", name: "Google Drive", desc: "Import documents, spreadsheets, and PDFs." },
-          ].map((svc) => (
-            <div key={svc.service} className="border border-border p-4 flex items-center justify-between">
-              <div>
-                <div className="text-xs text-text-emphasis">{svc.name}</div>
-                <div className="mt-1 text-[10px] text-text-tertiary">{svc.desc}</div>
-              </div>
-              <span className="text-[10px] font-mono text-text-ghost">Coming soon</span>
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-[10px] font-mono text-text-ghost">
-          Requires the backend API running with OAuth credentials configured.
-        </p>
-      </div>
+      <IntegrationsSection engramId={engram.id} engramSlug={engram.slug} />
 
       {/* Save status */}
       {(saving || saved) && (
