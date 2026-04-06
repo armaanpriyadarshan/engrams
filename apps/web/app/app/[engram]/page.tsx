@@ -284,14 +284,16 @@ export default function EngramPage() {
 
       {/* ── Overlay layout ── */}
 
-      {engramId && <SourceTree engramId={engramId} engramSlug={engramSlug} />}
+      {engramId && (
+        <div className="absolute top-3 left-3 z-30 space-y-2 w-[260px] pointer-events-auto">
+          <SourceTree engramId={engramId} engramSlug={engramSlug} />
+          <KnowledgeGaps engramId={engramId} engramSlug={engramSlug} />
+        </div>
+      )}
 
       <ViewToggle onViewChange={setView} />
       {engramId && <AddSourceButton engramId={engramId} />}
       {engramId && <AgentTimeline engramId={engramId} engramSlug={engramSlug} />}
-
-      {/* Bottom center: ask bar */}
-      {engramId && <KnowledgeGaps engramId={engramId} engramSlug={engramSlug} />}
       {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
 
       {/* Node context menu */}

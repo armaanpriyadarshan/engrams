@@ -89,7 +89,7 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
   return (
     <WidgetPanel
       id="sources"
-      className="absolute top-3 left-3 max-w-[260px] animate-slide-in-left border-l-border-emphasis"
+      className="animate-slide-in-left border-l-border-emphasis"
       preview={preview}
     >
       <div className="flex items-center justify-between mb-6">
