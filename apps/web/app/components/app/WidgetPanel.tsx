@@ -200,6 +200,22 @@ export function WidgetPanel({ id, preview, children, className }: WidgetPanelPro
             {preview}
           </div>
 
+          {/* Close button */}
+          <button
+            onClick={handleClose}
+            className="absolute top-3 right-3 z-10 text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer"
+            style={{
+              opacity: contentVisible ? 1 : 0,
+              transition: "opacity 150ms ease-out 150ms",
+              pointerEvents: contentVisible ? "auto" : "none",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+
           {/* Full content fades in 100-250ms */}
           <div
             className="overflow-y-auto scrollbar-hidden absolute inset-0"

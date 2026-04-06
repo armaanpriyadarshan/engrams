@@ -119,7 +119,7 @@ export default function VoronoiHeatmap({ articles, engramSlug }: VoronoiHeatmapP
         ref={svgRef}
         viewBox={`0 0 ${width || 1} ${height}`}
         className="w-full"
-        style={{ height: `${height}px` }}
+        style={{ height: `${height}px`, opacity: cells.length > 0 ? 1 : 0, transition: "opacity 200ms ease-out" }}
       >
         {cells.map(({ article, path }) => (
           <path
