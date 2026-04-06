@@ -55,14 +55,21 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
   const preview = (
     <div className="px-3 py-2.5">
       <div className="flex items-center justify-between">
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Gaps</span>
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Open questions</span>
         <span className="text-[9px] font-mono text-text-ghost">{loading ? "..." : gaps.length}</span>
       </div>
       {!loading && gaps.length === 0 && (
         <p className="mt-1.5 text-[10px] text-text-ghost">No open questions.</p>
       )}
       {!loading && gaps.length > 0 && (
-        <p className="mt-1.5 text-[10px] text-text-tertiary truncate">{gaps[0].question}</p>
+        <div className="mt-2 space-y-1.5">
+          {gaps.slice(0, 4).map((gap) => (
+            <div key={gap.id} className="flex items-start gap-2">
+              <div className="w-1 h-1 rounded-full bg-confidence-mid mt-1.5 shrink-0" />
+              <p className="text-[10px] text-text-tertiary leading-tight line-clamp-2">{gap.question}</p>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
