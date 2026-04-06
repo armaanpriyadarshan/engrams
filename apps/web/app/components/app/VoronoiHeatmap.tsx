@@ -33,8 +33,8 @@ export default function VoronoiHeatmap({ articles, engramSlug }: VoronoiHeatmapP
   const [tooltip, setTooltip] = useState<{ x: number; y: number; article: Article } | null>(null)
   const [cells, setCells] = useState<{ article: Article; path: string }[]>([])
   // Fixed internal coordinate system — SVG viewBox scales to any container size
-  const VW = 600
-  const VH = 300
+  const VW = 800
+  const VH = 200
   const computedRef = useRef(false)
 
   useEffect(() => {
@@ -103,9 +103,9 @@ export default function VoronoiHeatmap({ articles, engramSlug }: VoronoiHeatmapP
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VW} ${VH}`}
-        preserveAspectRatio="xMidYMid meet"
+        preserveAspectRatio="none"
         className="w-full"
-        style={{ maxHeight: "200px", opacity: cells.length > 0 ? 1 : 0, transition: "opacity 200ms ease-out" }}
+        style={{ height: "180px", opacity: cells.length > 0 ? 1 : 0, transition: "opacity 200ms ease-out" }}
       >
         {cells.map(({ article, path }) => (
           <path
