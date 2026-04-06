@@ -15,6 +15,7 @@ import AddSourceButton from "@/app/components/app/AddSourceButton"
 import AgentTimeline from "@/app/components/app/AgentTimeline"
 import AskBar from "@/app/components/app/AskBar"
 import KnowledgeGaps from "@/app/components/app/KnowledgeGaps"
+import { WidgetPanelProvider } from "@/app/components/app/WidgetPanel"
 
 const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
 
@@ -144,16 +145,19 @@ export default function EngramPage() {
   // Empty state
   if (!loading && graphData && graphData.nodes.length === 0) {
     return (
+      <WidgetPanelProvider>
       <div className="w-full h-full flex flex-col items-center justify-center relative">
         <p className="text-text-secondary text-sm">Nothing here yet.</p>
         <p className="mt-2 text-sm text-text-tertiary">Add a source to begin.</p>
         {engramId && <AddSourceButton engramId={engramId} />}
         {engramId && <CompilationToast engramId={engramId} />}
       </div>
+      </WidgetPanelProvider>
     )
   }
 
   return (
+    <WidgetPanelProvider>
     <div className="w-full h-full relative">
       {/* Graph view */}
       {view === "graph" && (
@@ -280,7 +284,7 @@ export default function EngramPage() {
 
       {/* ── Overlay layout ── */}
 
-      {engramId && <SourceTree engramId={engramId} />}
+      {engramId && <SourceTree engramId={engramId} engramSlug={engramSlug} />}
 
       <ViewToggle onViewChange={setView} />
       {engramId && <AddSourceButton engramId={engramId} />}
@@ -319,5 +323,6 @@ export default function EngramPage() {
       {/* Compilation toast */}
       {engramId && <CompilationToast engramId={engramId} />}
     </div>
+    </WidgetPanelProvider>
   )
 }
