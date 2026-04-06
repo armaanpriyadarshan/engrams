@@ -121,8 +121,6 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
     router.refresh()
   }, [engramId, router])
 
-  if (gaps.length === 0) return null
-
   const typeCounts = { missing: 0, low_confidence: 0, orphan: 0, thin_answer: 0 }
   for (const g of gaps) typeCounts[g.type]++
 
@@ -141,7 +139,9 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Gaps</span>
         <span className="text-[9px] font-mono text-text-ghost">{gaps.length}</span>
       </div>
-      <p className="mt-1.5 text-[10px] text-text-ghost truncate">{summaryParts.join(" · ")}</p>
+      <p className="mt-1.5 text-[10px] text-text-ghost truncate">
+        {gaps.length === 0 ? "No gaps found." : summaryParts.join(" · ")}
+      </p>
     </div>
   )
 
@@ -156,8 +156,12 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
         <span className="text-[9px] font-mono text-text-ghost">{gaps.length}</span>
       </div>
 
+      {gaps.length === 0 && (
+        <p className="text-xs text-text-tertiary mt-4">No gaps found. Your engram is healthy.</p>
+      )}
+
       {/* Summary bar */}
-      <div className="flex gap-3 mb-6">
+      {gaps.length > 0 && <div className="flex gap-3 mb-6">
         {(["missing", "low_confidence", "orphan", "thin_answer"] as const).map(type => (
           typeCounts[type] > 0 && (
             <div key={type} className="flex items-center gap-1.5">
@@ -166,9 +170,9 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
             </div>
           )
         ))}
-      </div>
+      </div>}
 
-      <div className="space-y-0">
+      {gaps.length > 0 && <div className="space-y-0">
         {gaps.map((gap, i) => (
           <div key={i} className="flex items-start gap-3 border-b border-border/50 py-3 first:pt-0 last:border-0">
             <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${typeColor[gap.type]}`} />
@@ -195,7 +199,7 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
             </div>
           </div>
         ))}
-      </div>
+      </div>}
     </WidgetPanel>
   )
 }
