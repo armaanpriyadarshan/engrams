@@ -172,6 +172,8 @@ export default function EngramPage() {
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [graphFilters, setGraphFilters] = useState<GraphFilterState>({ types: new Set(), minConfidence: 0, searchQuery: "" })
+  const [focusSlug, setFocusSlug] = useState<string | null>(null)
+  const [focusDepth, setFocusDepth] = useState(2)
   const { dropping, dropMessage, onDragEnter, onDragLeave, onDragOver, handleDrop } = useDropZone(engramId)
 
   useEffect(() => {
@@ -199,20 +201,48 @@ export default function EngramPage() {
   const { data: graphData, loading } = useGraphData(engramId)
   const positions = useForceLayout(graphData, 1200, 800)
 
-  // Compute which nodes pass the filter (used by graph to dim non-matching)
+  // Compute which nodes pass the filter + local graph focus
   const nodeVisible = useMemo(() => {
     if (!graphData) return null
     const vis = new Uint8Array(graphData.nodes.length)
     const q = graphFilters.searchQuery.toLowerCase()
+
+    // If focused, BFS from focus node to depth N
+    let focusSet: Set<number> | null = null
+    if (focusSlug) {
+      const focusIdx = graphData.slugToIndex.get(focusSlug)
+      if (focusIdx !== undefined) {
+        focusSet = new Set<number>()
+        const queue: [number, number][] = [[focusIdx, 0]]
+        focusSet.add(focusIdx)
+        // Build adjacency
+        const adj = new Map<number, number[]>()
+        for (const e of graphData.edges) {
+          if (!adj.has(e.sourceIdx)) adj.set(e.sourceIdx, [])
+          if (!adj.has(e.targetIdx)) adj.set(e.targetIdx, [])
+          adj.get(e.sourceIdx)!.push(e.targetIdx)
+          adj.get(e.targetIdx)!.push(e.sourceIdx)
+        }
+        while (queue.length > 0) {
+          const [idx, depth] = queue.shift()!
+          if (depth >= focusDepth) continue
+          for (const nb of adj.get(idx) ?? []) {
+            if (!focusSet.has(nb)) { focusSet.add(nb); queue.push([nb, depth + 1]) }
+          }
+        }
+      }
+    }
+
     for (let i = 0; i < graphData.nodes.length; i++) {
       const n = graphData.nodes[i]
       const typeOk = graphFilters.types.size === 0 || graphFilters.types.has(n.articleType)
       const confOk = n.confidence >= graphFilters.minConfidence
       const searchOk = !q || n.title.toLowerCase().includes(q) || n.tags.some(t => t.toLowerCase().includes(q))
-      vis[i] = (typeOk && confOk && searchOk) ? 1 : 0
+      const focusOk = !focusSet || focusSet.has(i)
+      vis[i] = (typeOk && confOk && searchOk && focusOk) ? 1 : 0
     }
     return vis
-  }, [graphData, graphFilters])
+  }, [graphData, graphFilters, focusSlug, focusDepth])
 
   const visibleNodeCount = nodeVisible ? nodeVisible.reduce((s, v) => s + v, 0) : (graphData?.nodes.length ?? 0)
 
@@ -331,6 +361,10 @@ export default function EngramPage() {
               onChange={setGraphFilters}
               totalNodes={graphData.nodes.length}
               visibleNodes={visibleNodeCount}
+              focusSlug={focusSlug}
+              focusDepth={focusDepth}
+              onFocusDepthChange={setFocusDepth}
+              onClearFocus={() => setFocusSlug(null)}
             />
           </div>
         ) : (
@@ -480,6 +514,12 @@ export default function EngramPage() {
             className="block w-full text-left px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-120 cursor-pointer"
           >
             Open article
+          </button>
+          <button
+            onClick={() => { setFocusSlug(nodeMenu.slug); setNodeMenu(null) }}
+            className="block w-full text-left px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-120 cursor-pointer"
+          >
+            Focus graph here
           </button>
         </div>
       )}
