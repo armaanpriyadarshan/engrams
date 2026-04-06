@@ -10,13 +10,18 @@ interface EngineGraphProps {
   positions: Float32Array
   engramSlug: string
   onNodeClick?: (slug: string, x: number, y: number) => void
+  nodeVisible?: Uint8Array | null
 }
 
-export default function EngineGraph({ data, positions, engramSlug, onNodeClick }: EngineGraphProps) {
+export default function EngineGraph({ data, positions, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
+  const nodeVisibleRef = useRef<Uint8Array | null>(null)
   const router = useRouter()
   const [hoveredNode, setHoveredNode] = useState<number | null>(null)
+
+  // Keep nodeVisible ref in sync without re-running the whole setup
+  useEffect(() => { nodeVisibleRef.current = nodeVisible ?? null }, [nodeVisible])
 
   const handleNodeClick = useCallback((slug: string, screenX: number, screenY: number) => {
     if (onNodeClick) {
@@ -403,13 +408,15 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
         }
       }
 
-      // Update hover fade targets
+      // Update hover fade targets (combined with filter visibility)
       if (closest !== currentHovered) {
         currentHovered = closest
         if (closest >= 0) {
           const nbs = neighbors.get(closest) ?? new Set()
+          const vis = nodeVisibleRef.current
           for (let i = 0; i < count; i++) {
-            fadeTarget[i] = (i === closest || nbs.has(i)) ? 1.0 : 0.08
+            const filterOk = !vis || vis[i] === 1
+            fadeTarget[i] = (i === closest || nbs.has(i)) ? 1.0 : (filterOk ? 0.08 : 0.02)
           }
           // Show tooltip
           const i3 = closest * 3
@@ -426,10 +433,17 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
           tooltip.innerHTML = `<span style="color:var(--color-text-emphasis)">${node.title}</span><br/><span style="font-family:var(--font-mono);font-size:9px;color:var(--color-text-ghost)">${conf}%${node.articleType !== "concept" ? " · " + node.articleType : ""}${tags ? " · " + tags : ""}</span>`
           container.style.cursor = "pointer"
         } else {
-          for (let i = 0; i < count; i++) fadeTarget[i] = 1.0
+          const vis = nodeVisibleRef.current
+          for (let i = 0; i < count; i++) fadeTarget[i] = (!vis || vis[i] === 1) ? 1.0 : 0.04
           tooltip.style.opacity = "0"
           container.style.cursor = "default"
         }
+      }
+
+      // Apply filter when not hovering (smooth update as filters change)
+      if (currentHovered < 0) {
+        const vis = nodeVisibleRef.current
+        for (let i = 0; i < count; i++) fadeTarget[i] = (!vis || vis[i] === 1) ? 1.0 : 0.04
       }
 
       // Lerp fade values

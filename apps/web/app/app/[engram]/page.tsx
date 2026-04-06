@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { useGraphData, type GraphNode } from "@/app/components/app/map/useGraphData"
+import { useGraphData, type GraphNode, type GraphData } from "@/app/components/app/map/useGraphData"
 import { useForceLayout } from "@/app/components/app/map/useForceLayout"
+import GraphFilters, { type GraphFilterState } from "@/app/components/app/map/GraphFilters"
 import NodeCard from "@/app/components/app/NodeCard"
 import CompilationToast from "@/app/components/app/CompilationToast"
 import SourceTree from "@/app/components/app/SourceTree"
@@ -170,6 +171,7 @@ export default function EngramPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [graphFilters, setGraphFilters] = useState<GraphFilterState>({ types: new Set(), minConfidence: 0, searchQuery: "" })
   const { dropping, dropMessage, onDragEnter, onDragLeave, onDragOver, handleDrop } = useDropZone(engramId)
 
   useEffect(() => {
@@ -196,6 +198,23 @@ export default function EngramPage() {
 
   const { data: graphData, loading } = useGraphData(engramId)
   const positions = useForceLayout(graphData, 1200, 800)
+
+  // Compute which nodes pass the filter (used by graph to dim non-matching)
+  const nodeVisible = useMemo(() => {
+    if (!graphData) return null
+    const vis = new Uint8Array(graphData.nodes.length)
+    const q = graphFilters.searchQuery.toLowerCase()
+    for (let i = 0; i < graphData.nodes.length; i++) {
+      const n = graphData.nodes[i]
+      const typeOk = graphFilters.types.size === 0 || graphFilters.types.has(n.articleType)
+      const confOk = n.confidence >= graphFilters.minConfidence
+      const searchOk = !q || n.title.toLowerCase().includes(q) || n.tags.some(t => t.toLowerCase().includes(q))
+      vis[i] = (typeOk && confOk && searchOk) ? 1 : 0
+    }
+    return vis
+  }, [graphData, graphFilters])
+
+  const visibleNodeCount = nodeVisible ? nodeVisible.reduce((s, v) => s + v, 0) : (graphData?.nodes.length ?? 0)
 
   // Group articles by type for wiki view
   const wikiSections = useMemo(() => {
@@ -305,6 +324,13 @@ export default function EngramPage() {
               positions={positions}
               engramSlug={engramSlug}
               onNodeClick={handleNodeClick}
+              nodeVisible={nodeVisible}
+            />
+            <GraphFilters
+              filters={graphFilters}
+              onChange={setGraphFilters}
+              totalNodes={graphData.nodes.length}
+              visibleNodes={visibleNodeCount}
             />
           </div>
         ) : (
