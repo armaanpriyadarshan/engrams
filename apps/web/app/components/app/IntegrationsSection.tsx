@@ -88,9 +88,9 @@ export default function IntegrationsSection({ engramId, engramSlug }: { engramId
                 <div className="mt-1 text-xs text-text-tertiary">{svc.description}</div>
                 {svc.connected && svc.metadata && (
                   <div className="mt-2 text-[10px] font-mono text-text-ghost">
-                    {svc.metadata.username && `@${svc.metadata.username}`}
-                    {svc.metadata.workspace_name && svc.metadata.workspace_name}
-                    {svc.metadata.email && svc.metadata.email}
+                    {svc.metadata.username ? `@${svc.metadata.username}` : null}
+                    {svc.metadata.workspace_name ? String(svc.metadata.workspace_name) : null}
+                    {svc.metadata.email ? String(svc.metadata.email) : null}
                   </div>
                 )}
               </div>
