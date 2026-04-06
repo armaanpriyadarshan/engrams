@@ -105,7 +105,7 @@ export default function VoronoiHeatmap({ articles, engramSlug }: VoronoiHeatmapP
         viewBox={`0 0 ${VW} ${VH}`}
         preserveAspectRatio="xMidYMid meet"
         className="w-full"
-        style={{ opacity: cells.length > 0 ? 1 : 0, transition: "opacity 200ms ease-out" }}
+        style={{ maxHeight: "200px", opacity: cells.length > 0 ? 1 : 0, transition: "opacity 200ms ease-out" }}
       >
         {cells.map(({ article, path }) => (
           <path
