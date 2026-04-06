@@ -91,11 +91,34 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
+    const supabase = createClient()
     for (const file of Array.from(files)) {
-      const content = await file.text()
       const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
-      const type = ["pdf"].includes(ext) ? "pdf" : ["md", "txt", "csv", "json"].includes(ext) ? "text" : "file"
-      await feed(type, content, file.name)
+      const name = file.name.replace(/\.[^.]+$/, "")
+      const binaryFormats = ["pdf", "docx", "pptx", "xlsx"]
+
+      if (binaryFormats.includes(ext)) {
+        setSubmitting(true)
+        setMessage({ type: "ok", text: "Parsing..." })
+        const buffer = await file.arrayBuffer()
+        const bytes = new Uint8Array(buffer)
+        let binary = ""
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+        const base64 = btoa(binary)
+        const { data: parsed, error: parseError } = await supabase.functions.invoke("parse-file", {
+          body: { file_base64: base64, filename: file.name, format: ext },
+        })
+        if (parseError || !parsed?.content) {
+          setMessage({ type: "err", text: "Could not parse file." })
+          setSubmitting(false)
+          continue
+        }
+        setSubmitting(false)
+        await feed("text", parsed.content, name)
+      } else {
+        const content = await file.text()
+        await feed("text", content, name)
+      }
     }
   }
 

@@ -83,21 +83,41 @@ export default function FeedPage() {
     setCompiling(false)
   }, [engramSlug, router])
 
-  const handleFile = useCallback((file: File) => {
-    const ext = file.name.split(".").pop()?.toLowerCase()
-    if (ext !== "txt" && ext !== "md") {
-      setMessage("PDF and DOCX support is coming. For now, try TXT or MD.")
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const content = e.target?.result as string
-      if (content) {
-        const name = file.name.replace(/\.[^.]+$/, "")
-        submit("text", content, name)
+  const handleFile = useCallback(async (file: File) => {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
+    const name = file.name.replace(/\.[^.]+$/, "")
+    const binaryFormats = ["pdf", "docx", "pptx", "xlsx"]
+
+    if (binaryFormats.includes(ext)) {
+      setSubmitting(true)
+      setMessage("Parsing...")
+      const buffer = await file.arrayBuffer()
+      const bytes = new Uint8Array(buffer)
+      let binary = ""
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+      const base64 = btoa(binary)
+
+      const supabase = createClient()
+      const { data: parsed, error: parseError } = await supabase.functions.invoke("parse-file", {
+        body: { file_base64: base64, filename: file.name, format: ext },
+      })
+
+      if (parseError || !parsed?.content) {
+        setMessage("Could not parse file.")
+        setSubmitting(false)
+        return
       }
+
+      setSubmitting(false)
+      submit("text", parsed.content, name)
+    } else {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const content = e.target?.result as string
+        if (content) submit("text", content, name)
+      }
+      reader.readAsText(file)
     }
-    reader.readAsText(file)
   }, [submit])
 
   const tabs = [
@@ -188,7 +208,7 @@ export default function FeedPage() {
           <input
             ref={fileRef}
             type="file"
-            accept=".txt,.md"
+            accept=".txt,.md,.pdf,.docx,.pptx,.xlsx,.csv"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0]
@@ -196,7 +216,7 @@ export default function FeedPage() {
               e.target.value = ""
             }}
           />
-          <p className="mt-3 text-[10px] font-mono text-text-ghost">Supports TXT, MD. More formats coming.</p>
+          <p className="mt-3 text-[10px] font-mono text-text-ghost">PDF, DOCX, PPTX, TXT, MD, CSV</p>
         </div>
       )}
 
