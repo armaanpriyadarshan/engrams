@@ -103,6 +103,7 @@ export default function AskPage() {
       }, source.id)
       supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
       supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: source.id } })
+      supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
       router.refresh()
     }
     setFiling(false)

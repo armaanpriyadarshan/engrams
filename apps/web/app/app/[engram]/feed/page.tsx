@@ -75,9 +75,10 @@ export default function FeedPage() {
         articles_updated: updated,
         edges_created: edges,
       }, source.id)
-      // Generate embeddings + detect gaps in background
+      // Background: embeddings, gap detection, lint
       supabase.functions.invoke("generate-embedding", { body: { engram_id: engram.id } })
       supabase.functions.invoke("detect-gaps", { body: { engram_id: engram.id, trigger_source_id: source.id } })
+      supabase.functions.invoke("lint-engram", { body: { engram_id: engram.id } })
       router.refresh()
     }
     setCompiling(false)
