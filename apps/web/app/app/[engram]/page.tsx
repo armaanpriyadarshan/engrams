@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -17,6 +17,7 @@ import AskBar from "@/app/components/app/AskBar"
 import KnowledgeGaps from "@/app/components/app/KnowledgeGaps"
 import IntegrationsSection from "@/app/components/app/IntegrationsSection"
 import { WidgetPanelProvider, usePanelContext } from "@/app/components/app/WidgetPanel"
+import { createSnapshot } from "@/lib/snapshots"
 
 function HideWhenPanelOpen({ children }: { children: React.ReactNode }) {
   const { openId } = usePanelContext()
@@ -25,6 +26,66 @@ function HideWhenPanelOpen({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   )
+}
+
+function useDropZone(engramId: string | null) {
+  const [dropping, setDropping] = useState(false)
+  const [dropMessage, setDropMessage] = useState("")
+  const router = useRouter()
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    setDropping(false)
+    if (!engramId) return
+    const files = e.dataTransfer.files
+    if (!files || files.length === 0) return
+
+    const supabase = createClient()
+    for (const file of Array.from(files)) {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
+      const name = file.name.replace(/\.[^.]+$/, "")
+      const binaryFormats = ["pdf", "docx", "pptx", "xlsx"]
+
+      let content: string
+      if (binaryFormats.includes(ext)) {
+        setDropMessage("Parsing...")
+        const buffer = await file.arrayBuffer()
+        const bytes = new Uint8Array(buffer)
+        let binary = ""
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+        const { data: parsed, error } = await supabase.functions.invoke("parse-file", {
+          body: { file_base64: btoa(binary), filename: file.name, format: ext },
+        })
+        if (error || !parsed?.content) { setDropMessage("Could not parse file."); setTimeout(() => setDropMessage(""), 2000); continue }
+        content = parsed.content
+      } else {
+        content = await file.text()
+      }
+
+      setDropMessage("Compiling...")
+      const { data: source } = await supabase.from("sources").insert({
+        engram_id: engramId, source_type: ext === "url" ? "url" : "text",
+        content_md: content, title: name, status: "pending",
+      }).select("id").single()
+
+      if (!source) { setDropMessage("Failed."); setTimeout(() => setDropMessage(""), 2000); continue }
+
+      await supabase.rpc("increment_source_count", { eid: engramId })
+      const { data: result } = await supabase.functions.invoke("compile-source", { body: { source_id: source.id } })
+      const created = result?.articles_created ?? 0
+      const updated = result?.articles_updated ?? 0
+      setDropMessage(`${created} created. ${updated} updated.`)
+
+      await createSnapshot(supabase, engramId, "feed", `${created} created. ${updated} updated.`, { articles_created: created, articles_updated: updated }, source.id)
+      supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
+      supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: source.id } })
+      supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
+    }
+    setTimeout(() => setDropMessage(""), 3000)
+    router.refresh()
+  }, [engramId, router])
+
+  return { dropping, dropMessage, setDropping, handleDrop }
 }
 
 const EngineGraph = dynamic(() => import("@/app/components/app/map/EngineGraph"), { ssr: false })
@@ -62,6 +123,7 @@ export default function EngramPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const { dropping, dropMessage, setDropping, handleDrop } = useDropZone(engramId)
 
   useEffect(() => {
     const supabase = createClient()
@@ -168,7 +230,24 @@ export default function EngramPage() {
 
   return (
     <WidgetPanelProvider>
-    <div className="w-full h-full relative">
+    <div
+      className="w-full h-full relative"
+      onDragOver={(e) => { e.preventDefault(); setDropping(true) }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false) }}
+      onDrop={handleDrop}
+    >
+      {/* Drop overlay */}
+      {dropping && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-void/60 pointer-events-none">
+          <p className="text-sm text-text-secondary">Drop to feed.</p>
+        </div>
+      )}
+      {dropMessage && !dropping && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <p className="text-xs font-mono text-agent-active bg-surface/90 backdrop-blur-md border border-border px-4 py-2 rounded-sm">{dropMessage}</p>
+        </div>
+      )}
+
       {/* Graph view */}
       {view === "graph" && (
         graphData && positions ? (

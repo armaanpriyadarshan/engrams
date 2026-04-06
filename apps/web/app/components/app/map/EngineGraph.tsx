@@ -383,9 +383,12 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
           const tx = (projVec.x * 0.5 + 0.5) * rect.width
           const ty = (-projVec.y * 0.5 + 0.5) * rect.height
           tooltip.style.left = `${tx}px`
-          tooltip.style.top = `${ty - 24}px`
+          tooltip.style.top = `${ty - 12}px`
           tooltip.style.opacity = "1"
-          tooltip.textContent = data.nodes[closest].title
+          const node = data.nodes[closest]
+          const conf = Math.round(node.confidence * 100)
+          const tags = node.tags.slice(0, 3).join(", ")
+          tooltip.innerHTML = `<span style="color:var(--color-text-emphasis)">${node.title}</span><br/><span style="font-family:var(--font-mono);font-size:9px;color:var(--color-text-ghost)">${conf}%${node.articleType !== "concept" ? " · " + node.articleType : ""}${tags ? " · " + tags : ""}</span>`
           container.style.cursor = "pointer"
         } else {
           for (let i = 0; i < count; i++) fadeTarget[i] = 1.0
@@ -470,8 +473,8 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick }
       <div ref={containerRef} className="w-full h-full" />
       <div
         ref={tooltipRef}
-        className="absolute font-heading text-sm text-text-emphasis pointer-events-none transition-opacity duration-120 -translate-x-1/2 whitespace-nowrap"
-        style={{ opacity: 0 }}
+        className="absolute font-heading text-sm text-text-emphasis pointer-events-none transition-opacity duration-120 -translate-x-1/2 text-center leading-tight bg-surface/90 backdrop-blur-sm border border-border px-3 py-1.5 rounded-sm"
+        style={{ opacity: 0, transform: "translateX(-50%) translateY(-100%)", marginTop: "-8px" }}
       />
     </div>
   )
