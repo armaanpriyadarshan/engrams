@@ -16,13 +16,13 @@ export default async function SourcesPage({ params }: { params: Promise<{ engram
 
   const { data: sources } = await supabase
     .from("sources")
-    .select("id, title, source_type, source_url, content_md, status, created_at, metadata")
+    .select("id, title, source_type, source_url, content_md, status, created_at, metadata, unresolved_questions")
     .eq("engram_id", engram.id)
     .order("created_at", { ascending: false })
 
   const { data: articles } = await supabase
     .from("articles")
-    .select("slug, title, source_ids")
+    .select("slug, title, summary, confidence, article_type, tags, source_ids")
     .eq("engram_id", engram.id)
 
   return (
@@ -34,15 +34,20 @@ export default async function SourcesPage({ params }: { params: Promise<{ engram
             title: s.title,
             sourceType: s.source_type,
             sourceUrl: s.source_url,
-            contentPreview: (s.content_md ?? "").slice(0, 300),
+            contentMd: s.content_md ?? "",
             status: s.status,
             createdAt: s.created_at,
             metadata: s.metadata as Record<string, string> | null,
+            unresolvedQuestions: (s.unresolved_questions as string[] | null) ?? [],
           }))}
           articles={(articles ?? []).map(a => ({
             slug: a.slug,
             title: a.title,
-            sourceIds: a.source_ids as string[] ?? [],
+            summary: a.summary,
+            confidence: a.confidence ?? 0.5,
+            articleType: a.article_type ?? "concept",
+            tags: (a.tags as string[]) ?? [],
+            sourceIds: (a.source_ids as string[]) ?? [],
           }))}
           engramId={engram.id}
           engramSlug={engramSlug}
