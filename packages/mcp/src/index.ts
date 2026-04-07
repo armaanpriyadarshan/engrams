@@ -28,7 +28,7 @@ const server = new McpServer({
   version: "0.1.0",
 });
 
-const AUTH_URL = "https://engrams-ai.vercel.app/auth/mcp";
+const AUTH_URL = "https://engramsai.vercel.app/auth/mcp";
 
 function requireAuth(fn: (params: any) => Promise<any>) {
   return async (params: any) => {
@@ -63,7 +63,7 @@ server.tool(
   "engrams_login",
   `Log in to Engrams. Visit ${AUTH_URL} to get your token, then pass it here.`,
   {
-    token: z.string().describe("Your API token from engrams-ai.vercel.app/auth/mcp (starts with eng_)"),
+    token: z.string().describe("Your API token from engramsai.vercel.app/auth/mcp (starts with eng_)"),
   },
   async (params) => {
     const result = await login(params.token);
