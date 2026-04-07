@@ -28,6 +28,7 @@ export interface GraphData {
 export function useGraphData(engramId: string | null) {
   const [data, setData] = useState<GraphData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export function useGraphData(engramId: string | null) {
 
     const fetch = async () => {
       setLoading(true)
+      setError(null)
       const supabase = createClient()
 
       const [articlesResult, edgesResult] = await Promise.all([
@@ -47,6 +49,12 @@ export function useGraphData(engramId: string | null) {
           .select("from_slug, to_slug, relation, weight")
           .eq("engram_id", engramId),
       ])
+
+      if (articlesResult.error || edgesResult.error) {
+        setError("Could not load graph data.")
+        setLoading(false)
+        return
+      }
 
       const articles = articlesResult.data ?? []
       const dbEdges = edgesResult.data ?? []
@@ -126,7 +134,7 @@ export function useGraphData(engramId: string | null) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "compilation_runs", filter: `engram_id=eq.${engramId}` },
         (payload) => {
-          if ((payload.new as any).status === "completed") {
+          if ((payload.new as { status?: string }).status === "completed") {
             setRefreshKey((k) => k + 1)
           }
         }
@@ -135,5 +143,5 @@ export function useGraphData(engramId: string | null) {
     return () => { supabase.removeChannel(channel) }
   }, [engramId])
 
-  return { data, loading }
+  return { data, loading, error }
 }

@@ -198,7 +198,7 @@ export default function EngramPage() {
     return () => window.removeEventListener("click", close)
   }, [nodeMenu])
 
-  const { data: graphData, loading } = useGraphData(engramId)
+  const { data: graphData, loading, error: graphError } = useGraphData(engramId)
   const positions = useForceLayout(graphData, 1200, 800)
 
   // Compute which nodes pass the filter + local graph focus
@@ -393,7 +393,11 @@ export default function EngramPage() {
           </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <p className="text-xs font-mono text-text-ghost">Loading<span className="inline-flex w-4"><span className="animate-loading-dots" /></span></p>
+            {graphError ? (
+              <p className="text-xs font-mono text-danger">{graphError}</p>
+            ) : (
+              <p className="text-xs font-mono text-text-ghost">Loading<span className="inline-flex w-4"><span className="animate-loading-dots" /></span></p>
+            )}
           </div>
         )
       )}

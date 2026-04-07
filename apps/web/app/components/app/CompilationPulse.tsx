@@ -39,7 +39,7 @@ export default function CompilationPulse({ engramSlug }: CompilationPulseProps) 
           filter: `engram_id=eq.${engramId}`,
         },
         (payload) => {
-          if ((payload.new as any).status === "running") {
+          if ((payload.new as { status?: string }).status === "running") {
             setIsCompiling(true)
           }
         }
@@ -53,7 +53,7 @@ export default function CompilationPulse({ engramSlug }: CompilationPulseProps) 
           filter: `engram_id=eq.${engramId}`,
         },
         (payload) => {
-          const status = (payload.new as any).status
+          const status = (payload.new as { status?: string }).status
           if (status === "completed" || status === "failed") {
             setIsCompiling(false)
           }

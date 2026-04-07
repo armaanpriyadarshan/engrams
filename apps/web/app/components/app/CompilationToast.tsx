@@ -31,7 +31,7 @@ export default function CompilationToast({ engramId }: CompilationToastProps) {
           filter: `engram_id=eq.${engramId}`,
         },
         (payload) => {
-          const run = payload.new as any
+          const run = payload.new as { id?: string; status?: string; articles_created?: number; articles_updated?: number; edges_created?: number }
           if (run.status === "completed") {
             const created = run.articles_created ?? 0
             const updated = run.articles_updated ?? 0
@@ -46,7 +46,7 @@ export default function CompilationToast({ engramId }: CompilationToastProps) {
               ? parts.join(". ") + "."
               : "Compilation complete."
 
-            const id = run.id
+            const id = run.id ?? crypto.randomUUID()
             setToasts((prev) => [...prev, { id, text }])
 
             // Auto-dismiss after 4 seconds

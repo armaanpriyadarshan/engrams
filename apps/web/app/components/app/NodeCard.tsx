@@ -25,6 +25,7 @@ interface Article {
 export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPrefix }: NodeCardProps) {
   const [article, setArticle] = useState<Article | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [pos, setPos] = useState({ x: 24, y: 80 })
   const [dragging, setDragging] = useState(false)
   const dragStart = useRef({ x: 0, y: 0, posX: 0, posY: 0 })
@@ -32,6 +33,7 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPref
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     const supabase = createClient()
     supabase
       .from("articles")
@@ -39,8 +41,9 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPref
       .eq("engram_id", engramId)
       .eq("slug", slug)
       .single()
-      .then(({ data }) => {
-        setArticle(data)
+      .then(({ data, error: fetchError }) => {
+        if (fetchError) setError("Could not load article.")
+        else setArticle(data)
         setLoading(false)
       })
   }, [slug, engramId])
@@ -129,7 +132,7 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPref
             </div>
           </>
         ) : (
-          <p className="text-xs font-mono text-text-ghost">Article not found.</p>
+          <p className="text-xs font-mono text-text-ghost">{error ?? "Article not found."}</p>
         )}
       </div>
     </div>
