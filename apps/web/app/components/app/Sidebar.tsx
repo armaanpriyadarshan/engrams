@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import CreateEngramDialog from "./CreateEngramDialog"
 
 interface Engram {
   id: string
@@ -26,8 +27,7 @@ type Phase = "expanded" | "fading-out" | "shrinking" | "collapsed" | "expanding"
 export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Profile | null }) {
   const pathname = usePathname()
   const router = useRouter()
-  const [creating, setCreating] = useState(false)
-  const [newName, setNewName] = useState("")
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [phase, setPhase] = useState<Phase>("expanded")
   const [settingsOpen, setSettingsOpen] = useState<string | null>(null)
 
@@ -47,23 +47,6 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
     setPhase("expanding")
     setTimeout(() => setPhase("fading-in"), 250)
     setTimeout(() => setPhase("expanded"), 450)
-  }
-
-  const handleCreate = async () => {
-    if (!newName.trim()) return
-    const supabase = createClient()
-    const slug = newName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
-    const { data, error } = await supabase
-      .from("engrams")
-      .insert({ owner_id: profile?.id, name: newName.trim(), slug })
-      .select("slug")
-      .single()
-    if (!error && data) {
-      setNewName("")
-      setCreating(false)
-      router.push(`/app/${data.slug}`)
-      router.refresh()
-    }
   }
 
   const handleDelete = async (id: string, slug: string) => {
@@ -181,27 +164,13 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
             })}
 
             <div className="mt-3">
-              {creating ? (
-                <div className="px-5 py-1.5">
-                  <input
-                    autoFocus
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setCreating(false) }}
-                    onBlur={() => { setCreating(false); setNewName("") }}
-                    placeholder="Name your engram"
-                    className="w-full bg-transparent border-b border-border-emphasis text-xs text-text-primary placeholder:text-text-ghost outline-none py-1"
-                  />
-                </div>
-              ) : (
-                <button
-                  onClick={() => setCreating(true)}
-                  className="flex items-center gap-2 px-5 py-1.5 text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer"
-                >
-                  <span className="text-sm leading-none">+</span>
-                  Form new engram
-                </button>
-              )}
+              <button
+                onClick={() => setDialogOpen(true)}
+                className="flex items-center gap-2 px-5 py-1.5 text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer"
+              >
+                <span className="text-sm leading-none">+</span>
+                Form new engram
+              </button>
             </div>
           </nav>
 
@@ -216,6 +185,14 @@ export function Sidebar({ engrams, profile }: { engrams: Engram[]; profile: Prof
             </button>
           </div>
         </div>
+      )}
+
+      {profile && (
+        <CreateEngramDialog
+          userId={profile.id}
+          open={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+        />
       )}
     </aside>
   )

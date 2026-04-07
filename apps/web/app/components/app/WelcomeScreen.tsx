@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import CreateEngramForm from "./CreateEngramForm"
 
 const COFFEE_SOURCES = [
   {
@@ -58,8 +59,7 @@ interface WelcomeScreenProps {
 
 export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
   const router = useRouter()
-  const [creating, setCreating] = useState(false)
-  const [newName, setNewName] = useState("")
+  const [mode, setMode] = useState<"choose" | "blank">("choose")
   const [loadingSample, setLoadingSample] = useState(false)
 
   const createEngram = async (name: string) => {
@@ -72,17 +72,6 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
       .single()
     if (error || !data) return null
     return data
-  }
-
-  const handleCreateBlank = async () => {
-    if (!newName.trim()) return
-    setCreating(true)
-    const engram = await createEngram(newName.trim())
-    if (engram) {
-      router.push(`/app/${engram.slug}`)
-      router.refresh()
-    }
-    setCreating(false)
   }
 
   const handleSampleProject = async () => {
@@ -117,87 +106,109 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
   }
 
   return (
-    <div className="w-full h-full flex items-center justify-center">
-      <div className="max-w-lg w-full px-6">
+    <div className="w-full h-full flex items-center justify-center overflow-y-auto scrollbar-hidden">
+      <div className="max-w-lg w-full px-6 py-12">
         {/* Header */}
-        <div className="mb-12">
+        <div className="mb-10">
           <h1 className="font-heading text-xl text-text-emphasis tracking-tight">Welcome to engrams</h1>
           <p className="mt-2 text-sm text-text-secondary leading-relaxed">
             A living knowledge organism. Feed it sources, and it compiles them into structured, interlinked knowledge you can browse, query, and visualize.
           </p>
         </div>
 
-        {/* Start section */}
-        <div className="space-y-6">
-          {/* Sample project */}
-          <div>
-            <span className="text-[10px] font-mono text-text-ghost tracking-widest uppercase">Start with a sample</span>
-            <button
-              onClick={handleSampleProject}
-              disabled={loadingSample}
-              className="mt-2 w-full group border border-border hover:border-border-emphasis bg-surface p-4 text-left transition-all duration-120 cursor-pointer disabled:opacity-40 disabled:cursor-default"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-2 h-2 mt-1.5 rounded-full shrink-0 bg-confidence-high" />
-                <div className="min-w-0 flex-1">
-                  <span className="block text-sm text-text-primary group-hover:text-text-emphasis transition-colors duration-120">
-                    {loadingSample ? "Forming..." : "Coffee"}
-                  </span>
-                  <span className="block text-xs text-text-tertiary mt-1 leading-relaxed">
-                    Processing, varietals, origins, roasting, brewing, espresso, decaf, cupping. 9 sources, ready to compile.
-                  </span>
-                </div>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-ghost group-hover:text-text-tertiary mt-1 shrink-0 transition-colors duration-120">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </div>
-            </button>
-          </div>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 border-t border-border" />
-            <span className="text-[10px] font-mono text-text-ghost">or</span>
-            <div className="flex-1 border-t border-border" />
-          </div>
-
-          {/* Create blank */}
-          <div>
-            <span className="text-[10px] font-mono text-text-ghost tracking-widest uppercase">Form a new engram</span>
-            <div className="mt-2 flex gap-2">
-              <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleCreateBlank() }}
-                placeholder="Name your engram"
-                className="flex-1 bg-surface border border-border px-3 py-2.5 text-sm text-text-primary placeholder:text-text-ghost outline-none focus:border-border-emphasis transition-colors duration-120"
-              />
+        {mode === "choose" && (
+          <div className="space-y-6" style={{ animation: "fade-in 200ms ease-out both" }}>
+            {/* Sample project */}
+            <div>
+              <span className="text-[10px] font-mono text-text-ghost tracking-widest uppercase">Start with a sample</span>
               <button
-                onClick={handleCreateBlank}
-                disabled={creating || !newName.trim()}
-                className="bg-text-primary text-void px-4 py-2.5 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-20 disabled:cursor-default transition-colors duration-120 shrink-0"
+                onClick={handleSampleProject}
+                disabled={loadingSample}
+                className="mt-2 w-full group border border-border hover:border-border-emphasis bg-surface p-4 text-left transition-all duration-120 cursor-pointer disabled:opacity-40 disabled:cursor-default"
               >
-                {creating ? "..." : "Form"}
+                <div className="flex items-start gap-3">
+                  <div className="w-2 h-2 mt-1.5 rounded-full shrink-0 bg-confidence-high" />
+                  <div className="min-w-0 flex-1">
+                    <span className="block text-sm text-text-primary group-hover:text-text-emphasis transition-colors duration-120">
+                      {loadingSample ? "Forming..." : "Coffee"}
+                    </span>
+                    <span className="block text-xs text-text-tertiary mt-1 leading-relaxed">
+                      Processing, varietals, origins, roasting, brewing, espresso, decaf, cupping. 9 sources, ready to compile.
+                    </span>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-ghost group-hover:text-text-tertiary mt-1 shrink-0 transition-colors duration-120">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </div>
+              </button>
+              <p className="mt-2 text-[11px] text-text-ghost">
+                The fastest way to see what an engram does. Fully populated with articles, edges, gaps, and snapshots.
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 border-t border-border" />
+              <span className="text-[10px] font-mono text-text-ghost">or</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+
+            {/* Form blank — now opens the full form */}
+            <div>
+              <span className="text-[10px] font-mono text-text-ghost tracking-widest uppercase">Build your own</span>
+              <button
+                onClick={() => setMode("blank")}
+                className="mt-2 w-full group border border-border hover:border-border-emphasis bg-surface p-4 text-left transition-all duration-120 cursor-pointer"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-2 h-2 mt-1.5 rounded-full shrink-0 bg-text-tertiary" />
+                  <div className="min-w-0 flex-1">
+                    <span className="block text-sm text-text-primary group-hover:text-text-emphasis transition-colors duration-120">
+                      Form a new engram
+                    </span>
+                    <span className="block text-xs text-text-tertiary mt-1 leading-relaxed">
+                      Pick a name, color, and optionally feed your first source.
+                    </span>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-ghost group-hover:text-text-tertiary mt-1 shrink-0 transition-colors duration-120">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </div>
               </button>
             </div>
-          </div>
-        </div>
 
-        {/* Quick reference */}
-        <div className="mt-12 pt-6 border-t border-border">
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { verb: "Feed", desc: "Add sources from anywhere" },
-              { verb: "Compile", desc: "Watch it build your wiki" },
-              { verb: "Ask", desc: "Query your knowledge" },
-            ].map((step) => (
-              <div key={step.verb}>
-                <span className="text-xs text-text-primary">{step.verb}</span>
-                <p className="text-[11px] text-text-ghost mt-0.5 leading-relaxed">{step.desc}</p>
+            {/* Quick reference */}
+            <div className="mt-10 pt-6 border-t border-border">
+              <div className="grid grid-cols-3 gap-4">
+                {[
+                  { verb: "Feed", desc: "Add sources from anywhere" },
+                  { verb: "Compile", desc: "Watch it build your wiki" },
+                  { verb: "Ask", desc: "Query your knowledge" },
+                ].map((step) => (
+                  <div key={step.verb}>
+                    <span className="text-xs text-text-primary">{step.verb}</span>
+                    <p className="text-[11px] text-text-ghost mt-0.5 leading-relaxed">{step.desc}</p>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
-        </div>
+        )}
+
+        {mode === "blank" && (
+          <div style={{ animation: "fade-in 200ms ease-out both" }}>
+            <button
+              onClick={() => setMode("choose")}
+              className="mb-6 text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer flex items-center gap-1.5"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back
+            </button>
+            <CreateEngramForm userId={userId} variant="page" />
+          </div>
+        )}
       </div>
     </div>
   )
