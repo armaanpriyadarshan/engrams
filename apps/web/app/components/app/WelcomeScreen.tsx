@@ -141,9 +141,6 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
                   </svg>
                 </div>
               </button>
-              <p className="mt-2 text-[11px] text-text-ghost">
-                The fastest way to see what an engram does. Fully populated with articles, edges, gaps, and snapshots.
-              </p>
             </div>
 
             {/* Divider */}
