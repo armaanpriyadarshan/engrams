@@ -554,6 +554,9 @@ function Footer() {
     <footer className="py-20 flex justify-center gap-8 text-xs text-text-ghost">
       <Link href="/signup" className="hover:text-text-tertiary transition-colors duration-120">Get started</Link>
       <Link href="/login" className="hover:text-text-tertiary transition-colors duration-120">Sign in</Link>
+      {["Pricing", "Docs", "GitHub", "Twitter"].map((link) => (
+        <span key={link} className="cursor-pointer hover:text-text-tertiary transition-colors duration-120">{link}</span>
+      ))}
     </footer>
   )
 }
