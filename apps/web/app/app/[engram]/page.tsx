@@ -509,14 +509,16 @@ export default function EngramPage() {
 
       {/* Connect view */}
       {view === "connect" && engramId && (
-        <div className="h-full overflow-y-auto scrollbar-hidden">
-          <IntegrationsSection engramId={engramId} engramSlug={engramSlug} />
+        <div className="h-full overflow-y-auto scrollbar-hidden" style={{ animation: "fade-in 300ms ease-out both" }}>
+          <div className="max-w-[660px] mx-auto px-6 pt-16 pb-32">
+            <IntegrationsSection engramId={engramId} engramSlug={engramSlug} />
+          </div>
         </div>
       )}
 
       {/* ── Overlay layout ── */}
 
-      {engramId && (
+      {view === "graph" && engramId && (
         <div className="absolute top-3 left-3 z-30 space-y-2 w-[260px] pointer-events-auto">
           <SourceTree engramId={engramId} engramSlug={engramSlug} />
           <KnowledgeGaps engramId={engramId} engramSlug={engramSlug} />
@@ -525,10 +527,10 @@ export default function EngramPage() {
 
       <HideWhenPanelOpen>
         <ViewToggle onViewChange={setView} />
-        {engramId && <AddSourceButton engramId={engramId} />}
+        {view === "graph" && engramId && <AddSourceButton engramId={engramId} />}
       </HideWhenPanelOpen>
-      {engramId && <AgentTimeline engramId={engramId} engramSlug={engramSlug} />}
-      {engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
+      {view === "graph" && engramId && <AgentTimeline engramId={engramId} engramSlug={engramSlug} />}
+      {view === "graph" && engramId && <AskBar engramId={engramId} engramSlug={engramSlug} />}
 
       {/* Node context menu */}
       {nodeMenu && (
