@@ -196,12 +196,9 @@ export default function CreateEngramForm({ userId, variant = "page", onCancel, o
             { title: "Map", desc: "3D knowledge graph you can explore" },
             { title: "Gaps", desc: "Detects unanswered research questions" },
           ].map((f) => (
-            <div key={f.title} className="flex items-baseline gap-2">
-              <div className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: accentColor, transform: "translateY(-2px)" }} />
-              <div className="min-w-0">
-                <span className="text-[11px] text-text-secondary">{f.title}</span>
-                <span className="text-[10px] text-text-ghost"> &middot; {f.desc}</span>
-              </div>
+            <div key={f.title} className="min-w-0">
+              <span className="text-[11px] text-text-secondary">{f.title}</span>
+              <span className="text-[10px] text-text-ghost"> &middot; {f.desc}</span>
             </div>
           ))}
         </div>
