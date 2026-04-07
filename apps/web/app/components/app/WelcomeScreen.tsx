@@ -62,7 +62,12 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
 
     const supabase = createClient()
 
-    // Insert sample sources
+    // Insert sample sources and compile sequentially so each compilation
+    // sees the articles from previous ones in its wiki index — this lets the
+    // compiler create cross-source edges instead of isolated articles.
+    router.push(`/app/${engram.slug}`)
+    router.refresh()
+
     for (const src of COFFEE_SOURCES) {
       const { data: source } = await supabase.from("sources").insert({
         engram_id: engram.id,
@@ -74,15 +79,11 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
 
       if (source) {
         await supabase.rpc("increment_source_count", { eid: engram.id })
-        // Fire compilation without waiting
-        supabase.functions.invoke("compile-source", {
+        await supabase.functions.invoke("compile-source", {
           body: { source_id: source.id },
         })
       }
     }
-
-    router.push(`/app/${engram.slug}`)
-    router.refresh()
   }
 
   return (
