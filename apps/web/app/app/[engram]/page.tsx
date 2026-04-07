@@ -182,11 +182,11 @@ export default function EngramPage() {
       .from("engrams")
       .select("id, description")
       .eq("slug", engramSlug)
-      .single()
+      .limit(1)
       .then(({ data }) => {
-        if (data) {
-          setEngramId(data.id)
-          setEngramDescription(data.description)
+        if (data && data[0]) {
+          setEngramId(data[0].id)
+          setEngramDescription(data[0].description)
         }
       })
   }, [engramSlug])
