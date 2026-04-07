@@ -25,17 +25,47 @@ export default function FeedPage() {
   const [isDragging, setIsDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null)
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Cleanup subscription on unmount
   useEffect(() => {
     return () => {
-      channelRef.current?.unsubscribe()
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      if (channelRef.current && supabaseRef.current) {
+        supabaseRef.current.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
     }
   }, [])
 
   const subscribeToCompilation = useCallback((supabase: ReturnType<typeof createClient>, sourceId: string, engramId: string) => {
+    // Clean up any existing channel and timeout before subscribing a new one
+    if (channelRef.current && supabaseRef.current) {
+      supabaseRef.current.removeChannel(channelRef.current)
+      channelRef.current = null
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+
     setCompiling(true)
     setMessage("Source added. Compiling...")
+    supabaseRef.current = supabase
+
+    timeoutRef.current = setTimeout(() => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+      timeoutRef.current = null
+      setMessage("Compilation is taking longer than expected. Check back shortly.")
+      setCompiling(false)
+    }, 60000)
 
     const channel = supabase
       .channel(`compilation-${sourceId}`)
@@ -54,7 +84,8 @@ export default function FeedPage() {
           const edges = run.edges_created ?? 0
           setMessage(`Compilation complete. ${created} created. ${updated} updated. ${edges} connections found.`)
           setCompiling(false)
-          channel.unsubscribe()
+          if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
+          supabase.removeChannel(channel)
           channelRef.current = null
           await createSnapshot(supabase, engramId, "feed", `${created} created. ${updated} updated.`, {
             articles_created: created,
@@ -69,7 +100,8 @@ export default function FeedPage() {
           const error = run.log?.error ?? "Compilation failed."
           setMessage(error)
           setCompiling(false)
-          channel.unsubscribe()
+          if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
+          supabase.removeChannel(channel)
           channelRef.current = null
         } else if (stage === "fetching") {
           setMessage("Fetching content...")
