@@ -509,7 +509,7 @@ export default function EngramPage() {
 
       {/* Connect view */}
       {view === "connect" && engramId && (
-        <div className="h-full overflow-y-auto scrollbar-hidden" style={{ animation: "fade-in 300ms ease-out both" }}>
+        <div className="h-full overflow-y-auto scrollbar-hidden" style={{ animation: "fade-in-only 400ms ease-out both" }}>
           <div className="max-w-[660px] mx-auto px-6 pt-16 pb-32">
             <IntegrationsSection engramId={engramId} engramSlug={engramSlug} />
           </div>
