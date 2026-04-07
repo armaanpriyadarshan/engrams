@@ -125,7 +125,7 @@ export default function FeedPage() {
   const submit = useCallback(async (sourceType: string, content: string, title?: string) => {
     if (!content.trim()) return
     setSubmitting(true)
-    setMessage("")
+    setMessage("Adding source...")
 
     const supabase = createClient()
 
