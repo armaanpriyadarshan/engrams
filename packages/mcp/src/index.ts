@@ -13,6 +13,16 @@ import {
   listArticles,
 } from "./tools.js";
 
+// Handle --token flag from install command
+const tokenArg = process.argv.find((_, i) => process.argv[i - 1] === "--token");
+if (tokenArg) {
+  login(tokenArg).then((result) => {
+    if (!result.success) {
+      process.stderr.write(`Token validation failed: ${result.error}\n`);
+    }
+  });
+}
+
 const server = new McpServer({
   name: "engrams",
   version: "0.1.0",

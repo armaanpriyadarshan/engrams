@@ -75,49 +75,34 @@ export default function McpAuthPage() {
 
         {status === "done" && (
           <div>
-            <p className="text-xs text-text-tertiary mb-3">Your API token (copy it now — it won't be shown again):</p>
-            <div className="bg-surface border border-border-emphasis p-4 flex items-center gap-3">
-              <code className="text-xs font-mono text-text-primary flex-1 break-all select-all">{token}</code>
+            <p className="text-xs text-text-tertiary mb-3">Copy this command and paste it in your terminal:</p>
+            <div className="bg-surface border border-border-emphasis p-4">
+              <code className="text-[11px] font-mono text-text-primary block break-all select-all leading-relaxed">
+                claude mcp add --transport stdio engrams -- npx engrams-mcp --token {token}
+              </code>
               <button
-                onClick={copyToken}
-                className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer shrink-0"
+                onClick={() => {
+                  navigator.clipboard.writeText(`claude mcp add --transport stdio engrams -- npx engrams-mcp --token ${token}`)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                }}
+                className="mt-3 text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer"
               >
-                {copied ? "Copied" : "Copy"}
+                {copied ? "Copied" : "Copy command"}
               </button>
             </div>
 
             <div className="mt-8 border-t border-border pt-6">
-              <h2 className="text-xs text-text-tertiary uppercase tracking-widest font-mono mb-4">Setup</h2>
+              <p className="text-xs text-text-secondary mb-2">Then try:</p>
+              <p className="text-xs text-text-tertiary italic">"List my engrams"</p>
+              <p className="text-xs text-text-tertiary italic mt-1">"Feed this into my Coffee engram: ..."</p>
+              <p className="text-xs text-text-tertiary italic mt-1">"Ask my Coffee engram about espresso extraction"</p>
+            </div>
 
-              <div className="space-y-4">
-                <div>
-                  <p className="text-xs text-text-secondary mb-2">1. Set your environment variables:</p>
-                  <div className="bg-surface border border-border p-3">
-                    <code className="text-[11px] font-mono text-text-tertiary block">
-                      export ENGRAMS_SUPABASE_URL=https://edrlhkcnkfsypdzffhle.supabase.co
-                    </code>
-                    <code className="text-[11px] font-mono text-text-tertiary block mt-1">
-                      export ENGRAMS_API_TOKEN={token.slice(0, 12)}...
-                    </code>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs text-text-secondary mb-2">2. Add to Claude Code:</p>
-                  <div className="bg-surface border border-border p-3">
-                    <code className="text-[11px] font-mono text-text-tertiary block">
-                      claude mcp add --transport stdio engrams -- npx engrams-mcp
-                    </code>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs text-text-secondary mb-2">3. Try it:</p>
-                  <p className="text-xs text-text-tertiary">
-                    "List my engrams" or "Feed this into my Coffee engram: ..."
-                  </p>
-                </div>
-              </div>
+            <div className="mt-6 border-t border-border pt-4">
+              <p className="text-[10px] font-mono text-text-ghost">
+                Your token: <span className="select-all">{token}</span>
+              </p>
             </div>
           </div>
         )}
