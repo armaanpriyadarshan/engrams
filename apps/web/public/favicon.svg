@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+  <!-- Outer bowl — thicker for small-size legibility -->
+  <path
+    d="M 50 32 A 18 18 0 1 0 44.73 44.73"
+    stroke-width="5"
+    stroke-linecap="round"
+  />
+  <!-- Crossbar — bolder so it survives at 16px -->
+  <line
+    x1="14"
+    y1="32"
+    x2="50"
+    y2="32"
+    stroke-width="2.5"
+  />
+  <!-- Nodes — larger dots -->
+  <circle cx="14" cy="32" r="3.5" fill="currentColor" stroke="none" />
+  <circle cx="50" cy="32" r="3.5" fill="currentColor" stroke="none" />
+</svg>
