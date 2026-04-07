@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 
 interface Source {
@@ -59,11 +59,18 @@ export default function SourcesList({ sources, articles, engramId, engramSlug }:
   engramSlug: string
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const focusParam = searchParams.get("source")
   const [filter, setFilter] = useState<FilterStatus>("all")
   const [sort, setSort] = useState<SortBy>("date")
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(focusParam)
   const [recompiling, setRecompiling] = useState<string | null>(null)
   const [showFullContent, setShowFullContent] = useState(false)
+
+  // Sync selectedId with the ?source= query param
+  useEffect(() => {
+    setSelectedId(focusParam)
+  }, [focusParam])
 
   const articlesBySource = useMemo(() => {
     const map = new Map<string, ArticleRef[]>()
@@ -126,7 +133,11 @@ export default function SourcesList({ sources, articles, engramId, engramSlug }:
       <div style={{ animation: "fade-in 200ms ease-out both" }}>
         {/* Back */}
         <button
-          onClick={() => { setSelectedId(null); setShowFullContent(false) }}
+          onClick={() => {
+            setSelectedId(null)
+            setShowFullContent(false)
+            router.replace(`/app/${engramSlug}/sources`)
+          }}
           className="mb-6 text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer flex items-center gap-1.5"
         >
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -323,7 +334,10 @@ export default function SourcesList({ sources, articles, engramId, engramSlug }:
             return (
               <button
                 key={s.id}
-                onClick={() => setSelectedId(s.id)}
+                onClick={() => {
+                  setSelectedId(s.id)
+                  router.replace(`/app/${engramSlug}/sources?source=${s.id}`)
+                }}
                 className="w-full text-left group block py-3 -mx-3 px-3 hover:bg-surface-raised/50 transition-colors duration-120 cursor-pointer"
               >
                 <div className="flex items-center gap-3">

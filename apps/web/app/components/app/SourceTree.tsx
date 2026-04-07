@@ -105,27 +105,36 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
             const typeLabel = s.source_type === "url" ? (domain?.includes("arxiv") ? "arxiv" : "url") : s.source_type
             const meta = s.metadata as Record<string, string> | null
             const related = getArticlesForSource(s.id)
+            const statusColor = s.status === "compiled" ? "bg-confidence-high" : s.status === "running" || s.status === "pending" ? "bg-agent-active" : s.status === "failed" ? "bg-danger" : "bg-text-ghost"
             return (
-              <div key={s.id} className="border-b border-border/50 pb-5 last:border-0 last:pb-0">
-                <p className="text-sm text-text-primary">{s.title ?? s.source_type}</p>
-                <p className="text-[10px] font-mono text-text-ghost mt-0.5">
-                  {typeLabel}{meta?.author ? ` · ${meta.author}` : ""}{meta?.year ? ` · ${meta.year}` : ""} · {timeAgo(s.created_at)}
-                </p>
-                {related.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {related.map(a => (
-                      <Link
-                        key={a.slug}
-                        href={`/app/${engramSlug}/article/${a.slug}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-[10px] font-mono text-text-ghost hover:text-text-secondary border border-border/60 px-1.5 py-0.5 transition-colors duration-120"
-                      >
-                        {a.title}
-                      </Link>
-                    ))}
+              <Link
+                key={s.id}
+                href={`/app/${engramSlug}/sources?source=${s.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="block border-b border-border/50 pb-5 last:border-0 last:pb-0 group cursor-pointer"
+              >
+                <div className="flex items-start gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${statusColor}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-text-primary group-hover:text-text-emphasis transition-colors duration-120">{s.title ?? s.source_type}</p>
+                    <p className="text-[10px] font-mono text-text-ghost mt-0.5">
+                      {typeLabel}{meta?.author ? ` · ${meta.author}` : ""}{meta?.year ? ` · ${meta.year}` : ""} · {timeAgo(s.created_at)} · {related.length} article{related.length !== 1 ? "s" : ""}
+                    </p>
+                    {related.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {related.map(a => (
+                          <span
+                            key={a.slug}
+                            className="text-[10px] font-mono text-text-ghost border border-border/60 px-1.5 py-0.5"
+                          >
+                            {a.title}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              </Link>
             )
           })}
         </div>
