@@ -1,3 +1,5 @@
+"use client"
+
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 
@@ -86,35 +88,21 @@ export function useGraphData(engramId: string | null) {
         node.depth = Math.min(node.depth / maxDepth, 1)
       }
 
-      // Build edges from DB edges table
+      // Build edges strictly from the DB edges table — single source of truth.
+      // (Implicit edges from related_slugs were inflating the count beyond
+      // what's actually persisted, causing displayed metrics to mismatch
+      // what the graph renders.)
       const edgeSet = new Set<string>()
       const edges: GraphEdge[] = []
 
       for (const e of dbEdges) {
         const si = slugToIndex.get(e.from_slug)
         const ti = slugToIndex.get(e.to_slug)
-        if (si !== undefined && ti !== undefined) {
-          const key = `${Math.min(si, ti)}-${Math.max(si, ti)}`
-          if (!edgeSet.has(key)) {
-            edgeSet.add(key)
-            edges.push({ sourceIdx: si, targetIdx: ti, weight: e.weight ?? 0.5, relation: e.relation ?? "related" })
-          }
-        }
-      }
-
-      // Add implicit edges from related_slugs
-      for (const article of articles) {
-        const si = slugToIndex.get(article.slug)
-        if (si === undefined) continue
-        for (const relSlug of article.related_slugs ?? []) {
-          const ti = slugToIndex.get(relSlug)
-          if (ti === undefined) continue
-          const key = `${Math.min(si, ti)}-${Math.max(si, ti)}`
-          if (!edgeSet.has(key)) {
-            edgeSet.add(key)
-            edges.push({ sourceIdx: si, targetIdx: ti, weight: 0.3, relation: "related" })
-          }
-        }
+        if (si === undefined || ti === undefined) continue
+        const key = `${Math.min(si, ti)}-${Math.max(si, ti)}`
+        if (edgeSet.has(key)) continue
+        edgeSet.add(key)
+        edges.push({ sourceIdx: si, targetIdx: ti, weight: e.weight ?? 0.5, relation: e.relation ?? "related" })
       }
 
       setData({ nodes, edges, slugToIndex })
