@@ -47,9 +47,15 @@ export default function IntegrationsSection({ engramId, engramSlug }: { engramId
 
   const connect = async (service: string) => {
     const supabase = createClient()
-    const redirectUri = `${window.location.origin}/app/${engramSlug}/settings/callback/${service}`
-    const { data, error } = await supabase.functions.invoke("integration-auth", {
-      body: { action: "auth-url", service, engram_id: engramId, redirect_uri: redirectUri, state: engramId },
+    const redirectUri = `${window.location.origin}/oauth/callback/${service}`
+    const { data } = await supabase.functions.invoke("integration-auth", {
+      body: {
+        action: "auth-url",
+        service,
+        engram_id: engramId,
+        redirect_uri: redirectUri,
+        state: `${engramId}|${engramSlug}`,
+      },
     })
     if (data?.auth_url) window.location.href = data.auth_url
   }
