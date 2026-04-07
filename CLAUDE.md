@@ -12,7 +12,7 @@ engrams/
     mobile/       # Expo / React Native (share sheet, voice, camera)
     extension/    # Chrome MV3 browser extension
   packages/
-    api/          # FastAPI backend (Python)
+    mcp/          # Engrams MCP server
   supabase/
     migrations/   # Postgres schema
   docs/           # Product documentation (features, vision, design)
@@ -27,7 +27,6 @@ engrams/
 - **Visualizations:** Three.js / WebGL (knowledge graph), d3-force (graph layout)
 - **Integrations:** GitHub, Notion, Google Drive via OAuth + Edge Functions
 - **Scheduling:** pg_cron for automated sync (every 30 min)
-- **Future scaling:** FastAPI backend in packages/api/ (Python, Celery + Redis) for when Edge Functions aren't enough
 - **Desktop:** Tauri (Rust)
 - **Mobile:** Expo (React Native)
 - **Extension:** Chrome MV3
@@ -79,7 +78,7 @@ Dark monochrome only. No light mode. Typography is the primary design material.
 
 - **Compilation engine:** Extract concepts from sources, match against existing wiki, write/update articles, reindex graph, propagate changes to neighbors
 - **Query engine:** Plan what articles are relevant, research them, synthesize answer, file back into wiki, suggest follow-ups
-- **Background agents:** Compiler, Linter, Freshener, Discoverer, Summarizer, Syncer, Trainer — each runs on schedule via Celery Beat
+- **Background agents:** Compiler, Linter, Freshener, Discoverer, Summarizer, Syncer, Trainer — each runs on schedule via pg_cron
 - **Integrations:** 20+ services (Notion, GitHub, Slack, Google Drive, RSS, etc.) via OAuth + abstract Integration base class
 - **Multi-engram:** Private, shared, or published. Cross-engram queries. Forking.
 
@@ -93,6 +92,6 @@ Use Playwright MCP tools (`mcp__playwright__*`) to test UI changes against the r
 - Transitions: 120ms hover, 180ms base, 300ms slow, 500ms cinematic (map). All ease-out.
 - Empty states use typographic message + generative SVG pattern. No cartoons or illustrations.
 - Reader view: 660px max-width, line-height 1.65
-- All compilation and agent work runs async via Celery workers
+- All compilation and agent work runs async via Supabase Edge Functions
 - Row Level Security (RLS) on all Supabase tables — users only access their own data or shared engrams
 - Supabase Realtime for live compilation status updates
