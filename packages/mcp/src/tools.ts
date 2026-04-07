@@ -1,4 +1,4 @@
-import { getSupabase, getUserId } from "./supabase.js";
+import { getSupabase } from "./supabase.js";
 
 export async function listEngrams() {
   const supabase = await getSupabase();
