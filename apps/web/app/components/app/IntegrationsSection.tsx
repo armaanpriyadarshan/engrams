@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
+import Link from "next/link"
 
 interface ServiceStatus {
   service_name: string
@@ -147,6 +148,25 @@ export default function IntegrationsSection({ engramId, engramSlug }: { engramId
             )}
           </div>
         ))}
+      </div>
+
+      {/* AI Tools */}
+      <div className="mt-6">
+        <label className="text-[10px] font-mono text-text-tertiary uppercase tracking-widest">AI Tools</label>
+        <div className="mt-3">
+          <Link
+            href="/auth/mcp"
+            className="block border border-border hover:border-border-emphasis p-4 transition-colors duration-120"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-text-emphasis">Claude Code / Cursor MCP</div>
+                <div className="mt-1 text-[10px] text-text-tertiary">Connect AI coding tools to your engrams via Model Context Protocol.</div>
+              </div>
+              <span className="text-[10px] font-mono text-text-ghost shrink-0">Setup &rarr;</span>
+            </div>
+          </Link>
+        </div>
       </div>
     </div>
   )
