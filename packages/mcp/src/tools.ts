@@ -1,12 +1,16 @@
-import { getSupabase } from "./supabase.js";
+import { getSupabase, getUserId } from "./supabase.js";
 
 export async function listEngrams() {
   const supabase = await getSupabase();
-  const { data, error } = await supabase
+  const userId = getUserId();
+  let query = supabase
     .from("engrams")
     .select("name, slug, article_count, source_count, description, visibility")
     .order("created_at", { ascending: true });
 
+  if (userId) query = query.eq("owner_id", userId);
+
+  const { data, error } = await query;
   if (error) throw new Error(`Failed to list engrams: ${error.message}`);
   return data ?? [];
 }

@@ -1,6 +1,6 @@
 {
   "name": "engrams-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for Engrams — interact with your knowledge bases from AI tools",
   "main": "dist/index.js",
   "bin": {

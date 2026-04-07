@@ -12,6 +12,7 @@ const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 interface Config {
   token: string;
   user_id?: string;
+  service_key?: string;
 }
 
 export function readConfig(): Config | null {
@@ -27,7 +28,7 @@ export function saveConfig(config: Config): void {
   if (!fs.existsSync(CONFIG_DIR)) {
     fs.mkdirSync(CONFIG_DIR, { recursive: true });
   }
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
 export function clearConfig(): void {
@@ -42,6 +43,7 @@ export function isLoggedIn(): boolean {
 }
 
 let client: SupabaseClient | null = null;
+let currentUserId: string | null = null;
 let verified = false;
 
 export async function getSupabase(): Promise<SupabaseClient> {
@@ -52,28 +54,41 @@ export async function getSupabase(): Promise<SupabaseClient> {
     throw new Error("NOT_LOGGED_IN");
   }
 
-  client = createClient(SUPABASE_URL, ANON_KEY);
-
-  // Verify token on first use
-  if (!verified) {
-    const { data, error } = await client.functions.invoke("mcp-auth", {
-      body: { action: "verify-token", token: config.token },
-    });
-
-    if (error || !data?.valid) {
-      clearConfig();
-      throw new Error("TOKEN_EXPIRED");
-    }
-
+  // If we have a cached service key, use it directly
+  if (config.service_key && config.user_id) {
+    client = createClient(SUPABASE_URL, config.service_key);
+    currentUserId = config.user_id;
     verified = true;
+    return client;
   }
 
+  // Otherwise verify token and get service key
+  const anonClient = createClient(SUPABASE_URL, ANON_KEY);
+  const { data, error } = await anonClient.functions.invoke("mcp-auth", {
+    body: { action: "verify-token", token: config.token },
+  });
+
+  if (error || !data?.valid) {
+    clearConfig();
+    throw new Error("TOKEN_EXPIRED");
+  }
+
+  // Save service key for future use
+  saveConfig({ ...config, user_id: data.user_id, service_key: data.service_key });
+
+  client = createClient(SUPABASE_URL, data.service_key);
+  currentUserId = data.user_id;
+  verified = true;
   return client;
 }
 
+export function getUserId(): string | null {
+  return currentUserId;
+}
+
 export async function login(token: string): Promise<{ success: boolean; error?: string }> {
-  const sb = createClient(SUPABASE_URL, ANON_KEY);
-  const { data, error } = await sb.functions.invoke("mcp-auth", {
+  const anonClient = createClient(SUPABASE_URL, ANON_KEY);
+  const { data, error } = await anonClient.functions.invoke("mcp-auth", {
     body: { action: "verify-token", token },
   });
 
@@ -81,8 +96,9 @@ export async function login(token: string): Promise<{ success: boolean; error?: 
     return { success: false, error: "Invalid token." };
   }
 
-  saveConfig({ token, user_id: data.user_id });
-  client = sb;
+  saveConfig({ token, user_id: data.user_id, service_key: data.service_key });
+  client = createClient(SUPABASE_URL, data.service_key);
+  currentUserId = data.user_id;
   verified = true;
   return { success: true };
 }
