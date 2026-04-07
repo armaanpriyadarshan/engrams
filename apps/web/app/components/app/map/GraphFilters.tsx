@@ -20,13 +20,9 @@ interface GraphFiltersProps {
   onChange: (filters: GraphFilterState) => void
   totalNodes: number
   visibleNodes: number
-  focusSlug: string | null
-  focusDepth: number
-  onFocusDepthChange: (depth: number) => void
-  onClearFocus: () => void
 }
 
-export default function GraphFilters({ filters, onChange, totalNodes, visibleNodes, focusSlug, focusDepth, onFocusDepthChange, onClearFocus }: GraphFiltersProps) {
+export default function GraphFilters({ filters, onChange, totalNodes, visibleNodes }: GraphFiltersProps) {
   const [open, setOpen] = useState(false)
 
   const toggleType = (type: string) => {
@@ -36,35 +32,8 @@ export default function GraphFilters({ filters, onChange, totalNodes, visibleNod
     onChange({ ...filters, types: next })
   }
 
-  const allTypesOn = filters.types.size === 0 || filters.types.size === typeConfig.length
-
   return (
-    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-center gap-2">
-      {/* Focus bar */}
-      {focusSlug && (
-        <div className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-1.5 flex items-center gap-3">
-          <span className="text-[10px] font-mono text-text-secondary">{focusSlug.replace(/-/g, " ")}</span>
-          <span className="text-[9px] font-mono text-text-ghost">depth</span>
-          {[1, 2, 3, 4].map(d => (
-            <button
-              key={d}
-              onClick={() => onFocusDepthChange(d)}
-              className={`text-[10px] font-mono w-5 h-5 flex items-center justify-center transition-colors duration-120 cursor-pointer ${
-                focusDepth === d ? "text-text-emphasis bg-surface-raised" : "text-text-ghost hover:text-text-tertiary"
-              }`}
-            >
-              {d}
-            </button>
-          ))}
-          <button
-            onClick={onClearFocus}
-            className="text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer ml-1"
-          >
-            &times;
-          </button>
-        </div>
-      )}
-
+    <div className="absolute top-[100px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-center gap-2">
       {!open ? (
         <button
           onClick={() => setOpen(true)}

@@ -128,18 +128,7 @@ export function WidgetPanel({ id, preview, children, className }: WidgetPanelPro
       setPhase("closing")
       setTimeout(() => setPhase(null), 200)
     }
-    // External open: openId became me but we haven't entered an open phase yet
-    // (e.g. WidgetPanelProvider was told to open this widget before this card mounted).
-    if (isMe && phase === null && cardRef.current) {
-      const r = cardRef.current.getBoundingClientRect()
-      setRect({ top: r.top, left: r.left, width: r.width, height: r.height })
-      setTarget(getTargetRect())
-      setPhase("opening")
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        setPhase("open")
-      }))
-    }
-  }, [isMe, phase, getTargetRect])
+  }, [isMe])
 
   const isVisible = phase !== null
 

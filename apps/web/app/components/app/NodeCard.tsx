@@ -26,7 +26,16 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPref
   const [article, setArticle] = useState<Article | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [pos, setPos] = useState({ x: 24, y: 80 })
+  // Open intentionally docked left-of-center, away from the side widgets and the
+  // top-center view toggle. 340px wide, vertically centered-ish.
+  const [pos, setPos] = useState(() => {
+    if (typeof window === "undefined") return { x: 296, y: 120 }
+    const cardWidth = 340
+    return {
+      x: Math.max(296, Math.round((window.innerWidth - cardWidth) / 2)),
+      y: 120,
+    }
+  })
   const [dragging, setDragging] = useState(false)
   const dragStart = useRef({ x: 0, y: 0, posX: 0, posY: 0 })
   const cardRef = useRef<HTMLDivElement>(null)

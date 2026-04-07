@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
-import { useParams, useRouter, useSearchParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -27,20 +27,6 @@ function HideWhenPanelOpen({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   )
-}
-
-// Auto-opens a widget by id once when this component mounts. Used to make
-// the /sources route render as the expanded sources widget.
-function AutoOpenWidget({ id }: { id: string }) {
-  const { open } = usePanelContext()
-  const opened = useRef(false)
-  useEffect(() => {
-    if (opened.current) return
-    opened.current = true
-    // Defer one frame so the WidgetPanel has registered its card rect first
-    requestAnimationFrame(() => open(id))
-  }, [id, open])
-  return null
 }
 
 function useDropZone(engramId: string | null) {
@@ -177,9 +163,7 @@ interface NodeMenu {
 
 export default function EngramPage() {
   const params = useParams()
-  const searchParams = useSearchParams()
   const engramSlug = params.engram as string
-  const widgetParam = searchParams.get("widget")
 
   const [engramId, setEngramId] = useState<string | null>(null)
   const [engramDescription, setEngramDescription] = useState<string | null>(null)
@@ -188,8 +172,6 @@ export default function EngramPage() {
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [graphFilters, setGraphFilters] = useState<GraphFilterState>({ types: new Set(), minConfidence: 0, searchQuery: "" })
-  const [focusSlug, setFocusSlug] = useState<string | null>(null)
-  const [focusDepth, setFocusDepth] = useState(2)
   const { dropping, dropMessage, onDragEnter, onDragLeave, onDragOver, handleDrop } = useDropZone(engramId)
 
   useEffect(() => {
@@ -217,48 +199,21 @@ export default function EngramPage() {
   const { data: graphData, loading, error: graphError } = useGraphData(engramId)
   const positions = useForceLayout(graphData, 1200, 800)
 
-  // Compute which nodes pass the filter + local graph focus
+  // Compute which nodes pass the filter
   const nodeVisible = useMemo(() => {
     if (!graphData) return null
     const vis = new Uint8Array(graphData.nodes.length)
     const q = graphFilters.searchQuery.toLowerCase()
-
-    // If focused, BFS from focus node to depth N
-    let focusSet: Set<number> | null = null
-    if (focusSlug) {
-      const focusIdx = graphData.slugToIndex.get(focusSlug)
-      if (focusIdx !== undefined) {
-        focusSet = new Set<number>()
-        const queue: [number, number][] = [[focusIdx, 0]]
-        focusSet.add(focusIdx)
-        // Build adjacency
-        const adj = new Map<number, number[]>()
-        for (const e of graphData.edges) {
-          if (!adj.has(e.sourceIdx)) adj.set(e.sourceIdx, [])
-          if (!adj.has(e.targetIdx)) adj.set(e.targetIdx, [])
-          adj.get(e.sourceIdx)!.push(e.targetIdx)
-          adj.get(e.targetIdx)!.push(e.sourceIdx)
-        }
-        while (queue.length > 0) {
-          const [idx, depth] = queue.shift()!
-          if (depth >= focusDepth) continue
-          for (const nb of adj.get(idx) ?? []) {
-            if (!focusSet.has(nb)) { focusSet.add(nb); queue.push([nb, depth + 1]) }
-          }
-        }
-      }
-    }
 
     for (let i = 0; i < graphData.nodes.length; i++) {
       const n = graphData.nodes[i]
       const typeOk = graphFilters.types.size === 0 || graphFilters.types.has(n.articleType)
       const confOk = n.confidence >= graphFilters.minConfidence
       const searchOk = !q || n.title.toLowerCase().includes(q) || n.tags.some(t => t.toLowerCase().includes(q))
-      const focusOk = !focusSet || focusSet.has(i)
-      vis[i] = (typeOk && confOk && searchOk && focusOk) ? 1 : 0
+      vis[i] = (typeOk && confOk && searchOk) ? 1 : 0
     }
     return vis
-  }, [graphData, graphFilters, focusSlug, focusDepth])
+  }, [graphData, graphFilters])
 
   const visibleNodeCount = nodeVisible ? nodeVisible.reduce((s, v) => s + v, 0) : (graphData?.nodes.length ?? 0)
 
@@ -366,7 +321,6 @@ export default function EngramPage() {
 
   return (
     <WidgetPanelProvider>
-    {widgetParam && <AutoOpenWidget id={widgetParam} />}
     <div
       className="w-full h-full relative"
       onDragEnter={onDragEnter}
@@ -402,10 +356,6 @@ export default function EngramPage() {
               onChange={setGraphFilters}
               totalNodes={graphData.nodes.length}
               visibleNodes={visibleNodeCount}
-              focusSlug={focusSlug}
-              focusDepth={focusDepth}
-              onFocusDepthChange={setFocusDepth}
-              onClearFocus={() => setFocusSlug(null)}
             />
           </div>
         ) : (
@@ -552,21 +502,15 @@ export default function EngramPage() {
       {/* Node context menu */}
       {nodeMenu && (
         <div
-          className="fixed z-50 bg-surface-raised border border-border-emphasis py-1 min-w-[160px] animate-fade-in"
+          className="fixed z-50 bg-surface-raised border border-border-emphasis min-w-[160px] animate-fade-in"
           style={{ left: nodeMenu.x, top: nodeMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={openArticle}
-            className="block w-full text-left px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-120 cursor-pointer"
+            className="block w-full text-left px-4 py-2.5 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-120 cursor-pointer"
           >
             Open article
-          </button>
-          <button
-            onClick={() => { setFocusSlug(nodeMenu.slug); setNodeMenu(null) }}
-            className="block w-full text-left px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-120 cursor-pointer"
-          >
-            Focus graph here
           </button>
         </div>
       )}
