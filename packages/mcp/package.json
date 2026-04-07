@@ -1,0 +1,20 @@
+{
+  "name": "engrams-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Engrams — interact with your knowledge bases from AI tools",
+  "main": "dist/index.js",
+  "bin": {
+    "engrams-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@supabase/supabase-js": "^2.101.1"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

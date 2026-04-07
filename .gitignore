@@ -54,3 +54,4 @@ apps/mobile/.expo/
 skills/
 skills-lock.json
 .mcp.json
+.vercel
