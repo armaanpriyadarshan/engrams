@@ -1,11 +1,17 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { createSnapshot } from "@/lib/snapshots"
 
 type FeedTab = "url" | "text" | "file"
+
+async function sha256(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text)
+  const hash = await crypto.subtle.digest("SHA-256", data)
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("")
+}
 
 export default function AddSourceButton({ engramId }: { engramId: string }) {
   const router = useRouter()
@@ -14,33 +20,227 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
   const [url, setUrl] = useState("")
   const [text, setText] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [compiling, setCompiling] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null)
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      if (channelRef.current && supabaseRef.current) {
+        supabaseRef.current.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+    }
+  }, [])
 
   const reset = () => {
     setUrl("")
     setText("")
-    setMessage(null)
   }
 
   const close = () => {
     setOpen(false)
     reset()
+    setMessage(null)
   }
 
+  const subscribeToCompilation = useCallback((supabase: ReturnType<typeof createClient>, sourceId: string) => {
+    // Clean up previous
+    if (channelRef.current && supabaseRef.current) {
+      supabaseRef.current.removeChannel(channelRef.current)
+      channelRef.current = null
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+
+    setCompiling(true)
+    supabaseRef.current = supabase
+
+    timeoutRef.current = setTimeout(() => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+      timeoutRef.current = null
+      setMessage({ type: "ok", text: "Taking longer than expected. Check back shortly." })
+      setCompiling(false)
+    }, 60000)
+
+    const channel = supabase
+      .channel(`compilation-add-${sourceId}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "compilation_runs",
+        filter: `source_id=eq.${sourceId}`,
+      }, async (payload) => {
+        const run = payload.new as any
+        const stage = run.log?.stage
+
+        if (run.status === "completed") {
+          const created = run.articles_created ?? 0
+          const updated = run.articles_updated ?? 0
+          const edges = run.edges_created ?? 0
+          const parts: string[] = []
+          if (created > 0) parts.push(`${created} created`)
+          if (updated > 0) parts.push(`${updated} updated`)
+          if (edges > 0) parts.push(`${edges} connection${edges !== 1 ? "s" : ""} found`)
+          setMessage({ type: "ok", text: parts.length > 0 ? parts.join(". ") + "." : "Compilation complete." })
+          setCompiling(false)
+          if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
+          supabase.removeChannel(channel)
+          channelRef.current = null
+          await createSnapshot(supabase, engramId, "feed", `${created} created. ${updated} updated.`, {
+            articles_created: created,
+            articles_updated: updated,
+            edges_created: edges,
+          }, sourceId)
+          supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
+          supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: sourceId } })
+          supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
+          router.refresh()
+        } else if (run.status === "failed") {
+          const error = run.log?.error ?? "Compilation failed."
+          setMessage({ type: "err", text: error })
+          setCompiling(false)
+          if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
+          supabase.removeChannel(channel)
+          channelRef.current = null
+        } else if (stage === "fetching") {
+          setMessage({ type: "ok", text: "Fetching content..." })
+        } else if (stage === "compiling") {
+          setMessage({ type: "ok", text: "Compiling..." })
+        } else if (stage === "writing") {
+          setMessage({ type: "ok", text: "Writing articles..." })
+        }
+      })
+      .subscribe()
+
+    channelRef.current = channel
+  }, [engramId, router])
+
+  const triggerCompilation = useCallback((supabase: ReturnType<typeof createClient>, sourceId: string) => {
+    subscribeToCompilation(supabase, sourceId)
+    supabase.functions.invoke("compile-source", { body: { source_id: sourceId } })
+  }, [subscribeToCompilation])
+
   const feed = useCallback(async (sourceType: string, content: string, title: string) => {
-    if (submitting) return
+    if (submitting || compiling) return
     setSubmitting(true)
-    setMessage(null)
+    setMessage({ type: "ok", text: "Adding source..." })
 
     const supabase = createClient()
+
+    // --- Dedup checks ---
+    if (sourceType === "url") {
+      const { data: existing } = await supabase
+        .from("sources")
+        .select("id")
+        .eq("engram_id", engramId)
+        .eq("source_url", content)
+        .limit(1)
+        .maybeSingle()
+
+      if (existing) {
+        await supabase.from("sources").update({
+          content_md: null,
+          status: "pending",
+        }).eq("id", existing.id)
+        reset()
+        setSubmitting(false)
+        setMessage({ type: "ok", text: "Source updated. Recompiling..." })
+        triggerCompilation(supabase, existing.id)
+        return
+      }
+    } else {
+      const hash = await sha256(content.trim())
+
+      // Check by title (files)
+      if (title && title.length < 200) {
+        const { data: existing } = await supabase
+          .from("sources")
+          .select("id, content_hash")
+          .eq("engram_id", engramId)
+          .eq("title", title)
+          .limit(1)
+          .maybeSingle()
+
+        if (existing) {
+          if (existing.content_hash === hash) {
+            setMessage({ type: "ok", text: "This content has not changed." })
+            setSubmitting(false)
+            return
+          }
+          await supabase.from("sources").update({
+            content_md: content.trim(),
+            content_hash: hash,
+            status: "pending",
+          }).eq("id", existing.id)
+          reset()
+          setSubmitting(false)
+          setMessage({ type: "ok", text: "Source updated. Recompiling..." })
+          triggerCompilation(supabase, existing.id)
+          return
+        }
+      }
+
+      // Check by hash (text)
+      const { data: hashMatch } = await supabase
+        .from("sources")
+        .select("id")
+        .eq("engram_id", engramId)
+        .eq("content_hash", hash)
+        .limit(1)
+        .maybeSingle()
+
+      if (hashMatch) {
+        setMessage({ type: "ok", text: "This content has already been fed." })
+        setSubmitting(false)
+        return
+      }
+
+      // New text/file source
+      const { data: source, error } = await supabase.from("sources").insert({
+        engram_id: engramId,
+        source_type: sourceType,
+        source_url: null,
+        content_md: content.trim(),
+        content_hash: hash,
+        title,
+        status: "pending",
+      }).select("id").single()
+
+      if (error || !source) {
+        setMessage({ type: "err", text: "Failed to add source." })
+        setSubmitting(false)
+        return
+      }
+
+      reset()
+      setSubmitting(false)
+      setMessage({ type: "ok", text: "Source added. Compiling..." })
+      triggerCompilation(supabase, source.id)
+      return
+    }
+
+    // New URL source
     const { data: source, error } = await supabase.from("sources").insert({
       engram_id: engramId,
       source_type: sourceType,
-      source_url: sourceType === "url" ? content : null,
-      content_md: sourceType !== "url" ? content : null,
-      title,
+      source_url: content,
+      content_md: null,
+      title: content,
       status: "pending",
     }).select("id").single()
 
@@ -50,33 +250,11 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
       return
     }
 
-    await supabase.rpc("increment_source_count", { eid: engramId })
-    setMessage({ type: "ok", text: "Compiling..." })
     reset()
-
-    // Trigger compilation
-    const { data: result, error: compileError } = await supabase.functions.invoke("compile-source", {
-      body: { source_id: source.id },
-    })
-
-    if (compileError) {
-      setMessage({ type: "err", text: "Source added. Compilation failed." })
-    } else {
-      const created = result?.articles_created ?? 0
-      const updated = result?.articles_updated ?? 0
-      setMessage({ type: "ok", text: `${created} created. ${updated} updated.` })
-      await createSnapshot(supabase, engramId, "feed", `${created} created. ${updated} updated.`, {
-        articles_created: created,
-        articles_updated: updated,
-      }, source.id)
-      // Background: embeddings, gap detection, lint
-      supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
-      supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: source.id } })
-      supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
-      router.refresh()
-    }
     setSubmitting(false)
-  }, [engramId, submitting, router])
+    setMessage({ type: "ok", text: "Source added. Compiling..." })
+    triggerCompilation(supabase, source.id)
+  }, [engramId, submitting, compiling, triggerCompilation])
 
   const submitUrl = () => {
     const trimmed = url.trim()
@@ -202,7 +380,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
               />
               <button
                 onClick={submitUrl}
-                disabled={submitting || !url.trim()}
+                disabled={submitting || compiling || !url.trim()}
                 className="bg-text-primary text-void px-4 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-20 disabled:cursor-default transition-colors duration-120 shrink-0"
               >
                 {submitting ? "..." : "Feed"}
@@ -227,7 +405,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
                 </span>
                 <button
                   onClick={submitText}
-                  disabled={submitting || !text.trim()}
+                  disabled={submitting || compiling || !text.trim()}
                   className="bg-text-primary text-void px-4 py-2 text-xs font-medium cursor-pointer hover:bg-text-emphasis disabled:opacity-20 disabled:cursor-default transition-colors duration-120"
                 >
                   {submitting ? "..." : "Feed"}
@@ -266,7 +444,10 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
 
           {/* Message */}
           {message && (
-            <p className={`mt-2 text-[10px] font-mono ${message.type === "ok" ? "text-confidence-high" : "text-danger"}`}>
+            <p className={`mt-2 text-[10px] font-mono ${
+              compiling ? "text-agent-active" :
+              message.type === "ok" ? "text-confidence-high" : "text-danger"
+            }`}>
               {message.text}
             </p>
           )}
