@@ -1,7 +1,7 @@
-import { getSupabase } from "./supabase.js";
+import { getSupabase, getUserId } from "./supabase.js";
 
 export async function listEngrams() {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   const { data, error } = await supabase
     .from("engrams")
     .select("name, slug, article_count, source_count, description, visibility")
@@ -17,9 +17,8 @@ export async function feedSource(params: {
   title?: string;
   source_type?: string;
 }) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
 
-  // Resolve engram ID from slug
   const { data: engram } = await supabase
     .from("engrams")
     .select("id")
@@ -44,7 +43,6 @@ export async function feedSource(params: {
 
   if (error || !source) throw new Error(`Failed to create source: ${error?.message}`);
 
-  // Trigger compilation
   await supabase.functions.invoke("compile-source", {
     body: { source_id: source.id },
   });
@@ -56,7 +54,7 @@ export async function askEngram(params: {
   engram_slug: string;
   question: string;
 }) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
 
   const { data: engram } = await supabase
     .from("engrams")
@@ -78,7 +76,7 @@ export async function searchArticles(params: {
   engram_slug: string;
   query: string;
 }) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
 
   const { data: engram } = await supabase
     .from("engrams")
@@ -103,7 +101,7 @@ export async function readArticle(params: {
   engram_slug: string;
   article_slug: string;
 }) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
 
   const { data: engram } = await supabase
     .from("engrams")
@@ -122,7 +120,6 @@ export async function readArticle(params: {
 
   if (error || !article) throw new Error(`Article '${params.article_slug}' not found`);
 
-  // Get backlinks
   const { data: backlinks } = await supabase
     .from("articles")
     .select("slug, title")
@@ -133,7 +130,7 @@ export async function readArticle(params: {
 }
 
 export async function listArticles(params: { engram_slug: string }) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
 
   const { data: engram } = await supabase
     .from("engrams")
