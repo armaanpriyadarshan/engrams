@@ -61,6 +61,7 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
   const router = useRouter()
   const [mode, setMode] = useState<"choose" | "blank">("choose")
   const [loadingSample, setLoadingSample] = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number; phase: string } | null>(null)
 
   const createEngram = async (name: string) => {
     const supabase = createClient()
@@ -76,33 +77,49 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
 
   const handleSampleProject = async () => {
     setLoadingSample(true)
+    setProgress({ done: 0, total: COFFEE_SOURCES.length, phase: "Forming engram" })
+
     const engram = await createEngram("Coffee")
-    if (!engram) { setLoadingSample(false); return }
+    if (!engram) { setLoadingSample(false); setProgress(null); return }
 
     const supabase = createClient()
 
-    // Insert sample sources and compile sequentially so each compilation
-    // sees the articles from previous ones in its wiki index — this lets the
-    // compiler create cross-source edges instead of isolated articles.
-    router.push(`/app/${engram.slug}`)
-    router.refresh()
-
-    for (const src of COFFEE_SOURCES) {
-      const { data: source } = await supabase.from("sources").insert({
+    // Insert all sources first (fast — single batch).
+    setProgress({ done: 0, total: COFFEE_SOURCES.length, phase: "Adding sources" })
+    const { data: sources } = await supabase.from("sources").insert(
+      COFFEE_SOURCES.map(src => ({
         engram_id: engram.id,
         source_type: src.type,
         content_md: src.content,
         title: src.title,
         status: "pending",
-      }).select("id").single()
+      }))
+    ).select("id, title")
 
-      if (source) {
-        await supabase.rpc("increment_source_count", { eid: engram.id })
-        await supabase.functions.invoke("compile-source", {
-          body: { source_id: source.id },
-        })
-      }
+    if (!sources || sources.length === 0) {
+      setLoadingSample(false)
+      setProgress(null)
+      return
     }
+
+    await supabase.from("engrams")
+      .update({ source_count: sources.length })
+      .eq("id", engram.id)
+
+    // Compile sequentially so each compilation sees the previous articles in
+    // its wiki index — this lets OpenAI create cross-source edges instead of
+    // isolated articles. We MUST stay on this page until the loop completes,
+    // otherwise the JS context dies and remaining compilations are lost.
+    for (let i = 0; i < sources.length; i++) {
+      setProgress({ done: i, total: sources.length, phase: `Compiling: ${sources[i].title}` })
+      await supabase.functions.invoke("compile-source", {
+        body: { source_id: sources[i].id },
+      })
+    }
+
+    setProgress({ done: sources.length, total: sources.length, phase: "Done" })
+    router.push(`/app/${engram.slug}`)
+    router.refresh()
   }
 
   return (
@@ -124,21 +141,40 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
               <button
                 onClick={handleSampleProject}
                 disabled={loadingSample}
-                className="mt-2 w-full group border border-border hover:border-border-emphasis bg-surface p-4 text-left transition-all duration-120 cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                className="mt-2 w-full group border border-border hover:border-border-emphasis bg-surface p-4 text-left transition-all duration-120 cursor-pointer disabled:opacity-60 disabled:cursor-default"
               >
                 <div className="flex items-start gap-3">
                   <div className="w-2 h-2 mt-1.5 rounded-full shrink-0 bg-confidence-high" />
                   <div className="min-w-0 flex-1">
                     <span className="block text-sm text-text-primary group-hover:text-text-emphasis transition-colors duration-120">
-                      {loadingSample ? "Forming..." : "Coffee"}
+                      Coffee
                     </span>
                     <span className="block text-xs text-text-tertiary mt-1 leading-relaxed">
                       Processing, varietals, origins, roasting, brewing, espresso, decaf, cupping. 9 sources, ready to compile.
                     </span>
+                    {progress && (
+                      <div className="mt-3 space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-mono text-text-ghost">
+                          <span className="truncate pr-2">{progress.phase}</span>
+                          <span className="shrink-0">{progress.done} / {progress.total}</span>
+                        </div>
+                        <div className="h-px bg-border w-full overflow-hidden">
+                          <div
+                            className="h-px bg-text-secondary transition-all duration-300 ease-out"
+                            style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] font-mono text-text-ghost">
+                          Compiling takes about a minute. Stay on this page.
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-ghost group-hover:text-text-tertiary mt-1 shrink-0 transition-colors duration-120">
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+                  {!loadingSample && (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-ghost group-hover:text-text-tertiary mt-1 shrink-0 transition-colors duration-120">
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  )}
                 </div>
               </button>
             </div>
