@@ -177,21 +177,6 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
               </button>
             </div>
 
-            {/* Quick reference */}
-            <div className="mt-10 pt-6 border-t border-border">
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  { verb: "Feed", desc: "Add sources from anywhere" },
-                  { verb: "Compile", desc: "Watch it build your wiki" },
-                  { verb: "Ask", desc: "Query your knowledge" },
-                ].map((step) => (
-                  <div key={step.verb}>
-                    <span className="text-xs text-text-primary">{step.verb}</span>
-                    <p className="text-[11px] text-text-ghost mt-0.5 leading-relaxed">{step.desc}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 
