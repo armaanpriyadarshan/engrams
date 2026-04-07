@@ -112,7 +112,7 @@ export default function WelcomeScreen({ userId }: WelcomeScreenProps) {
         <div className="mb-10">
           <h1 className="font-heading text-xl text-text-emphasis tracking-tight">Welcome to engrams</h1>
           <p className="mt-2 text-sm text-text-secondary leading-relaxed">
-            A living knowledge organism. Feed it sources, and it compiles them into structured, interlinked knowledge you can browse, query, and visualize.
+            An engram is a living knowledge organism. Feed it sources, and it compiles them into structured, interlinked knowledge you can browse, query, and visualize.
           </p>
         </div>
 
