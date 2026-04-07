@@ -11,6 +11,60 @@ interface NodeCardProps {
   engramId: string
   onClose: () => void
   linkPrefix?: string
+  anchor?: { x: number; y: number } | null
+}
+
+const CARD_WIDTH = 340
+const CARD_HEIGHT = 480 // approximate; max-h-[60vh] caps it
+
+// Layout constants for the engram view: avoid the side widgets and the
+// view toggle / ask bar so the article never opens covered by chrome.
+const SOURCE_TREE_RIGHT_EDGE = 296   // SourceTree widget at top-3 left-3, ~260px wide + gutter
+const AGENT_TIMELINE_LEFT_EDGE = 224 // AgentTimeline widget at top-3 right-3, ~200px wide + gutter
+const TOP_RESERVED = 60              // ViewToggle pill area
+const BOTTOM_RESERVED = 160          // AskBar at bottom-10
+const ANCHOR_GAP = 32                // distance between the anchor (clicked node) and the card edge
+
+function computeIntentionalPosition(anchor: { x: number; y: number } | null | undefined) {
+  if (typeof window === "undefined") {
+    return { x: 296, y: 120 }
+  }
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+
+  // Safe placement bounds (top-left of the card)
+  const minX = SOURCE_TREE_RIGHT_EDGE
+  const maxX = Math.max(minX, vw - CARD_WIDTH - AGENT_TIMELINE_LEFT_EDGE)
+  const minY = TOP_RESERVED
+  const maxY = Math.max(minY, vh - CARD_HEIGHT - BOTTOM_RESERVED)
+
+  // No anchor (e.g. opened from a non-graph context) — center horizontally, slightly above middle
+  if (!anchor) {
+    return {
+      x: Math.round((minX + maxX) / 2),
+      y: Math.max(minY, Math.min(maxY, Math.round(vh * 0.18))),
+    }
+  }
+
+  // Place the card on the OPPOSITE side of the viewport from the anchor.
+  // If the user clicked something on the left, the card opens on the right
+  // (and vice versa) so the clicked node stays visible.
+  const onLeftHalf = anchor.x < vw / 2
+  let x: number
+  if (onLeftHalf) {
+    // Anchor on left → card to the right of anchor
+    x = anchor.x + ANCHOR_GAP
+  } else {
+    // Anchor on right → card to the left of anchor
+    x = anchor.x - CARD_WIDTH - ANCHOR_GAP
+  }
+  x = Math.max(minX, Math.min(maxX, x))
+
+  // Vertically: try to align the card's vertical center with the anchor
+  let y = anchor.y - CARD_HEIGHT / 2
+  y = Math.max(minY, Math.min(maxY, y))
+
+  return { x: Math.round(x), y: Math.round(y) }
 }
 
 interface Article {
@@ -22,23 +76,21 @@ interface Article {
   tags: string[] | null
 }
 
-export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPrefix }: NodeCardProps) {
+export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPrefix, anchor }: NodeCardProps) {
   const [article, setArticle] = useState<Article | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // Open intentionally docked left-of-center, away from the side widgets and the
-  // top-center view toggle. 340px wide, vertically centered-ish.
-  const [pos, setPos] = useState(() => {
-    if (typeof window === "undefined") return { x: 296, y: 120 }
-    const cardWidth = 340
-    return {
-      x: Math.max(296, Math.round((window.innerWidth - cardWidth) / 2)),
-      y: 120,
-    }
-  })
+  // Position is computed from the click anchor on first mount, then becomes
+  // the user's responsibility (drag) until the next open.
+  const [pos, setPos] = useState(() => computeIntentionalPosition(anchor))
   const [dragging, setDragging] = useState(false)
   const dragStart = useRef({ x: 0, y: 0, posX: 0, posY: 0 })
   const cardRef = useRef<HTMLDivElement>(null)
+
+  // Recompute position when the anchor changes (i.e., a different node was clicked)
+  useEffect(() => {
+    setPos(computeIntentionalPosition(anchor))
+  }, [anchor])
 
   useEffect(() => {
     setLoading(true)

@@ -271,6 +271,8 @@ export default function EngramPage() {
     return map
   }, [graphData])
 
+  const [selectedAnchor, setSelectedAnchor] = useState<{ x: number; y: number } | null>(null)
+
   const handleNodeClick = useCallback((slug: string, x: number, y: number) => {
     setNodeMenu({ slug, x, y })
   }, [])
@@ -278,6 +280,7 @@ export default function EngramPage() {
   const openArticle = useCallback(() => {
     if (!nodeMenu) return
     setSelectedSlug(nodeMenu.slug)
+    setSelectedAnchor({ x: nodeMenu.x, y: nodeMenu.y })
     setNodeMenu(null)
   }, [nodeMenu])
 
@@ -521,7 +524,8 @@ export default function EngramPage() {
           slug={selectedSlug}
           engramSlug={engramSlug}
           engramId={engramId}
-          onClose={() => setSelectedSlug(null)}
+          anchor={selectedAnchor}
+          onClose={() => { setSelectedSlug(null); setSelectedAnchor(null) }}
         />
       )}
 
