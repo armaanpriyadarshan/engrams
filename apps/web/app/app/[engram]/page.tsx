@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -27,6 +27,20 @@ function HideWhenPanelOpen({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   )
+}
+
+// Auto-opens a widget by id once when this component mounts. Used to make
+// the /sources route render as the expanded sources widget.
+function AutoOpenWidget({ id }: { id: string }) {
+  const { open } = usePanelContext()
+  const opened = useRef(false)
+  useEffect(() => {
+    if (opened.current) return
+    opened.current = true
+    // Defer one frame so the WidgetPanel has registered its card rect first
+    requestAnimationFrame(() => open(id))
+  }, [id, open])
+  return null
 }
 
 function useDropZone(engramId: string | null) {
@@ -163,7 +177,9 @@ interface NodeMenu {
 
 export default function EngramPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const engramSlug = params.engram as string
+  const widgetParam = searchParams.get("widget")
 
   const [engramId, setEngramId] = useState<string | null>(null)
   const [engramDescription, setEngramDescription] = useState<string | null>(null)
@@ -350,6 +366,7 @@ export default function EngramPage() {
 
   return (
     <WidgetPanelProvider>
+    {widgetParam && <AutoOpenWidget id={widgetParam} />}
     <div
       className="w-full h-full relative"
       onDragEnter={onDragEnter}
