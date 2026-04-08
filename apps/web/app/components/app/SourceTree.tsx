@@ -123,7 +123,7 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
   // Compact preview for the collapsed widget card
   const preview = (
     <div className="px-3 py-2.5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
         <span className="text-[9px] font-mono text-text-ghost tabular-nums">{totalCount}</span>
       </div>
@@ -305,7 +305,7 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
       ) : (
         // List view
         <div>
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2 mb-6">
             <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
             <span className="text-[9px] font-mono text-text-ghost tabular-nums">{totalCount}</span>
           </div>

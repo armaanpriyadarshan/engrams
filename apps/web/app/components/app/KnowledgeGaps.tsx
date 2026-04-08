@@ -54,7 +54,7 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
 
   const preview = (
     <div className="px-3 py-2.5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Knowledge Gaps</span>
         <span className="text-[9px] font-mono text-text-ghost tabular-nums">{loading ? "..." : gaps.length}</span>
       </div>

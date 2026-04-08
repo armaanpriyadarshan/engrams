@@ -291,7 +291,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
 
   const activityPreview = (
     <div className="px-3 py-2.5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
         <span className="text-[9px] font-mono text-text-ghost tabular-nums">
           {runningCount > 0 ? `${runningCount} active` : allRuns.length}
@@ -319,7 +319,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
 
   const statsPreview = (
     <div className="px-3 py-2.5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
         <span className="text-[9px] font-mono text-text-ghost tabular-nums">{articles.length}</span>
       </div>
@@ -360,7 +360,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
         className="border-r-border-emphasis"
         preview={activityPreview}
       >
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2 mb-5">
           <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
           <span className="text-[9px] font-mono text-text-ghost tabular-nums">
             {runningCount > 0 ? `${runningCount} active · ${allRuns.length}` : allRuns.length}
@@ -384,10 +384,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
             {/* Recent stratigraphy */}
             {recentAll.length > 0 && (
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[9px] font-mono text-text-ghost tracking-wider uppercase">Recent</span>
-                  <span className="text-[9px] font-mono text-text-ghost tabular-nums">{recentAll.length}</span>
-                </div>
+                <span className="text-[9px] font-mono text-text-ghost tracking-wider uppercase block mb-2">Recent</span>
                 <div className="relative pl-4">
                   <div className="absolute left-0 top-1 bottom-1 w-px bg-border-emphasis" />
                   {recentAll.map((r) => renderStratigraphyRow(r, true))}
@@ -403,7 +400,7 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
         className="border-r-border-emphasis"
         preview={statsPreview}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
           <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
           <span className="text-[9px] font-mono text-text-ghost tabular-nums">{articles.length}</span>
         </div>
