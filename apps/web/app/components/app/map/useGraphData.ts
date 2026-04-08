@@ -112,7 +112,8 @@ export function useGraphData(engramId: string | null) {
     fetch()
   }, [engramId, refreshKey])
 
-  // Subscribe to compilation_runs so graph refreshes after compilation
+  // Subscribe to articles, edges, and compilation_runs so graph refreshes
+  // on compilations, deletes, and any other changes
   useEffect(() => {
     if (!engramId) return
     const supabase = createClient()
@@ -126,6 +127,16 @@ export function useGraphData(engramId: string | null) {
             setRefreshKey((k) => k + 1)
           }
         }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "articles", filter: `engram_id=eq.${engramId}` },
+        () => { setRefreshKey((k) => k + 1) }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "edges", filter: `engram_id=eq.${engramId}` },
+        () => { setRefreshKey((k) => k + 1) }
       )
       .subscribe()
     return () => { supabase.removeChannel(channel) }

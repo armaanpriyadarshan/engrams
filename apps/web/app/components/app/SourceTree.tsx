@@ -94,6 +94,17 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Real-time: refresh when sources or articles change
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`sources-live-${engramId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "sources", filter: `engram_id=eq.${engramId}` }, () => fetchData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "articles", filter: `engram_id=eq.${engramId}` }, () => fetchData())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [engramId, fetchData])
+
   const articlesBySource = useMemo(() => {
     const map = new Map<string, ArticleRef[]>()
     for (const a of articleRefs) {

@@ -189,6 +189,20 @@ export default function EngramPage() {
       })
   }, [engramSlug])
 
+  // Real-time: refresh sidebar counts + layout when engram row changes
+  const router = useRouter()
+  useEffect(() => {
+    if (!engramId) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`engram-live-${engramId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "engrams", filter: `id=eq.${engramId}` }, () => {
+        router.refresh()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [engramId, router])
+
   useEffect(() => {
     if (!nodeMenu) return
     const close = () => setNodeMenu(null)
