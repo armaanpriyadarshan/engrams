@@ -125,7 +125,7 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
     <div className="px-3 py-2.5">
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
-        <span className="text-[9px] font-mono text-text-ghost">{totalCount}</span>
+        <span className="text-[9px] font-mono text-text-ghost tabular-nums">{totalCount}</span>
       </div>
       <div className="mt-2 space-y-1">
         {sources.length === 0 ? (
@@ -307,7 +307,7 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
         <div>
           <div className="flex items-center justify-between mb-6">
             <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Sources</span>
-            <span className="text-[9px] font-mono text-text-ghost">{totalCount}</span>
+            <span className="text-[9px] font-mono text-text-ghost tabular-nums">{totalCount}</span>
           </div>
           {allSources.length === 0 ? (
             <p className="text-sm text-text-secondary">No sources yet. <Link href={`/app/${engramSlug}/feed`} className="hover:text-text-emphasis transition-colors duration-120">Feed one.</Link></p>

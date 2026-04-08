@@ -56,7 +56,7 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
     <div className="px-3 py-2.5">
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Knowledge Gaps</span>
-        <span className="text-[9px] font-mono text-text-ghost">{loading ? "..." : gaps.length}</span>
+        <span className="text-[9px] font-mono text-text-ghost tabular-nums">{loading ? "..." : gaps.length}</span>
       </div>
       {!loading && gaps.length === 0 && (
         <p className="mt-1.5 text-[10px] text-text-ghost">No open questions.</p>
@@ -80,7 +80,10 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
       preview={preview}
     >
       <div className="flex items-center justify-between mb-4">
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Open Questions</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Open Questions</span>
+          <span className="text-[9px] font-mono text-text-ghost tabular-nums">{loading ? "..." : gaps.length}</span>
+        </div>
         <button
           onClick={(e) => { e.stopPropagation(); runDetection() }}
           disabled={detecting}

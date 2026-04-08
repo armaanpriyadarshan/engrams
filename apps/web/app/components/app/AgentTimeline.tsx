@@ -209,40 +209,82 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
     return () => { supabase.removeChannel(channel) }
   }, [engramId])
 
-  const statusColor = (s: string) => s === "completed" ? "bg-confidence-high" : s === "running" ? "bg-agent-active animate-pulse" : s === "failed" ? "bg-danger" : "bg-text-ghost"
+  const typeLabel: Record<string, string> = {
+    compile: "Compiled",
+    lint: "Linted",
+    gaps: "Checked gaps",
+    embed: "Indexed",
+    sync: "Synced",
+    parse_file: "Parsed",
+    user_edit: "Edited",
+    ask: "Asked",
+  }
+  const stratigraphyStatusColor = (s: string) =>
+    s === "completed" ? "bg-confidence-high"
+      : s === "running" ? "bg-agent-active"
+        : s === "failed" ? "bg-danger"
+          : "bg-text-ghost"
   const confColor = avgConfidence > 0.8 ? "text-confidence-high" : avgConfidence > 0.5 ? "text-confidence-mid" : "text-confidence-low"
 
-  const sortedPreview = sortByState(runs)
-  const sortedAll = sortByState(allRuns)
+  // Split runs by state so the preview and expanded view can render
+  // "active" (running) above "recent" (completed/failed).
+  const activePreview = runs.filter((r) => r.status === "running")
+  const recentPreview = runs.filter((r) => r.status !== "running").slice(0, 4)
+  const activeAll = allRuns.filter((r) => r.status === "running")
+  const recentAll = allRuns.filter((r) => r.status !== "running")
   const runningCount = allRuns.filter((r) => r.status === "running").length
 
-  // htop-style process row. Monospace, dense, no border between rows.
-  // Shows: dot | type | target | duration | (summary, if finished)
-  const renderRow = (r: AgentRun, expanded: boolean) => {
+  // Active process card — visually prominent. Left accent bar in
+  // agent-active color, two-line layout (type + duration on top,
+  // target on the second line), subtle pulse on the dot.
+  const renderActiveCard = (r: AgentRun, expanded: boolean) => {
     const type = AGENT_TYPE_SHORT[r.agent_type] ?? r.agent_type
     const target = getTarget(r)
     const duration = formatDuration(r, nowMs)
-    const errorDetail = (r.detail as { error?: string } | null)?.error
-    const isFailed = r.status === "failed"
-    const isRunning = r.status === "running"
     return (
       <div
         key={r.id}
-        className="flex items-center gap-2 font-mono leading-tight"
-        title={errorDetail ?? undefined}
+        className={`relative border-l-2 border-agent-active pl-3 ${expanded ? "py-1.5" : "py-1"}`}
       >
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor(r.status)}`} />
-        <span className={`${expanded ? "text-[11px] w-[52px]" : "text-[10px] w-[44px]"} ${isRunning ? "text-text-secondary" : isFailed ? "text-danger" : "text-text-tertiary"} shrink-0`}>
-          {type}
+        <div className="flex items-baseline justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="w-1 h-1 rounded-full bg-agent-active animate-pulse shrink-0" />
+            <span className={`font-mono uppercase tracking-wider ${expanded ? "text-[10px]" : "text-[9px]"} text-text-emphasis`}>
+              {type}
+            </span>
+          </div>
+          {duration && (
+            <span className={`font-mono text-agent-active tabular-nums shrink-0 ${expanded ? "text-[10px]" : "text-[9px]"}`}>
+              {duration}
+            </span>
+          )}
+        </div>
+        <p className={`font-mono ${expanded ? "text-[11px]" : "text-[10px]"} text-text-secondary truncate leading-tight mt-0.5`}>
+          {target !== r.agent_type ? target : "working..."}
+        </p>
+      </div>
+    )
+  }
+
+  // Stratigraphy row — chronological timeline with a vertical rail
+  // and a status dot per row. Used for completed/failed runs.
+  const renderStratigraphyRow = (r: AgentRun, expanded: boolean) => {
+    const errorDetail = (r.detail as { error?: string } | null)?.error
+    const isFailed = r.status === "failed"
+    return (
+      <div key={r.id} className={`relative ${expanded ? "pb-4" : "pb-2.5"} last:pb-0`}>
+        <div className={`absolute -left-4 top-[5px] w-1.5 h-1.5 rounded-full ${stratigraphyStatusColor(r.status)}`} style={{ transform: "translateX(-50%)" }} />
+        <p
+          className={`${expanded ? "text-[11px]" : "text-[10px]"} leading-tight ${isFailed ? "text-danger" : "text-text-secondary"} truncate`}
+          title={errorDetail ?? undefined}
+        >
+          <span className="text-text-tertiary">{typeLabel[r.agent_type] ?? r.agent_type}</span>
+          {" · "}
+          {r.summary}
+        </p>
+        <span className={`font-mono ${expanded ? "text-[10px]" : "text-[9px]"} text-text-ghost`}>
+          {timeAgo(r.started_at)}
         </span>
-        <span className={`${expanded ? "text-[11px]" : "text-[10px]"} ${isRunning ? "text-text-primary" : isFailed ? "text-danger" : "text-text-tertiary"} truncate flex-1 min-w-0`}>
-          {target !== r.agent_type ? target : (isRunning ? "..." : (r.summary ?? ""))}
-        </span>
-        {duration && (
-          <span className={`${expanded ? "text-[11px]" : "text-[10px]"} text-text-ghost shrink-0 tabular-nums`}>
-            {duration}
-          </span>
-        )}
       </div>
     )
   }
@@ -250,22 +292,37 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
   const activityPreview = (
     <div className="px-3 py-2.5">
       <div className="flex items-center justify-between">
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Processes</span>
-        {runningCount > 0 && (
-          <span className="text-[9px] font-mono text-agent-active tabular-nums">{runningCount} running</span>
-        )}
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
+        <span className="text-[9px] font-mono text-text-ghost tabular-nums">
+          {runningCount > 0 ? `${runningCount} active` : allRuns.length}
+        </span>
       </div>
-      <div className="mt-2 space-y-1">
-        {sortedPreview.length === 0 ? (
-          <p className="font-mono text-[10px] text-text-ghost">idle</p>
-        ) : sortedPreview.slice(0, 5).map((r) => renderRow(r, false))}
-      </div>
+      {activePreview.length === 0 && recentPreview.length === 0 ? (
+        <p className="mt-2 font-mono text-[10px] text-text-ghost">idle</p>
+      ) : (
+        <>
+          {activePreview.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {activePreview.slice(0, 3).map((r) => renderActiveCard(r, false))}
+            </div>
+          )}
+          {recentPreview.length > 0 && (
+            <div className={`${activePreview.length > 0 ? "mt-3 pt-3 border-t border-border" : "mt-2"} relative pl-4`}>
+              <div className="absolute left-0 top-1 bottom-1 w-px bg-border" />
+              {recentPreview.map((r) => renderStratigraphyRow(r, false))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 
   const statsPreview = (
     <div className="px-3 py-2.5">
-      <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
+        <span className="text-[9px] font-mono text-text-ghost tabular-nums">{articles.length}</span>
+      </div>
       <div className="mt-2 flex justify-between text-center">
         <div><span className="block font-mono text-sm text-text-emphasis">{sourceCount}</span><span className="font-mono text-[8px] text-text-ghost">sources</span></div>
         <div><span className="block font-mono text-sm text-text-emphasis">{edgeCount}</span><span className="font-mono text-[8px] text-text-ghost">links</span></div>
@@ -303,45 +360,42 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
         className="border-r-border-emphasis"
         preview={activityPreview}
       >
-        <div className="flex items-center justify-between">
-          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Processes</span>
+        <div className="flex items-center justify-between mb-5">
+          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
           <span className="text-[9px] font-mono text-text-ghost tabular-nums">
-            {runningCount > 0 ? `${runningCount} running · ${allRuns.length} total` : `${allRuns.length} total`}
+            {runningCount > 0 ? `${runningCount} active · ${allRuns.length}` : allRuns.length}
           </span>
         </div>
-        <div className="mt-6">
-          {sortedAll.length === 0 ? (
-            <p className="text-sm text-text-secondary">idle</p>
-          ) : (
-            <div>
-              {/* Column header */}
-              <div className="flex items-center gap-2 font-mono text-[9px] text-text-ghost uppercase tracking-wider pb-2 border-b border-border">
-                <span className="w-1.5 shrink-0" />
-                <span className="w-[52px] shrink-0">type</span>
-                <span className="flex-1 min-w-0">target</span>
-                <span className="shrink-0">time</span>
+
+        {allRuns.length === 0 ? (
+          <p className="text-sm text-text-secondary">idle</p>
+        ) : (
+          <div className="space-y-5">
+            {/* Active section */}
+            {activeAll.length > 0 && (
+              <div>
+                <span className="text-[9px] font-mono text-text-ghost tracking-wider uppercase">Active</span>
+                <div className="mt-2 space-y-2">
+                  {activeAll.map((r) => renderActiveCard(r, true))}
+                </div>
               </div>
-              {/* Rows */}
-              <div className="mt-2 space-y-1">
-                {sortedAll.map((r) => (
-                  <div key={r.id} className="py-0.5">
-                    {renderRow(r, true)}
-                    {r.status === "completed" && r.summary && (
-                      <div className="pl-[70px] text-[10px] font-mono text-text-ghost leading-tight truncate">
-                        {r.summary}
-                      </div>
-                    )}
-                    {r.status === "failed" && r.summary && (
-                      <div className="pl-[70px] text-[10px] font-mono text-danger/80 leading-tight truncate">
-                        {r.summary}
-                      </div>
-                    )}
-                  </div>
-                ))}
+            )}
+
+            {/* Recent stratigraphy */}
+            {recentAll.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[9px] font-mono text-text-ghost tracking-wider uppercase">Recent</span>
+                  <span className="text-[9px] font-mono text-text-ghost tabular-nums">{recentAll.length}</span>
+                </div>
+                <div className="relative pl-4">
+                  <div className="absolute left-0 top-1 bottom-1 w-px bg-border-emphasis" />
+                  {recentAll.map((r) => renderStratigraphyRow(r, true))}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </WidgetPanel>
 
       <WidgetPanel
@@ -349,7 +403,10 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
         className="border-r-border-emphasis"
         preview={statsPreview}
       >
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Stats</span>
+          <span className="text-[9px] font-mono text-text-ghost tabular-nums">{articles.length}</span>
+        </div>
         <div className="mt-6 grid grid-cols-3 gap-3">
           <div className="border border-border p-3"><div className="font-mono text-lg text-text-emphasis">{sourceCount}</div><div className="text-[9px] font-mono text-text-ghost uppercase mt-0.5">Sources</div></div>
           <div className="border border-border p-3"><div className="font-mono text-lg text-text-emphasis">{edgeCount}</div><div className="text-[9px] font-mono text-text-ghost uppercase mt-0.5">Links</div></div>
