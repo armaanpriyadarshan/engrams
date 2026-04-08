@@ -33,7 +33,7 @@ export default function GraphFilters({ filters, onChange, totalNodes, visibleNod
   }
 
   return (
-    <div className="absolute top-[52px] left-[calc(50%+42px)] -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-start gap-2">
+    <div className="absolute top-[52px] left-[calc(50%+50px)] -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-start gap-2">
       {!open ? (
         <button
           onClick={() => setOpen(true)}
