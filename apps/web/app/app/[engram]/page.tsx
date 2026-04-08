@@ -307,15 +307,11 @@ export default function EngramPage() {
         )}
         <p className="text-text-secondary text-sm">Nothing here yet.</p>
         <p className="mt-2 text-sm text-text-tertiary">Paste a URL, drop a file, or click Feed to begin.</p>
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6">
           <Link href={`/app/${engramSlug}/feed`} className="bg-surface border border-border-emphasis px-4 py-2 text-xs text-text-secondary hover:text-text-emphasis hover:border-text-tertiary transition-all duration-120">
             Feed a source
           </Link>
-          <Link href={`/app/${engramSlug}/ask`} className="bg-surface border border-border px-4 py-2 text-xs text-text-ghost hover:text-text-secondary transition-all duration-120">
-            Ask a question
-          </Link>
         </div>
-        {engramId && <AddSourceButton engramId={engramId} />}
         {engramId && <CompilationToast engramId={engramId} />}
       </div>
       </WidgetPanelProvider>
