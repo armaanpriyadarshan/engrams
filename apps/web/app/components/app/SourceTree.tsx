@@ -132,7 +132,7 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
       await supabase.from("articles").update({ source_ids: newSourceIds }).eq("id", article.id)
     }
 
-    // Delete the source
+    // Delete the source (compilation_runs cascade, knowledge_gaps set null via FK)
     await supabase.from("sources").delete().eq("id", sourceId)
 
     // Recount sources
@@ -144,6 +144,10 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
 
     await supabase.from("engrams").update({ source_count: count ?? 0 }).eq("id", engramId)
 
+    // Update local state immediately
+    setSources(prev => prev.filter(s => s.id !== sourceId))
+    setAllSources(prev => prev.filter(s => s.id !== sourceId))
+    setTotalCount(prev => prev - 1)
     setDeleting(null)
     setSelectedId(null)
     fetchData()

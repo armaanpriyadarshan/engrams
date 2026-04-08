@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import ArticleContent from "./ArticleContent"
 
@@ -80,6 +81,45 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPref
   const [article, setArticle] = useState<Article | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const router = useRouter()
+
+  const handleDeleteArticle = useCallback(async () => {
+    setDeleting(true)
+    const supabase = createClient()
+
+    // Delete edges referencing this article
+    await supabase.from("edges").delete().eq("engram_id", engramId).eq("from_slug", slug)
+    await supabase.from("edges").delete().eq("engram_id", engramId).eq("to_slug", slug)
+
+    // Remove from related_slugs on other articles
+    const { data: related } = await supabase
+      .from("articles")
+      .select("id, related_slugs")
+      .eq("engram_id", engramId)
+      .contains("related_slugs", [slug])
+
+    for (const art of related ?? []) {
+      const newSlugs = (art.related_slugs as string[]).filter(s => s !== slug)
+      await supabase.from("articles").update({ related_slugs: newSlugs }).eq("id", art.id)
+    }
+
+    // Delete the article
+    await supabase.from("articles").delete().eq("engram_id", engramId).eq("slug", slug)
+
+    // Recount articles
+    const { count } = await supabase
+      .from("articles")
+      .select("id", { count: "exact", head: true })
+      .eq("engram_id", engramId)
+
+    await supabase.from("engrams").update({ article_count: count ?? 0 }).eq("id", engramId)
+
+    setDeleting(false)
+    onClose()
+    router.refresh()
+  }, [engramId, slug, onClose, router])
+
   // Position is computed from the click anchor on first mount, then becomes
   // the user's responsibility (drag) until the next open.
   const [pos, setPos] = useState(() => computeIntentionalPosition(anchor))
@@ -183,13 +223,20 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPref
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-border">
+            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
               <Link
                 href={`${linkPrefix ?? `/app/${engramSlug}`}/article/${slug}`}
                 className="text-[10px] font-mono text-text-ghost hover:text-text-emphasis transition-colors duration-120"
               >
                 Open full article &rarr;
               </Link>
+              <button
+                onClick={handleDeleteArticle}
+                disabled={deleting}
+                className="text-[10px] font-mono text-text-ghost hover:text-danger transition-colors duration-120 cursor-pointer disabled:opacity-30"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
             </div>
           </>
         ) : (

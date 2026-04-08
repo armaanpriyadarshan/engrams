@@ -111,7 +111,7 @@ export default function SourcesList({ sources, articles, engramId, engramSlug }:
       await supabase.from("articles").update({ source_ids: newSourceIds }).eq("id", article.id)
     }
 
-    // Delete the source
+    // Delete the source (compilation_runs cascade, knowledge_gaps set null via FK)
     await supabase.from("sources").delete().eq("id", sourceId)
 
     // Recount sources
