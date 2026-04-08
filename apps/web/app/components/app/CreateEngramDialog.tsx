@@ -53,7 +53,7 @@ export default function CreateEngramDialog({ userId, open, onClose }: CreateEngr
           </button>
         </div>
         <div className="px-6 py-6 max-h-[80vh] overflow-y-auto scrollbar-hidden">
-          <CreateEngramForm userId={userId} variant="modal" onCancel={onClose} />
+          <CreateEngramForm userId={userId} variant="modal" onCancel={onClose} onCreated={onClose} />
         </div>
       </div>
     </div>

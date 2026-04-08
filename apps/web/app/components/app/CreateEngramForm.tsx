@@ -85,6 +85,7 @@ export default function CreateEngramForm({ userId, variant = "page", onCancel, o
       }
     }
 
+    setCreating(false)
     if (onCreated) onCreated(engram.slug)
     router.push(`/app/${engram.slug}`)
     router.refresh()
