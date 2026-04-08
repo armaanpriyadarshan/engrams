@@ -33,13 +33,13 @@ export default function GraphFilters({ filters, onChange, totalNodes, visibleNod
   }
 
   return (
-    <div className="absolute top-[52px] left-[calc(50%+56px)] z-20 pointer-events-auto flex flex-col items-start gap-2">
+    <div className="absolute top-[52px] left-[calc(50%+48px)] -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-start gap-2">
       {!open ? (
         <button
           onClick={() => setOpen(true)}
-          className="bg-surface/80 backdrop-blur-md border border-border rounded-sm px-3 py-1.5 text-[10px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer flex items-center gap-2"
+          className="bg-surface/80 backdrop-blur-md border border-border-emphasis hover:border-text-tertiary rounded-sm px-4 py-2 flex items-center gap-2 text-xs text-text-secondary hover:text-text-emphasis transition-all duration-120 cursor-pointer"
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
           </svg>
           {visibleNodes < totalNodes ? `${visibleNodes}/${totalNodes}` : "Filter"}
