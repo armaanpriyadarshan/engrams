@@ -70,13 +70,47 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
       setTurns(prev => prev.map((t) => t.id === turnId ? updater(t) : t))
     }
 
+    // Track the agent_runs row for this ask so we can finalize it
+    // client-side on the done event. Needed because server-side updates
+    // from inside a streaming ReadableStream.start() callback aren't
+    // reliable on Supabase Edge Functions (the runtime tears down the
+    // context before the final DB write commits).
+    let agentRunId: string | null = null
+
     // Cancel any in-flight request
-    if (abortRef.current) abortRef.current.abort()
+    if (abortRef.current) {
+      abortRef.current.abort()
+    }
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
+    const supabase = createClient()
+
+    // Helper: client-side finalize of the agent_runs row. Called on
+    // the done event (to mark completed), on an error event (failed),
+    // or on abort (if the user cancels mid-stream).
+    const finalizeAgentRun = async (
+      status: "completed" | "failed",
+      summary: string,
+      extra: Record<string, unknown> = {},
+    ) => {
+      if (!agentRunId) return
+      try {
+        await supabase
+          .from("agent_runs")
+          .update({
+            status,
+            summary: summary.slice(0, 300),
+            detail: { question: text.slice(0, 200), ...extra },
+            finished_at: new Date().toISOString(),
+          })
+          .eq("id", agentRunId)
+      } catch {
+        /* best-effort */
+      }
+    }
+
     try {
-      const supabase = createClient()
       const { data: session } = await supabase.auth.getSession()
       const token = session.session?.access_token ?? ""
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -126,9 +160,21 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
             } else if (event.type === "followups") {
               patchTurn((t) => ({ ...t, followups: event.followups }))
             } else if (event.type === "done") {
+              if (event.agent_run_id) agentRunId = event.agent_run_id
               patchTurn((t) => ({ ...t, streaming: false }))
+              // Finalize the agent_runs row from the client. This is
+              // the authoritative mark-done because the server-side
+              // write from inside the stream is unreliable.
+              finalizeAgentRun("completed", event.summary ?? text, {
+                articles_consulted: event.articles_consulted ?? [],
+                answer_length: event.answer_length ?? 0,
+              })
             } else if (event.type === "error") {
+              if (event.agent_run_id) agentRunId = event.agent_run_id
               patchTurn((t) => ({ ...t, answer: t.answer || event.message, streaming: false, errored: true }))
+              finalizeAgentRun("failed", event.message ?? "Error", {
+                error: event.error ?? event.message,
+              })
             }
           } catch { /* ignore parse errors on partial chunks */ }
         }
@@ -136,14 +182,20 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
 
       // Stream ended without an explicit done event — clear streaming flag
       patchTurn((t) => t.streaming ? { ...t, streaming: false } : t)
+      // Safety net: if we reached here without seeing a done event
+      // (and therefore didn't call finalizeAgentRun), mark it completed
+      // best-effort. If we already did, this is a no-op on the DB side.
+      finalizeAgentRun("completed", text)
     } catch (err: unknown) {
       if ((err as Error).name === "AbortError") {
-        // User abandoned this turn by asking a followup. Mark it done so
-        // the pulsing cursor stops on the old row.
+        // User abandoned this turn by asking a followup. Mark the
+        // agent_runs row cancelled so the pulse stops immediately.
         patchTurn((t) => t.streaming ? { ...t, streaming: false } : t)
+        finalizeAgentRun("failed", "Cancelled", { error: "client aborted" })
         return
       }
       patchTurn((t) => ({ ...t, answer: "Query failed. Try again.", streaming: false, errored: true }))
+      finalizeAgentRun("failed", "Request failed", { error: String(err) })
     } finally {
       // Only clear abortRef if we're still the current controller. If a
       // followup has already started a new controller, don't stomp it.
@@ -169,12 +221,13 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
       <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[60] pointer-events-auto">
         <button
           onClick={() => setMinimized(false)}
-          className="bg-surface/90 backdrop-blur-md border border-border-emphasis rounded-sm px-4 py-2 flex items-center gap-3 text-[10px] font-mono text-text-secondary hover:text-text-emphasis transition-colors duration-120 cursor-pointer"
+          className="bg-surface/90 backdrop-blur-md border border-border-emphasis rounded-sm px-4 py-2 flex items-center gap-2 text-text-secondary hover:text-text-emphasis transition-colors duration-120 cursor-pointer"
         >
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          Conversation · {turns.length} turn{turns.length !== 1 ? "s" : ""}
+          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Thread</span>
+          <span className="text-[9px] font-mono text-text-ghost tabular-nums">{turns.length}</span>
         </button>
       </div>
     )
@@ -187,9 +240,10 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
           <>
             {/* Header with minimize/clear */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-              <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">
-                Conversation · {turns.length} turn{turns.length !== 1 ? "s" : ""}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Thread</span>
+                <span className="text-[9px] font-mono text-text-ghost tabular-nums">{turns.length}</span>
+              </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setMinimized(true)}
@@ -211,13 +265,12 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
             {/* Turns */}
             <div ref={scrollRef} className="max-h-[50vh] overflow-y-auto scrollbar-hidden">
               {turns.map((turn, i) => (
-                <div key={i} className={`px-4 py-3 ${i > 0 ? "border-t border-border/50" : ""}`}>
+                <div key={turn.id} className={`px-4 py-3 ${i > 0 ? "border-t border-border/50" : ""}`}>
                   {/* User question */}
                   <p className="text-[11px] font-mono text-text-ghost uppercase tracking-wider mb-1.5">You</p>
                   <p className="text-xs text-text-emphasis leading-[1.6] mb-3">{turn.question}</p>
 
-                  {/* Assistant answer */}
-                  <p className="text-[11px] font-mono text-text-ghost uppercase tracking-wider mb-1.5">Engram</p>
+                  {/* Assistant answer — no header, it's implicitly the response */}
                   {turn.answer ? (
                     <div className="prose-engram leading-[1.6] text-xs text-text-secondary">
                       <ArticleContent contentMd={turn.answer} engramSlug={engramSlug} />
