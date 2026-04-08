@@ -67,6 +67,7 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showFullContent, setShowFullContent] = useState(false)
   const [recompiling, setRecompiling] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   const fetchData = useCallback(() => {
     const supabase = createClient()
@@ -112,6 +113,39 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
     supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: sourceId } })
     supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
     setRecompiling(null)
+    fetchData()
+  }, [engramId, fetchData])
+
+  const handleDelete = useCallback(async (sourceId: string) => {
+    setDeleting(sourceId)
+    const supabase = createClient()
+
+    // Remove this source from any articles that reference it
+    const { data: linkedArticles } = await supabase
+      .from("articles")
+      .select("id, source_ids")
+      .eq("engram_id", engramId)
+      .contains("source_ids", [sourceId])
+
+    for (const article of linkedArticles ?? []) {
+      const newSourceIds = (article.source_ids as string[]).filter(id => id !== sourceId)
+      await supabase.from("articles").update({ source_ids: newSourceIds }).eq("id", article.id)
+    }
+
+    // Delete the source
+    await supabase.from("sources").delete().eq("id", sourceId)
+
+    // Recount sources
+    const { count } = await supabase
+      .from("sources")
+      .select("id", { count: "exact", head: true })
+      .eq("engram_id", engramId)
+      .eq("status", "compiled")
+
+    await supabase.from("engrams").update({ source_count: count ?? 0 }).eq("id", engramId)
+
+    setDeleting(null)
+    setSelectedId(null)
     fetchData()
   }, [engramId, fetchData])
 
@@ -196,6 +230,13 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
               className="text-[10px] font-mono text-text-secondary hover:text-text-emphasis transition-colors duration-120 cursor-pointer disabled:opacity-30"
             >
               {recompiling === selected.id ? "Recompiling..." : "Recompile"}
+            </button>
+            <button
+              onClick={() => handleDelete(selected.id)}
+              disabled={deleting === selected.id}
+              className="text-[10px] font-mono text-text-ghost hover:text-danger transition-colors duration-120 cursor-pointer disabled:opacity-30"
+            >
+              {deleting === selected.id ? "Deleting..." : "Delete"}
             </button>
           </div>
 
