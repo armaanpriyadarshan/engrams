@@ -12,6 +12,7 @@ interface AgentRun {
   agent_type: string
   status: string
   summary: string | null
+  detail: Record<string, unknown> | null
   started_at: string
 }
 
@@ -54,16 +55,19 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
   useEffect(() => {
     const supabase = createClient()
     Promise.all([
-      supabase.from("compilation_runs").select("id, trigger_type, status, articles_created, articles_updated, started_at").eq("engram_id", engramId).order("started_at", { ascending: false }).limit(5),
-      supabase.from("compilation_runs").select("id, trigger_type, status, articles_created, articles_updated, started_at").eq("engram_id", engramId).order("started_at", { ascending: false }).limit(50),
+      supabase.from("agent_runs").select("id, agent_type, status, summary, detail, started_at").eq("engram_id", engramId).order("started_at", { ascending: false }).limit(5),
+      supabase.from("agent_runs").select("id, agent_type, status, summary, detail, started_at").eq("engram_id", engramId).order("started_at", { ascending: false }).limit(50),
       supabase.from("articles").select("slug, title, confidence, content_md, source_ids", { count: "exact" }).eq("engram_id", engramId),
       supabase.from("sources").select("id", { count: "exact" }).eq("engram_id", engramId),
       supabase.from("edges").select("id", { count: "exact" }).eq("engram_id", engramId),
       supabase.from("engrams").select("config").eq("id", engramId).single(),
     ]).then(async ([runsRes, allRunsRes, articlesRes, sourcesRes, edgesRes, engramRes]) => {
-      const mapRun = (d: any) => ({
-        id: d.id, agent_type: d.trigger_type, status: d.status,
-        summary: d.status === "completed" ? `${d.articles_created} created, ${d.articles_updated} updated` : d.status === "running" ? "Compiling..." : d.status,
+      const mapRun = (d: AgentRun): AgentRun => ({
+        id: d.id,
+        agent_type: d.agent_type,
+        status: d.status,
+        summary: d.summary ?? (d.status === "running" ? "Running..." : d.status),
+        detail: d.detail,
         started_at: d.started_at,
       })
       if (runsRes.data) setRuns(runsRes.data.map(mapRun))
@@ -108,7 +112,44 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
     })
   }, [engramId])
 
-  const typeLabel: Record<string, string> = { feed: "Fed", compiler: "Compiled", linter: "Linted", freshener: "Freshened", discoverer: "Discovered", deep: "Deep compile", targeted: "Targeted", lint: "Linted" }
+  // Live-subscribe to agent_runs so new/updated rows stream into the widget
+  useEffect(() => {
+    if (!engramId) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`agent-runs-${engramId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "agent_runs", filter: `engram_id=eq.${engramId}` },
+        (payload) => {
+          const row = payload.new as AgentRun
+          setRuns((prev) => [row, ...prev].slice(0, 5))
+          setAllRuns((prev) => [row, ...prev].slice(0, 50))
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "agent_runs", filter: `engram_id=eq.${engramId}` },
+        (payload) => {
+          const row = payload.new as AgentRun
+          setRuns((prev) => prev.map((r) => r.id === row.id ? row : r))
+          setAllRuns((prev) => prev.map((r) => r.id === row.id ? row : r))
+        },
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [engramId])
+
+  const typeLabel: Record<string, string> = {
+    compile: "Compiled",
+    lint: "Linted",
+    gaps: "Checked gaps",
+    embed: "Indexed",
+    sync: "Synced",
+    parse_file: "Parsed",
+    user_edit: "Edited",
+    ask: "Asked",
+  }
   const statusColor = (s: string) => s === "completed" ? "bg-confidence-high" : s === "running" ? "bg-agent-active" : s === "failed" ? "bg-danger" : "bg-text-ghost"
   const confColor = avgConfidence > 0.8 ? "text-confidence-high" : avgConfidence > 0.5 ? "text-confidence-mid" : "text-confidence-low"
 
@@ -178,13 +219,18 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
           ) : (
             <div className="relative pl-4">
               <div className="absolute left-0 top-1 bottom-1 w-px bg-border-emphasis" />
-              {allRuns.map((r) => (
-                <div key={r.id} className="relative pb-5 last:pb-0">
-                  <div className={`absolute -left-4 top-[5px] w-1.5 h-1.5 rounded-full ${statusColor(r.status)}`} style={{ transform: "translateX(-50%)" }} />
-                  <p className="text-xs text-text-secondary leading-relaxed">{typeLabel[r.agent_type] ?? r.agent_type} · {r.summary}</p>
-                  <span className="text-[10px] font-mono text-text-ghost">{timeAgo(r.started_at)}</span>
-                </div>
-              ))}
+              {allRuns.map((r) => {
+                const errorDetail = (r.detail as { error?: string } | null)?.error
+                return (
+                  <div key={r.id} className="relative pb-5 last:pb-0">
+                    <div className={`absolute -left-4 top-[5px] w-1.5 h-1.5 rounded-full ${statusColor(r.status)}`} style={{ transform: "translateX(-50%)" }} />
+                    <p className={`text-xs leading-relaxed ${r.status === "failed" ? "text-danger" : "text-text-secondary"}`} title={errorDetail ?? undefined}>
+                      {typeLabel[r.agent_type] ?? r.agent_type} · {r.summary}
+                    </p>
+                    <span className="text-[10px] font-mono text-text-ghost">{timeAgo(r.started_at)}</span>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

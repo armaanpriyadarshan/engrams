@@ -1,15 +1,22 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 
 interface CompilationPulseProps {
   engramSlug: string | undefined
 }
 
+// Listens to agent_runs and lights up the top bar whenever ANY agent is
+// running for this engram — not just compile-source. The sweep appears on
+// compile, lint, gap detection, embedding, integration sync, parse_file,
+// and user edits.
 export default function CompilationPulse({ engramSlug }: CompilationPulseProps) {
-  const [isCompiling, setIsCompiling] = useState(false)
+  const [running, setRunning] = useState(false)
   const [engramId, setEngramId] = useState<string | null>(null)
+  const runningSetRef = useRef<Set<string>>(new Set())
+
+  const refresh = () => setRunning(runningSetRef.current.size > 0)
 
   // Resolve slug to ID
   useEffect(() => {
@@ -23,11 +30,25 @@ export default function CompilationPulse({ engramSlug }: CompilationPulseProps) 
       .then(({ data }) => setEngramId(data?.id ?? null))
   }, [engramSlug])
 
-  // Subscribe to compilation_runs
+  // Subscribe to agent_runs
   useEffect(() => {
     if (!engramId) return
-
     const supabase = createClient()
+
+    // Seed with any currently-running runs so the pulse shows immediately
+    // on page reload during long-running work.
+    supabase
+      .from("agent_runs")
+      .select("id")
+      .eq("engram_id", engramId)
+      .eq("status", "running")
+      .then(({ data }) => {
+        if (data) {
+          runningSetRef.current = new Set(data.map((r) => r.id as string))
+          refresh()
+        }
+      })
+
     const channel = supabase
       .channel(`pulse-${engramId}`)
       .on(
@@ -35,46 +56,53 @@ export default function CompilationPulse({ engramSlug }: CompilationPulseProps) 
         {
           event: "INSERT",
           schema: "public",
-          table: "compilation_runs",
+          table: "agent_runs",
           filter: `engram_id=eq.${engramId}`,
         },
         (payload) => {
-          if ((payload.new as { status?: string }).status === "running") {
-            setIsCompiling(true)
+          const row = payload.new as { id: string; status?: string }
+          if (row.status === "running") {
+            runningSetRef.current.add(row.id)
+            refresh()
           }
-        }
+        },
       )
       .on(
         "postgres_changes",
         {
           event: "UPDATE",
           schema: "public",
-          table: "compilation_runs",
+          table: "agent_runs",
           filter: `engram_id=eq.${engramId}`,
         },
         (payload) => {
-          const status = (payload.new as { status?: string }).status
-          if (status === "completed" || status === "failed") {
-            setIsCompiling(false)
+          const row = payload.new as { id: string; status?: string }
+          if (row.status === "completed" || row.status === "failed") {
+            runningSetRef.current.delete(row.id)
+            refresh()
+          } else if (row.status === "running") {
+            runningSetRef.current.add(row.id)
+            refresh()
           }
-        }
+        },
       )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
+      runningSetRef.current.clear()
     }
   }, [engramId])
 
   return (
     <div
       className={`fixed top-0 left-0 w-full h-[2px] z-50 transition-opacity duration-300 ease-out ${
-        isCompiling ? "opacity-100" : "opacity-0"
+        running ? "opacity-100" : "opacity-0"
       }`}
       style={{
         background: "linear-gradient(90deg, transparent, var(--color-agent-active), transparent)",
         backgroundSize: "200% 100%",
-        animation: isCompiling ? "compilation-sweep 3s ease-in-out infinite" : "none",
+        animation: running ? "compilation-sweep 3s ease-in-out infinite" : "none",
       }}
     />
   )
