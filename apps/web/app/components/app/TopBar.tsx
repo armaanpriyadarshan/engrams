@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import CompilationPulse from "./CompilationPulse"
-import CurrentActivityLine from "./CurrentActivityLine"
 
 export function TopBar() {
   const pathname = usePathname()
@@ -25,9 +24,6 @@ export function TopBar() {
             </Link>
           </>
         )}
-        <div className="flex-1 flex justify-end min-w-0 pl-4">
-          <CurrentActivityLine engramSlug={engramSlug} />
-        </div>
       </header>
     </>
   )

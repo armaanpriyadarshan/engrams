@@ -14,6 +14,8 @@ interface AgentRun {
   summary: string | null
   detail: Record<string, unknown> | null
   started_at: string
+  finished_at?: string | null
+  duration_ms?: number | null
 }
 
 interface ArticleCell {
@@ -40,6 +42,63 @@ function timeAgo(date: string): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+// htop-style duration: ticks while running, frozen once finished.
+function formatDuration(run: AgentRun, nowMs: number): string {
+  let ms: number
+  if (run.status === "running") {
+    ms = nowMs - new Date(run.started_at).getTime()
+  } else if (typeof run.duration_ms === "number") {
+    ms = run.duration_ms
+  } else {
+    return ""
+  }
+  if (ms < 0) ms = 0
+  if (ms < 1000) return `${ms}ms`
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const rem = s % 60
+  return rem === 0 ? `${m}m` : `${m}m${rem}s`
+}
+
+// Pulls a short "target" string from the run's detail jsonb. Different
+// agent_types populate different keys, so we try a cascade of known names.
+function getTarget(run: AgentRun): string {
+  const d = (run.detail ?? {}) as Record<string, unknown>
+  const candidates = [
+    d.source_title,
+    d.article_title,
+    d.filename,
+    d.service_name,
+    d.question,
+    d.engram_name,
+  ]
+  for (const v of candidates) {
+    if (typeof v === "string" && v.length > 0) return v
+  }
+  return run.agent_type
+}
+
+const AGENT_TYPE_SHORT: Record<string, string> = {
+  compile: "compile",
+  lint: "lint",
+  gaps: "gaps",
+  embed: "embed",
+  sync: "sync",
+  parse_file: "parse",
+  user_edit: "edit",
+  ask: "ask",
+}
+
+// For sorting: running runs pinned to the top, then newest-first.
+function sortByState(runs: AgentRun[]): AgentRun[] {
+  return [...runs].sort((a, b) => {
+    if (a.status === "running" && b.status !== "running") return -1
+    if (b.status === "running" && a.status !== "running") return 1
+    return new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+  })
+}
+
 export default function AgentTimeline({ engramId, engramSlug }: { engramId: string; engramSlug: string }) {
   const router = useRouter()
   const [runs, setRuns] = useState<AgentRun[]>([])
@@ -51,6 +110,16 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
   const [voronoiCells, setVoronoiCells] = useState<{ article: ArticleCell; path: string }[]>([])
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null)
   const [articles, setArticles] = useState<{ slug: string; title: string; confidence: number; wordCount: number; sourceCount: number }[]>([])
+  // Ticks every second ONLY while at least one run is in the running
+  // state, so running durations visibly climb like htop but idle widgets
+  // don't re-render pointlessly.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now())
+  const hasRunning = runs.some((r) => r.status === "running") || allRuns.some((r) => r.status === "running")
+  useEffect(() => {
+    if (!hasRunning) return
+    const id = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [hasRunning])
 
   useEffect(() => {
     const supabase = createClient()
@@ -140,34 +209,56 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
     return () => { supabase.removeChannel(channel) }
   }, [engramId])
 
-  const typeLabel: Record<string, string> = {
-    compile: "Compiled",
-    lint: "Linted",
-    gaps: "Checked gaps",
-    embed: "Indexed",
-    sync: "Synced",
-    parse_file: "Parsed",
-    user_edit: "Edited",
-    ask: "Asked",
-  }
-  const statusColor = (s: string) => s === "completed" ? "bg-confidence-high" : s === "running" ? "bg-agent-active" : s === "failed" ? "bg-danger" : "bg-text-ghost"
+  const statusColor = (s: string) => s === "completed" ? "bg-confidence-high" : s === "running" ? "bg-agent-active animate-pulse" : s === "failed" ? "bg-danger" : "bg-text-ghost"
   const confColor = avgConfidence > 0.8 ? "text-confidence-high" : avgConfidence > 0.5 ? "text-confidence-mid" : "text-confidence-low"
+
+  const sortedPreview = sortByState(runs)
+  const sortedAll = sortByState(allRuns)
+  const runningCount = allRuns.filter((r) => r.status === "running").length
+
+  // htop-style process row. Monospace, dense, no border between rows.
+  // Shows: dot | type | target | duration | (summary, if finished)
+  const renderRow = (r: AgentRun, expanded: boolean) => {
+    const type = AGENT_TYPE_SHORT[r.agent_type] ?? r.agent_type
+    const target = getTarget(r)
+    const duration = formatDuration(r, nowMs)
+    const errorDetail = (r.detail as { error?: string } | null)?.error
+    const isFailed = r.status === "failed"
+    const isRunning = r.status === "running"
+    return (
+      <div
+        key={r.id}
+        className="flex items-center gap-2 font-mono leading-tight"
+        title={errorDetail ?? undefined}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor(r.status)}`} />
+        <span className={`${expanded ? "text-[11px] w-[52px]" : "text-[10px] w-[44px]"} ${isRunning ? "text-text-secondary" : isFailed ? "text-danger" : "text-text-tertiary"} shrink-0`}>
+          {type}
+        </span>
+        <span className={`${expanded ? "text-[11px]" : "text-[10px]"} ${isRunning ? "text-text-primary" : isFailed ? "text-danger" : "text-text-tertiary"} truncate flex-1 min-w-0`}>
+          {target !== r.agent_type ? target : (isRunning ? "..." : (r.summary ?? ""))}
+        </span>
+        {duration && (
+          <span className={`${expanded ? "text-[11px]" : "text-[10px]"} text-text-ghost shrink-0 tabular-nums`}>
+            {duration}
+          </span>
+        )}
+      </div>
+    )
+  }
 
   const activityPreview = (
     <div className="px-3 py-2.5">
-      <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
-      <div className="mt-2 space-y-1.5">
-        {runs.length === 0 ? (
-          <p className="font-mono text-[10px] text-text-ghost">No activity yet.</p>
-        ) : runs.map((r) => (
-          <div key={r.id} className="flex items-start gap-2">
-            <div className={`w-1 h-1 rounded-full mt-1 shrink-0 ${statusColor(r.status)}`} />
-            <div className="min-w-0">
-              <span className="font-mono text-[10px] text-text-tertiary block truncate">{typeLabel[r.agent_type] ?? r.agent_type} &middot; {r.summary}</span>
-              <span className="font-mono text-[9px] text-text-ghost">{timeAgo(r.started_at)}</span>
-            </div>
-          </div>
-        ))}
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Processes</span>
+        {runningCount > 0 && (
+          <span className="text-[9px] font-mono text-agent-active tabular-nums">{runningCount} running</span>
+        )}
+      </div>
+      <div className="mt-2 space-y-1">
+        {sortedPreview.length === 0 ? (
+          <p className="font-mono text-[10px] text-text-ghost">idle</p>
+        ) : sortedPreview.slice(0, 5).map((r) => renderRow(r, false))}
       </div>
     </div>
   )
@@ -212,25 +303,42 @@ export default function AgentTimeline({ engramId, engramSlug }: { engramId: stri
         className="border-r-border-emphasis"
         preview={activityPreview}
       >
-        <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Activity</span>
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-mono text-text-ghost tracking-widest uppercase">Processes</span>
+          <span className="text-[9px] font-mono text-text-ghost tabular-nums">
+            {runningCount > 0 ? `${runningCount} running · ${allRuns.length} total` : `${allRuns.length} total`}
+          </span>
+        </div>
         <div className="mt-6">
-          {allRuns.length === 0 ? (
-            <p className="text-sm text-text-secondary">No activity yet.</p>
+          {sortedAll.length === 0 ? (
+            <p className="text-sm text-text-secondary">idle</p>
           ) : (
-            <div className="relative pl-4">
-              <div className="absolute left-0 top-1 bottom-1 w-px bg-border-emphasis" />
-              {allRuns.map((r) => {
-                const errorDetail = (r.detail as { error?: string } | null)?.error
-                return (
-                  <div key={r.id} className="relative pb-5 last:pb-0">
-                    <div className={`absolute -left-4 top-[5px] w-1.5 h-1.5 rounded-full ${statusColor(r.status)}`} style={{ transform: "translateX(-50%)" }} />
-                    <p className={`text-xs leading-relaxed ${r.status === "failed" ? "text-danger" : "text-text-secondary"}`} title={errorDetail ?? undefined}>
-                      {typeLabel[r.agent_type] ?? r.agent_type} · {r.summary}
-                    </p>
-                    <span className="text-[10px] font-mono text-text-ghost">{timeAgo(r.started_at)}</span>
+            <div>
+              {/* Column header */}
+              <div className="flex items-center gap-2 font-mono text-[9px] text-text-ghost uppercase tracking-wider pb-2 border-b border-border">
+                <span className="w-1.5 shrink-0" />
+                <span className="w-[52px] shrink-0">type</span>
+                <span className="flex-1 min-w-0">target</span>
+                <span className="shrink-0">time</span>
+              </div>
+              {/* Rows */}
+              <div className="mt-2 space-y-1">
+                {sortedAll.map((r) => (
+                  <div key={r.id} className="py-0.5">
+                    {renderRow(r, true)}
+                    {r.status === "completed" && r.summary && (
+                      <div className="pl-[70px] text-[10px] font-mono text-text-ghost leading-tight truncate">
+                        {r.summary}
+                      </div>
+                    )}
+                    {r.status === "failed" && r.summary && (
+                      <div className="pl-[70px] text-[10px] font-mono text-danger/80 leading-tight truncate">
+                        {r.summary}
+                      </div>
+                    )}
                   </div>
-                )
-              })}
+                ))}
+              </div>
             </div>
           )}
         </div>
