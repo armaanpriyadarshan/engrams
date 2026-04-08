@@ -102,7 +102,7 @@ function useDropZone(engramId: string | null) {
         let binary = ""
         for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
         const { data: parsed, error } = await supabase.functions.invoke("parse-file", {
-          body: { file_base64: btoa(binary), filename: file.name, format: ext },
+          body: { file_base64: btoa(binary), filename: file.name, format: ext, engram_id: engramId },
         })
         if (error || !parsed?.content) { setDropMessage("Could not parse file."); setTimeout(() => setDropMessage(""), 2000); continue }
         content = parsed.content

@@ -269,8 +269,9 @@ export default function FeedPage() {
       const base64 = btoa(binary)
 
       const supabase = createClient()
+      const { data: engramRow } = await supabase.from("engrams").select("id").eq("slug", engramSlug).single()
       const { data: parsed, error: parseError } = await supabase.functions.invoke("parse-file", {
-        body: { file_base64: base64, filename: file.name, format: ext },
+        body: { file_base64: base64, filename: file.name, format: ext, engram_id: engramRow?.id },
       })
 
       if (parseError || !parsed?.content) {

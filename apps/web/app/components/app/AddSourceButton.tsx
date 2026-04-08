@@ -285,7 +285,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
         for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
         const base64 = btoa(binary)
         const { data: parsed, error: parseError } = await supabase.functions.invoke("parse-file", {
-          body: { file_base64: base64, filename: file.name, format: ext },
+          body: { file_base64: base64, filename: file.name, format: ext, engram_id: engramId },
         })
         if (parseError || !parsed?.content) {
           setMessage({ type: "err", text: "Could not parse file." })
