@@ -6,6 +6,7 @@ import ArticleContent from "./ArticleContent"
 import Link from "next/link"
 
 interface Turn {
+  id: string
   question: string
   answer: string
   articlesConsulted: string[]
@@ -31,8 +32,12 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
 
   const handleSubmit = useCallback(async (q?: string) => {
     const text = (q ?? query).trim()
-    if (!text || submitting) return
+    if (!text) return
 
+    // NOTE: no `submitting` guard here — if a previous turn is still
+    // streaming, we abort it (via the abortController below) and start
+    // the new one immediately. The old reader loop will see ctrl.signal
+    // aborted and bail out; its turn's streaming flag gets cleared.
     setSubmitting(true)
     setQuery("")
     setMinimized(false)
@@ -46,8 +51,12 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
       }
     }
 
-    // Append a new turn placeholder
+    // Append a new turn placeholder with a stable id so async updates
+    // below can target it by id instead of "last turn" — which can race
+    // with followup submissions and stream updates from aborted fetches.
+    const turnId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const newTurn: Turn = {
+      id: turnId,
       question: text,
       answer: "",
       articlesConsulted: [],
@@ -56,6 +65,10 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
       errored: false,
     }
     setTurns(prev => [...prev, newTurn])
+
+    const patchTurn = (updater: (t: Turn) => Turn) => {
+      setTurns(prev => prev.map((t) => t.id === turnId ? updater(t) : t))
+    }
 
     // Cancel any in-flight request
     if (abortRef.current) abortRef.current.abort()
@@ -84,7 +97,7 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
       })
 
       if (!resp.ok || !resp.body) {
-        setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, answer: "Query failed. Try again.", streaming: false, errored: true } : t))
+        patchTurn((t) => ({ ...t, answer: "Query failed. Try again.", streaming: false, errored: true }))
         setSubmitting(false)
         return
       }
@@ -94,6 +107,7 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
       let buffer = ""
 
       while (true) {
+        if (ctrl.signal.aborted) break
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
@@ -106,30 +120,39 @@ export default function AskBar({ engramId, engramSlug }: { engramId: string; eng
           try {
             const event = JSON.parse(payload)
             if (event.type === "delta") {
-              setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, answer: t.answer + event.text } : t))
+              patchTurn((t) => ({ ...t, answer: t.answer + event.text }))
             } else if (event.type === "articles") {
-              setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, articlesConsulted: event.slugs } : t))
+              patchTurn((t) => ({ ...t, articlesConsulted: event.slugs }))
             } else if (event.type === "followups") {
-              setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, followups: event.followups } : t))
+              patchTurn((t) => ({ ...t, followups: event.followups }))
             } else if (event.type === "done") {
-              setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, streaming: false } : t))
+              patchTurn((t) => ({ ...t, streaming: false }))
             } else if (event.type === "error") {
-              setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, answer: t.answer || event.message, streaming: false, errored: true } : t))
+              patchTurn((t) => ({ ...t, answer: t.answer || event.message, streaming: false, errored: true }))
             }
           } catch { /* ignore parse errors on partial chunks */ }
         }
       }
 
       // Stream ended without an explicit done event — clear streaming flag
-      setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, streaming: false } : t))
+      patchTurn((t) => t.streaming ? { ...t, streaming: false } : t)
     } catch (err: unknown) {
-      if ((err as Error).name === "AbortError") return
-      setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, answer: "Query failed. Try again.", streaming: false, errored: true } : t))
+      if ((err as Error).name === "AbortError") {
+        // User abandoned this turn by asking a followup. Mark it done so
+        // the pulsing cursor stops on the old row.
+        patchTurn((t) => t.streaming ? { ...t, streaming: false } : t)
+        return
+      }
+      patchTurn((t) => ({ ...t, answer: "Query failed. Try again.", streaming: false, errored: true }))
     } finally {
-      setSubmitting(false)
-      abortRef.current = null
+      // Only clear abortRef if we're still the current controller. If a
+      // followup has already started a new controller, don't stomp it.
+      if (abortRef.current === ctrl) {
+        abortRef.current = null
+        setSubmitting(false)
+      }
     }
-  }, [query, submitting, turns, engramId])
+  }, [query, turns, engramId])
 
   const clear = () => {
     if (abortRef.current) abortRef.current.abort()
