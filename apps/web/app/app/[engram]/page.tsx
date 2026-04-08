@@ -19,6 +19,9 @@ import KnowledgeGaps from "@/app/components/app/KnowledgeGaps"
 import IntegrationsSection from "@/app/components/app/IntegrationsSection"
 import { WidgetPanelProvider, usePanelContext } from "@/app/components/app/WidgetPanel"
 import { createSnapshot } from "@/lib/snapshots"
+import { useHybridSearch } from "@/app/components/app/search/useHybridSearch"
+import { HybridSearchBar } from "@/app/components/app/search/HybridSearchBar"
+import { HybridResults } from "@/app/components/app/search/HybridResults"
 
 function HideWhenPanelOpen({ children }: { children: React.ReactNode }) {
   const { openId } = usePanelContext()
@@ -170,7 +173,6 @@ export default function EngramPage() {
   const [view, setView] = useState<ViewMode>("graph")
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
   const [graphFilters, setGraphFilters] = useState<GraphFilterState>({ types: new Set(), minConfidence: 0, searchQuery: "" })
   const { dropping, dropMessage, onDragEnter, onDragLeave, onDragOver, handleDrop } = useDropZone(engramId)
 
@@ -252,22 +254,20 @@ export default function EngramPage() {
     })
   }, [graphData])
 
-  // Filter articles by search query
-  const filteredSections = useMemo(() => {
-    if (!searchQuery.trim()) return wikiSections
-    const q = searchQuery.toLowerCase()
-    return wikiSections
-      .map(([type, nodes]) => {
-        const filtered = nodes.filter(
-          (n) =>
-            n.title.toLowerCase().includes(q) ||
-            n.summary?.toLowerCase().includes(q) ||
-            n.tags.some((t) => t.toLowerCase().includes(q))
-        )
-        return [type, filtered] as [string, GraphNode[]]
-      })
-      .filter(([, nodes]) => nodes.length > 0)
-  }, [wikiSections, searchQuery])
+  // Flat tag list across all articles — fuels the HybridSearchBar chip
+  // vocabulary. Duplicates are intentional; the hook counts them for chip ranking.
+  const allTags = useMemo(() => {
+    if (!graphData) return [] as string[]
+    const out: string[] = []
+    for (const n of graphData.nodes) {
+      for (const t of n.tags) out.push(t)
+    }
+    return out
+  }, [graphData])
+
+  const search = useHybridSearch({ engramId, allTags })
+  const searchActive = search.query.trim().length >= 2
+  const sectionsToShow = wikiSections
 
   // Build a map of slug -> connected article titles for cross-references
   const connectionMap = useMemo(() => {
@@ -386,102 +386,123 @@ export default function EngramPage() {
       {view === "wiki" && graphData && (
         <div className="h-full overflow-y-auto scrollbar-hidden" style={{ animation: "fade-in 300ms ease-out both" }}>
           <div className="max-w-[660px] mx-auto px-6 pt-28 pb-32">
-            {/* Search */}
-            <div className="mb-8">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search..."
-                className="w-full bg-transparent text-sm text-text-secondary placeholder:text-text-ghost outline-none pb-3 border-b border-border focus:border-text-tertiary transition-colors duration-120"
+            {/* Hybrid search bar — replaces the old substring filter */}
+            <HybridSearchBar
+              query={search.query}
+              onQueryChange={search.setQuery}
+              onClear={search.clear}
+              tagVocabulary={search.tagVocabulary}
+              activeTags={search.activeTags}
+              onToggleTag={search.toggleTag}
+              onClearTags={search.clearTags}
+              searching={search.searching}
+              embedded={search.embedded}
+              resultCount={search.results?.length ?? null}
+              onKeyNavigate={(key) => {
+                if (key === "up") search.moveActiveBy(-1)
+                else if (key === "down") search.moveActiveBy(1)
+                else if (key === "enter") {
+                  const r = search.results?.[search.activeIndex]
+                  if (r) router.push(`/app/${engramSlug}/article/${r.slug}`)
+                }
+              }}
+            />
+
+            {searchActive ? (
+              // ── Flat RRF-ranked hybrid results ──
+              <HybridResults
+                engramSlug={engramSlug}
+                results={search.results ?? []}
+                activeIndex={search.activeIndex}
+                onActiveIndexChange={search.setActiveIndex}
+                searching={search.searching}
+                error={search.error}
+                query={search.query}
               />
-            </div>
-
-            {/* Engram summary */}
-            {engramDescription && !searchQuery && (
-              <div className="mb-12 border-l-2 border-border pl-5 py-3">
-                <p className="text-sm text-text-tertiary leading-[1.65]">
-                  {engramDescription}
-                  {" "}{graphData.nodes.length} articles compiled from {graphData.edges.length} connections.
-                </p>
-              </div>
-            )}
-
-            {/* Table of contents */}
-            {!searchQuery && filteredSections.length > 1 && (
-              <nav className="mb-12">
-                <h2 className="font-heading text-xs text-text-ghost uppercase tracking-widest mb-3">Contents</h2>
-                <ol className="space-y-1">
-                  {filteredSections.map(([type, nodes]) => (
-                    <li key={type}>
-                      <a
-                        href={`#section-${type}`}
-                        className="text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120"
-                      >
-                        {type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")}
-                        <span className="text-text-ghost ml-2 font-mono text-[10px]">{nodes.length}</span>
-                      </a>
-                    </li>
-                  ))}
-                </ol>
-              </nav>
-            )}
-
-            {/* Articles */}
-            <div className="space-y-16">
-              {filteredSections.map(([type, nodes]) => (
-                <section key={type} id={`section-${type}`}>
-                  {filteredSections.length > 1 && (
-                    <h2 className="font-heading text-xs text-text-ghost uppercase tracking-widest mb-6 border-b border-border/50 pb-2">
-                      {type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")}
-                    </h2>
-                  )}
-                  <div className="space-y-1">
-                    {nodes.map((node) => {
-                      const connections = connectionMap.get(node.slug) ?? []
-                      return (
-                        <Link
-                          key={node.slug}
-                          href={`/app/${engramSlug}/article/${node.slug}`}
-                          className="group block py-3 -mx-3 px-3 hover:bg-surface-raised/50 transition-colors duration-120"
-                        >
-                          <div className="flex items-baseline justify-between gap-4">
-                            <h3 className="font-heading text-sm text-text-emphasis group-hover:text-text-bright transition-colors duration-120">
-                              {node.title}
-                            </h3>
-                            <div className="flex items-center gap-2 shrink-0">
-                              {connections.length > 0 && (
-                                <span className="text-[10px] font-mono text-text-ghost">
-                                  {connections.length} link{connections.length !== 1 ? "s" : ""}
-                                </span>
-                              )}
-                              <div className="w-1 h-1 rounded-full shrink-0" style={{
-                                backgroundColor: node.confidence > 0.8 ? "var(--color-confidence-high)"
-                                  : node.confidence > 0.5 ? "var(--color-confidence-mid)" : "var(--color-confidence-low)",
-                              }} />
-                            </div>
-                          </div>
-                          {node.summary && (
-                            <p className="mt-1 text-xs text-text-tertiary leading-[1.6] line-clamp-2">{node.summary}</p>
-                          )}
-                          {node.tags.length > 0 && (
-                            <div className="mt-1.5 flex gap-1.5 flex-wrap">
-                              {node.tags.map((tag) => (
-                                <span key={tag} className="font-mono text-[10px] text-text-ghost border border-border px-2 py-0.5">{tag}</span>
-                              ))}
-                            </div>
-                          )}
-                        </Link>
-                      )
-                    })}
+            ) : (
+              <>
+                {/* Engram summary */}
+                {engramDescription && (
+                  <div className="mb-12 border-l-2 border-border pl-5 py-3">
+                    <p className="text-sm text-text-tertiary leading-[1.65]">
+                      {engramDescription}
+                      {" "}{graphData.nodes.length} articles compiled from {graphData.edges.length} connections.
+                    </p>
                   </div>
-                </section>
-              ))}
-            </div>
+                )}
 
-            {/* No results */}
-            {searchQuery && filteredSections.length === 0 && (
-              <p className="text-sm text-text-ghost mt-4">No articles match &ldquo;{searchQuery}&rdquo;</p>
+                {/* Table of contents */}
+                {sectionsToShow.length > 1 && (
+                  <nav className="mb-12">
+                    <h2 className="font-heading text-xs text-text-ghost uppercase tracking-widest mb-3">Contents</h2>
+                    <ol className="space-y-1">
+                      {sectionsToShow.map(([type, nodes]) => (
+                        <li key={type}>
+                          <a
+                            href={`#section-${type}`}
+                            className="text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120"
+                          >
+                            {type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")}
+                            <span className="text-text-ghost ml-2 font-mono text-[10px]">{nodes.length}</span>
+                          </a>
+                        </li>
+                      ))}
+                    </ol>
+                  </nav>
+                )}
+
+                {/* Articles grouped by type */}
+                <div className="space-y-16">
+                  {sectionsToShow.map(([type, nodes]) => (
+                    <section key={type} id={`section-${type}`}>
+                      {sectionsToShow.length > 1 && (
+                        <h2 className="font-heading text-xs text-text-ghost uppercase tracking-widest mb-6 border-b border-border/50 pb-2">
+                          {type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")}
+                        </h2>
+                      )}
+                      <div className="space-y-1">
+                        {nodes.map((node) => {
+                          const connections = connectionMap.get(node.slug) ?? []
+                          return (
+                            <Link
+                              key={node.slug}
+                              href={`/app/${engramSlug}/article/${node.slug}`}
+                              className="group block py-3 -mx-3 px-3 hover:bg-surface-raised/50 transition-colors duration-120"
+                            >
+                              <div className="flex items-baseline justify-between gap-4">
+                                <h3 className="font-heading text-sm text-text-emphasis group-hover:text-text-bright transition-colors duration-120">
+                                  {node.title}
+                                </h3>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {connections.length > 0 && (
+                                    <span className="text-[10px] font-mono text-text-ghost">
+                                      {connections.length} link{connections.length !== 1 ? "s" : ""}
+                                    </span>
+                                  )}
+                                  <div className="w-1 h-1 rounded-full shrink-0" style={{
+                                    backgroundColor: node.confidence > 0.8 ? "var(--color-confidence-high)"
+                                      : node.confidence > 0.5 ? "var(--color-confidence-mid)" : "var(--color-confidence-low)",
+                                  }} />
+                                </div>
+                              </div>
+                              {node.summary && (
+                                <p className="mt-1 text-xs text-text-tertiary leading-[1.6] line-clamp-2">{node.summary}</p>
+                              )}
+                              {node.tags.length > 0 && (
+                                <div className="mt-1.5 flex gap-1.5 flex-wrap">
+                                  {node.tags.map((tag) => (
+                                    <span key={tag} className="font-mono text-[10px] text-text-ghost border border-border px-2 py-0.5">{tag}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>

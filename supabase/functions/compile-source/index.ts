@@ -1,0 +1,1334 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts"
+import { createClient } from "jsr:@supabase/supabase-js@2"
+import { Readability } from "npm:@mozilla/readability"
+import { parseHTML } from "npm:linkedom"
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+}
+
+// =============================================================================
+// URL RETRIEVAL PIPELINE
+// =============================================================================
+//
+// Tiered retrieval for turning a source URL into LLM-ready markdown:
+//
+//   Tier 1  per-domain specializers  (github, wikipedia, arxiv, reddit, hn, youtube)
+//   Tier 2  Jina Reader              (https://r.jina.ai/<url>  — handles SPAs + PDFs)
+//   Tier 3  Local Readability + NodeHtmlMarkdown  (hardened fallback)
+//
+// Every tier has a timeout. Every HTTP read is size-capped. Non-text content
+// types are gated out before we try to parse them as HTML.
+//
+// Output is markdown — NOT plain text — so the compiler LLM keeps structural
+// cues (headings, lists, code blocks, links, alt text). This is the single
+// biggest quality lever.
+
+interface RetrievalResult {
+  markdown: string
+  title: string | null
+  final_url: string
+  content_type: string | null
+  source_kind:
+    | "github"
+    | "wikipedia"
+    | "arxiv"
+    | "doi"
+    | "reddit"
+    | "hackernews"
+    | "youtube"
+    | "jina"
+    | "readability"
+  byte_length: number
+}
+
+const UA = "Mozilla/5.0 (compatible; Engrams/1.0; +https://engrams.app)"
+
+function byteLen(s: string): number {
+  return new TextEncoder().encode(s).byteLength
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  ms = 10_000,
+): Promise<Response> {
+  return await fetch(url, { ...init, signal: AbortSignal.timeout(ms) })
+}
+
+// Read a response body as text, aborting after `maxBytes` to protect the
+// edge function from hostile or bloated pages.
+async function readLimitedText(res: Response, maxBytes: number): Promise<string> {
+  const reader = res.body?.getReader()
+  if (!reader) return await res.text()
+  const chunks: Uint8Array[] = []
+  let received = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (!value) continue
+    chunks.push(value)
+    received += value.byteLength
+    if (received >= maxBytes) {
+      try {
+        await reader.cancel()
+      } catch {
+        /* ignore */
+      }
+      break
+    }
+  }
+  const buf = new Uint8Array(received)
+  let off = 0
+  for (const c of chunks) {
+    buf.set(c, off)
+    off += c.byteLength
+  }
+  return new TextDecoder("utf-8", { fatal: false }).decode(buf)
+}
+
+async function sha256(str: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str))
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+}
+
+// -----------------------------------------------------------------------------
+// Classification
+// -----------------------------------------------------------------------------
+
+type Classification =
+  | { kind: "github" }
+  | { kind: "wikipedia"; lang: string; title: string }
+  | { kind: "arxiv"; id: string; isPdf: boolean }
+  | { kind: "doi"; doi: string }
+  | { kind: "reddit" }
+  | { kind: "hackernews"; id: string }
+  | { kind: "youtube" }
+  | { kind: "generic" }
+
+// Extract a DOI from any URL — doi.org direct, journal landing pages, query
+// strings. Matches the standard "10.<registrant>/<suffix>" pattern, plus
+// publisher-specific URL schemes where the DOI has to be reconstructed from
+// a slug (Nature is the main offender: nature.com/articles/<id> → 10.1038/<id>).
+function extractDoi(url: URL): string | null {
+  const host = url.hostname.toLowerCase().replace(/^www\./, "")
+
+  // Nature portfolio — any nature.com/articles/<id> URL maps to 10.1038/<id>.
+  // Covers nature14236, s41586-xxx-xxx-x, s41467-xxx, etc.
+  if (host === "nature.com" || host.endsWith(".nature.com")) {
+    const m = url.pathname.match(/^\/articles\/([a-z0-9._-]+?)(?:\/|$)/i)
+    if (m) return `10.1038/${m[1]}`
+  }
+
+  // Generic path/query scan for any "10.xxxx/yyyy" pattern. Catches doi.org,
+  // science.org, wiley, plos (query-string DOIs), springer, tandfonline, etc.
+  const haystack = decodeURIComponent(url.pathname + url.search)
+  const m = haystack.match(/10\.\d{4,9}\/[^\s?#&"'<>]+/)
+  if (!m) return null
+  return m[0].replace(/[.,;)\]}]+$/, "")
+}
+
+function classifyUrl(urlStr: string): Classification {
+  let url: URL
+  try {
+    url = new URL(urlStr)
+  } catch {
+    return { kind: "generic" }
+  }
+  const host = url.hostname.toLowerCase().replace(/^www\./, "")
+
+  if (host === "github.com") return { kind: "github" }
+
+  if (host.endsWith(".wikipedia.org")) {
+    const lang = host.split(".")[0]
+    const m = url.pathname.match(/^\/wiki\/(.+)$/)
+    if (m) return { kind: "wikipedia", lang, title: decodeURIComponent(m[1]) }
+  }
+
+  if (host === "arxiv.org") {
+    const m = url.pathname.match(/\/(?:abs|pdf)\/([^/]+?)(?:\.pdf)?$/)
+    if (m) return { kind: "arxiv", id: m[1], isPdf: url.pathname.includes("/pdf/") }
+  }
+
+  if (host === "reddit.com" || host === "old.reddit.com") return { kind: "reddit" }
+
+  if (host === "news.ycombinator.com") {
+    const id = url.searchParams.get("id")
+    if (id) return { kind: "hackernews", id }
+  }
+
+  if (host === "youtube.com" || host === "m.youtube.com" || host === "youtu.be") {
+    return { kind: "youtube" }
+  }
+
+  // DOI-bearing URLs — check last, after all the more specific handlers.
+  // Catches doi.org, science.org, nature.com, wiley, plos, springer,
+  // tandfonline, sage, and any other journal that embeds a DOI in the URL.
+  const doi = extractDoi(url)
+  if (doi) return { kind: "doi", doi }
+
+  return { kind: "generic" }
+}
+
+// -----------------------------------------------------------------------------
+// Tier 1: Per-domain handlers
+// -----------------------------------------------------------------------------
+
+async function retrieveGithub(urlStr: string): Promise<RetrievalResult | null> {
+  const url = new URL(urlStr)
+  const parts = url.pathname.split("/").filter(Boolean)
+  if (parts.length < 2) return null
+  const [owner, repo, maybeKind, ...rest] = parts
+  const gh = { Accept: "application/vnd.github+json" }
+
+  // Repo root → README
+  if (!maybeKind) {
+    const readmeRes = await fetchWithTimeout(
+      `https://api.github.com/repos/${owner}/${repo}/readme`,
+      { headers: { Accept: "application/vnd.github.raw" } },
+      8000,
+    ).catch(() => null)
+    if (!readmeRes?.ok) return null
+    const readme = await readmeRes.text()
+
+    const metaRes = await fetchWithTimeout(
+      `https://api.github.com/repos/${owner}/${repo}`,
+      { headers: gh },
+      5000,
+    ).catch(() => null)
+    const meta = metaRes?.ok ? await metaRes.json().catch(() => null) : null
+
+    const title = meta?.full_name ?? `${owner}/${repo}`
+    const description = meta?.description ? `\n\n> ${meta.description}\n` : "\n"
+    const markdown = `# ${title}${description}\n${readme}`
+    return {
+      markdown,
+      title,
+      final_url: urlStr,
+      content_type: "text/markdown",
+      source_kind: "github",
+      byte_length: byteLen(markdown),
+    }
+  }
+
+  // Issue or PR
+  if ((maybeKind === "issues" || maybeKind === "pull") && rest[0]) {
+    const num = rest[0]
+    const res = await fetchWithTimeout(
+      `https://api.github.com/repos/${owner}/${repo}/issues/${num}`,
+      { headers: gh },
+      8000,
+    ).catch(() => null)
+    if (!res?.ok) return null
+    const data = await res.json()
+    const body = data.body ?? ""
+    const title = `${owner}/${repo}#${num}: ${data.title ?? ""}`.trim()
+    const markdown =
+      `# ${data.title ?? `Issue #${num}`}\n\n` +
+      `**Repository:** ${owner}/${repo}\n` +
+      `**Author:** ${data.user?.login ?? "unknown"}\n` +
+      `**State:** ${data.state ?? "unknown"}\n\n${body}`
+    return {
+      markdown,
+      title,
+      final_url: urlStr,
+      content_type: "text/markdown",
+      source_kind: "github",
+      byte_length: byteLen(markdown),
+    }
+  }
+
+  // File: /blob/<branch>/<path>
+  if (maybeKind === "blob" && rest.length >= 2) {
+    const [branch, ...pathParts] = rest
+    const path = pathParts.join("/")
+    const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`
+    const res = await fetchWithTimeout(raw, { headers: { "User-Agent": UA } }, 8000).catch(
+      () => null,
+    )
+    if (!res?.ok) return null
+    const body = await readLimitedText(res, 500_000)
+    const title = `${owner}/${repo}/${path}`
+    const isMarkdown = /\.(md|markdown)$/i.test(path)
+    const markdown = isMarkdown ? body : `# ${title}\n\n\`\`\`\n${body}\n\`\`\`\n`
+    return {
+      markdown,
+      title,
+      final_url: urlStr,
+      content_type: "text/plain",
+      source_kind: "github",
+      byte_length: byteLen(markdown),
+    }
+  }
+
+  return null
+}
+
+async function retrieveWikipedia(
+  urlStr: string,
+  cls: Extract<Classification, { kind: "wikipedia" }>,
+): Promise<RetrievalResult | null> {
+  const { lang, title } = cls
+  const enc = encodeURIComponent(title)
+
+  const summaryRes = await fetchWithTimeout(
+    `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${enc}`,
+    { headers: { "User-Agent": UA, Accept: "application/json" } },
+    8000,
+  ).catch(() => null)
+  if (!summaryRes?.ok) return null
+  const summary = await summaryRes.json()
+
+  // Full plaintext extract via the classic MediaWiki API
+  const extractRes = await fetchWithTimeout(
+    `https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&redirects=1&titles=${enc}&format=json&origin=*`,
+    { headers: { "User-Agent": UA } },
+    10_000,
+  ).catch(() => null)
+
+  let fullText = summary.extract ?? ""
+  if (extractRes?.ok) {
+    try {
+      const data = await extractRes.json()
+      const pages = data?.query?.pages ?? {}
+      const first: any = Object.values(pages)[0]
+      if (first?.extract) fullText = first.extract
+    } catch {
+      /* fall through to summary.extract */
+    }
+  }
+
+  // Wikipedia's summary.titles.display can contain HTML (<span>, <i>, etc.) —
+  // strip tags so it works as a plain title in the UI and DB.
+  const stripTags = (s: string) => s.replace(/<[^>]+>/g, "").trim()
+  const displayTitle = stripTags(summary.titles?.display ?? summary.title ?? title)
+  const description = summary.description ? `\n*${summary.description}*\n` : ""
+  const markdown = `# ${displayTitle}\n${description}\n${fullText}`
+
+  return {
+    markdown,
+    title: displayTitle,
+    final_url: summary.content_urls?.desktop?.page ?? urlStr,
+    content_type: "text/markdown",
+    source_kind: "wikipedia",
+    byte_length: byteLen(markdown),
+  }
+}
+
+async function retrieveArxiv(
+  urlStr: string,
+  cls: Extract<Classification, { kind: "arxiv" }>,
+): Promise<RetrievalResult | null> {
+  if (cls.isPdf) return null // let Jina Reader handle PDFs
+  const { id } = cls
+  const res = await fetchWithTimeout(
+    `http://export.arxiv.org/api/query?id_list=${encodeURIComponent(id)}`,
+    { headers: { "User-Agent": UA } },
+    10_000,
+  ).catch(() => null)
+  if (!res?.ok) return null
+  const xml = await res.text()
+
+  const titleMatch = xml.match(/<entry>[\s\S]*?<title>([\s\S]*?)<\/title>/)
+  const summaryMatch = xml.match(/<entry>[\s\S]*?<summary>([\s\S]*?)<\/summary>/)
+  const publishedMatch = xml.match(/<entry>[\s\S]*?<published>([\s\S]*?)<\/published>/)
+  const authorMatches = [
+    ...xml.matchAll(/<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/g),
+  ]
+
+  const title = (titleMatch?.[1] ?? id).replace(/\s+/g, " ").trim()
+  const abstract = (summaryMatch?.[1] ?? "").replace(/\s+/g, " ").trim()
+  const published = (publishedMatch?.[1] ?? "").trim()
+  const authors = authorMatches.map((m) => m[1].trim()).join(", ")
+
+  if (!abstract) return null
+
+  const markdown =
+    `# ${title}\n\n` +
+    `**arXiv:** [${id}](https://arxiv.org/abs/${id})\n` +
+    `**Authors:** ${authors}\n` +
+    `**Published:** ${published}\n\n` +
+    `## Abstract\n\n${abstract}\n`
+
+  return {
+    markdown,
+    title: `arXiv:${id} — ${title}`,
+    final_url: urlStr,
+    content_type: "text/markdown",
+    source_kind: "arxiv",
+    byte_length: byteLen(markdown),
+  }
+}
+
+// DOI handler — fetches Semantic Scholar and CrossRef in parallel and
+// merges them into one markdown. The two sources are complementary:
+//
+//   Semantic Scholar: title, TL;DR (AI-generated summary), authors, venue,
+//                     year, citation count, fields of study, open-access PDF
+//   CrossRef:         title, authors, journal, publisher, full abstract
+//                     (often elided from S2 for copyright reasons — Science,
+//                     Nature, etc. only register the abstract with CrossRef)
+//
+// Using both gives us a richer record than either alone and bypasses the
+// paywall/Cloudflare gate that blocks scraping for most academic journals.
+async function retrieveDoi(
+  urlStr: string,
+  cls: Extract<Classification, { kind: "doi" }>,
+): Promise<RetrievalResult | null> {
+  const { doi } = cls
+
+  const [ss, cr] = await Promise.all([
+    fetchWithTimeout(
+      `https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}?fields=title,abstract,tldr,authors,year,venue,citationCount,fieldsOfStudy,openAccessPdf`,
+      { headers: { "User-Agent": UA, Accept: "application/json" } },
+      8000,
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null),
+    fetchWithTimeout(
+      `https://api.crossref.org/works/${encodeURIComponent(doi)}`,
+      { headers: { "User-Agent": UA, Accept: "application/json" } },
+      8000,
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => body?.message ?? null)
+      .catch(() => null),
+  ])
+
+  // Coalesce title from either source
+  const title: string =
+    (ss?.title as string) ?? (cr?.title?.[0] as string) ?? ""
+  if (!title) return null
+
+  // Authors: prefer CrossRef (given/family split) but fall back to S2
+  let authors = ""
+  if (cr?.author?.length) {
+    authors = cr.author
+      .map((a: any) => `${a?.given ?? ""} ${a?.family ?? ""}`.trim())
+      .filter(Boolean)
+      .join(", ")
+  } else if (ss?.authors?.length) {
+    authors = ss.authors
+      .map((a: any) => a?.name)
+      .filter(Boolean)
+      .join(", ")
+  }
+
+  // Journal / venue
+  const venue: string =
+    (cr?.["container-title"]?.[0] as string) ??
+    (ss?.venue as string) ??
+    ""
+  const year: string | number =
+    cr?.["published-print"]?.["date-parts"]?.[0]?.[0] ??
+    cr?.published?.["date-parts"]?.[0]?.[0] ??
+    (ss?.year as number | string) ??
+    ""
+  const publisher: string = (cr?.publisher as string) ?? ""
+
+  // Abstract: CrossRef wraps in JATS tags like <jats:p>...</jats:p>
+  let abstract = ""
+  if (cr?.abstract) {
+    abstract = String(cr.abstract).replace(/<[^>]+>/g, "").trim()
+  }
+  if (!abstract && ss?.abstract) {
+    abstract = String(ss.abstract).trim()
+  }
+
+  // Semantic Scholar extras
+  const tldr: string = ss?.tldr?.text ?? ""
+  const fields: string = (ss?.fieldsOfStudy ?? []).join(", ")
+  const citations: number | null =
+    typeof ss?.citationCount === "number" ? ss.citationCount : null
+  const openPdf: string = ss?.openAccessPdf?.url ?? ""
+
+  // Refuse to return if we have nothing beyond a title
+  if (!abstract && !tldr && !venue && !authors) return null
+
+  const lines: string[] = [`# ${title}`, ""]
+  lines.push(`**DOI:** [${doi}](https://doi.org/${doi})  `)
+  if (authors) lines.push(`**Authors:** ${authors}  `)
+  if (venue) lines.push(`**Journal:** ${venue}${year ? ` (${year})` : ""}  `)
+  if (publisher) lines.push(`**Publisher:** ${publisher}  `)
+  if (fields) lines.push(`**Fields:** ${fields}  `)
+  if (citations != null) lines.push(`**Citations:** ${citations}`)
+  if (tldr) {
+    lines.push("", "## TL;DR", "", tldr)
+  }
+  if (abstract) {
+    lines.push("", "## Abstract", "", abstract)
+  }
+  if (openPdf) {
+    lines.push("", `[Open Access PDF](${openPdf})`)
+  }
+  const markdown = lines.join("\n")
+
+  return {
+    markdown,
+    title,
+    final_url: urlStr,
+    content_type: "text/markdown",
+    source_kind: "doi",
+    byte_length: byteLen(markdown),
+  }
+}
+
+function decodeHnHtml(s: string): string {
+  return s
+    .replace(/<p>/g, "\n\n")
+    .replace(/<\/p>/g, "")
+    .replace(/<br\s*\/?>/g, "\n")
+    .replace(/<a[^>]*href="([^"]+)"[^>]*>([^<]*)<\/a>/g, "[$2]($1)")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(parseInt(n, 10)))
+}
+
+async function retrieveReddit(urlStr: string): Promise<RetrievalResult | null> {
+  const url = new URL(urlStr)
+  url.hostname = "www.reddit.com"
+  // Ensure exactly one trailing slash before .json
+  const path = url.pathname.replace(/\/?$/, "/")
+  const jsonUrl = `https://www.reddit.com${path}.json${url.search}`
+
+  const res = await fetchWithTimeout(
+    jsonUrl,
+    { headers: { "User-Agent": UA, Accept: "application/json" } },
+    10_000,
+  ).catch(() => null)
+  if (!res?.ok) return null
+
+  const data = await res.json().catch(() => null)
+  if (!Array.isArray(data) || data.length < 1) return null
+  const post = data[0]?.data?.children?.[0]?.data
+  if (!post) return null
+
+  const comments = (data[1]?.data?.children ?? [])
+    .slice(0, 10)
+    .map((c: any) => c?.data)
+    .filter((c: any) => c?.body && c.author !== "AutoModerator")
+    .map(
+      (c: any) =>
+        `**u/${c.author}** (${c.score}↑)\n\n${String(c.body).trim()}`,
+    )
+    .join("\n\n---\n\n")
+
+  const body = post.selftext ? String(post.selftext).trim() : ""
+  const linkedUrl = post.url && post.url !== urlStr ? `\n**Linked:** ${post.url}\n` : ""
+
+  const markdown =
+    `# ${post.title}\n\n` +
+    `**Posted by** u/${post.author} in r/${post.subreddit}${linkedUrl}\n` +
+    (body ? `${body}\n\n` : "") +
+    (comments ? `## Top comments\n\n${comments}\n` : "")
+
+  return {
+    markdown,
+    title: post.title,
+    final_url: urlStr,
+    content_type: "text/markdown",
+    source_kind: "reddit",
+    byte_length: byteLen(markdown),
+  }
+}
+
+async function retrieveHackerNews(
+  cls: Extract<Classification, { kind: "hackernews" }>,
+): Promise<RetrievalResult | null> {
+  const { id } = cls
+  const itemRes = await fetchWithTimeout(
+    `https://hacker-news.firebaseio.com/v0/item/${id}.json`,
+    {},
+    8000,
+  ).catch(() => null)
+  if (!itemRes?.ok) return null
+  const item = await itemRes.json().catch(() => null)
+  if (!item) return null
+
+  const kidIds: number[] = (item.kids ?? []).slice(0, 8)
+  const commentTexts = await Promise.all(
+    kidIds.map(async (kid) => {
+      try {
+        const r = await fetchWithTimeout(
+          `https://hacker-news.firebaseio.com/v0/item/${kid}.json`,
+          {},
+          4000,
+        )
+        if (!r.ok) return null
+        const c = await r.json()
+        if (!c?.text) return null
+        return `**${c.by}**\n\n${decodeHnHtml(c.text)}`
+      } catch {
+        return null
+      }
+    }),
+  )
+  const comments = commentTexts.filter(Boolean).join("\n\n---\n\n")
+
+  const title = item.title ?? `Hacker News item ${id}`
+  const linkLine = item.url ? `**Link:** ${item.url}\n` : ""
+  const bodyLine = item.text ? `\n${decodeHnHtml(item.text)}\n` : ""
+
+  const markdown =
+    `# ${title}\n\n` +
+    `**Author:** ${item.by ?? "unknown"}  \n` +
+    `**Score:** ${item.score ?? "?"}\n` +
+    linkLine +
+    bodyLine +
+    (comments ? `\n## Top comments\n\n${comments}\n` : "")
+
+  return {
+    markdown,
+    title,
+    final_url: `https://news.ycombinator.com/item?id=${id}`,
+    content_type: "text/markdown",
+    source_kind: "hackernews",
+    byte_length: byteLen(markdown),
+  }
+}
+
+async function retrieveYoutube(urlStr: string): Promise<RetrievalResult | null> {
+  // Grab title + channel from oEmbed, then delegate body to Jina Reader,
+  // which extracts the video description and caption text when available.
+  const oembedRes = await fetchWithTimeout(
+    `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(urlStr)}`,
+    { headers: { "User-Agent": UA } },
+    5000,
+  ).catch(() => null)
+
+  let title: string | null = null
+  let author: string | null = null
+  if (oembedRes?.ok) {
+    try {
+      const data = await oembedRes.json()
+      title = data?.title ?? null
+      author = data?.author_name ?? null
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const viaJina = await retrieveViaJina(urlStr).catch(() => null)
+
+  if (!viaJina) {
+    if (!title) return null
+    const markdown = `# ${title}\n\n**Channel:** ${author ?? "unknown"}\n\n*Video metadata only — transcript unavailable.*\n`
+    return {
+      markdown,
+      title,
+      final_url: urlStr,
+      content_type: "text/markdown",
+      source_kind: "youtube",
+      byte_length: byteLen(markdown),
+    }
+  }
+
+  const header = title ? `# ${title}\n\n**Channel:** ${author ?? "unknown"}\n\n` : ""
+  const markdown = header + viaJina.markdown
+  return {
+    markdown,
+    title: title ?? viaJina.title,
+    final_url: viaJina.final_url,
+    content_type: viaJina.content_type,
+    source_kind: "youtube",
+    byte_length: byteLen(markdown),
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Tier 2: Jina Reader
+// -----------------------------------------------------------------------------
+
+async function retrieveViaJina(urlStr: string): Promise<RetrievalResult | null> {
+  const headers: Record<string, string> = {
+    Accept: "text/plain",
+    "X-Return-Format": "markdown",
+  }
+  const jinaKey = Deno.env.get("JINA_API_KEY")
+  if (jinaKey) headers["Authorization"] = `Bearer ${jinaKey}`
+
+  const res = await fetchWithTimeout(
+    `https://r.jina.ai/${urlStr}`,
+    { headers },
+    12_000,
+  ).catch(() => null)
+  if (!res?.ok) return null
+
+  const markdown = (await res.text()).trim()
+  if (markdown.length < 50) return null
+
+  // Detect bot-protection / paywall / access-error pages that Jina cheerfully
+  // echoes through as "content". Treating these as real content gives the
+  // compiler garbage and surfaces confusing "0 created" toasts to the user.
+  // Returning null here lets the orchestrator fail cleanly.
+  if (isBotBlockedContent(markdown)) return null
+
+  // Jina emits a "Title: ..." header at the top when there's no H1; pull that.
+  let title: string | null = null
+  const titleHeader = markdown.match(/^Title:\s*(.+)$/m)
+  if (titleHeader) title = titleHeader[1].trim()
+  else {
+    const h1 = markdown.match(/^#\s+(.+)$/m)
+    if (h1) title = h1[1].trim()
+  }
+
+  return {
+    markdown,
+    title,
+    final_url: urlStr,
+    content_type: res.headers.get("content-type"),
+    source_kind: "jina",
+    byte_length: byteLen(markdown),
+  }
+}
+
+// Signatures for bot-blocked / access-denied pages that Jina (or Readability)
+// might still hand back to us. We reject these so the orchestrator can fall
+// through to another tier or fail cleanly.
+function isBotBlockedContent(md: string): boolean {
+  const head = md.slice(0, 2000)
+  return (
+    /Warning:\s*Target URL returned error (4\d\d|5\d\d)/i.test(head) ||
+    /^#\s+Just a moment\.\.\./im.test(head) ||
+    /Performing security verification/i.test(head) ||
+    /Checking your browser before accessing/i.test(head) ||
+    /Cloudflare Ray ID/i.test(head) ||
+    /Attention Required!\s*\|\s*Cloudflare/i.test(head) ||
+    /Access to this page has been denied/i.test(head) ||
+    /Please enable (JS|JavaScript) and cookies to continue/i.test(head)
+  )
+}
+
+// -----------------------------------------------------------------------------
+// Tier 3: Local Readability + NodeHtmlMarkdown fallback
+// -----------------------------------------------------------------------------
+
+// Minimal HTML → markdown converter. Not as thorough as a real library, but
+// good enough to preserve headings, paragraphs, links, code, and lists in the
+// fallback path. The primary paths (per-domain handlers + Jina) already emit
+// clean markdown, so this only runs when both of those fail.
+function simpleHtmlToMarkdown(html: string): string {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, "\n\n# $1\n\n")
+    .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, "\n\n## $1\n\n")
+    .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, "\n\n### $1\n\n")
+    .replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, "\n\n#### $1\n\n")
+    .replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, "\n\n##### $1\n\n")
+    .replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, "\n\n###### $1\n\n")
+    .replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, "\n\n```\n$1\n```\n\n")
+    .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, "`$1`")
+    .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, "- $1\n")
+    .replace(/<ul[^>]*>/gi, "\n")
+    .replace(/<\/ul>/gi, "\n")
+    .replace(/<ol[^>]*>/gi, "\n")
+    .replace(/<\/ol>/gi, "\n")
+    .replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, "\n\n> $1\n\n")
+    .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, "**$1**")
+    .replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, "**$1**")
+    .replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, "*$1*")
+    .replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, "*$1*")
+    .replace(/<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<p[^>]*>/gi, "\n\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+async function retrieveViaReadability(urlStr: string): Promise<RetrievalResult | null> {
+  // HEAD probe — skip non-text content types so we don't parse binary as HTML.
+  let contentType: string | null = null
+  try {
+    const headRes = await fetchWithTimeout(urlStr, { method: "HEAD", headers: { "User-Agent": UA } }, 5000)
+    contentType = headRes.headers.get("content-type")
+  } catch {
+    // Some servers 405/timeout on HEAD; continue to GET and let content-type
+    // come from the GET response instead.
+  }
+  if (contentType && !/text\/html|text\/plain|application\/xhtml/i.test(contentType)) {
+    return null
+  }
+
+  const res = await fetchWithTimeout(
+    urlStr,
+    { headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml" } },
+    10_000,
+  ).catch(() => null)
+  if (!res?.ok) return null
+
+  const html = await readLimitedText(res, 2_000_000) // 2 MB cap
+  const finalUrl = res.url ?? urlStr
+  if (!contentType) contentType = res.headers.get("content-type")
+
+  let title: string | null = null
+  let markdown = ""
+
+  try {
+    const { document } = parseHTML(html)
+    const reader = new Readability(document)
+    const article = reader.parse()
+    if (article?.content) {
+      markdown = simpleHtmlToMarkdown(article.content)
+      title = article.title ?? null
+    }
+  } catch {
+    // parseHTML or Readability can throw on malformed input — fall through
+  }
+
+  if (!markdown || markdown.length < 50) {
+    // Last-ditch strip fallback (kept from the old implementation).
+    markdown = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "")
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "")
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
+  if (markdown.length < 50) return null
+
+  if (!title) {
+    const tm = html.match(/<title[^>]*>([^<]*)<\/title>/i)
+    if (tm) title = tm[1].trim()
+  }
+
+  return {
+    markdown,
+    title,
+    final_url: finalUrl,
+    content_type: contentType,
+    source_kind: "readability",
+    byte_length: byteLen(markdown),
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Orchestrator
+// -----------------------------------------------------------------------------
+
+async function retrieveUrl(urlStr: string): Promise<RetrievalResult | null> {
+  const cls = classifyUrl(urlStr)
+
+  // Tier 1: specialized handlers
+  try {
+    if (cls.kind === "github") {
+      const r = await retrieveGithub(urlStr)
+      if (r) return r
+    } else if (cls.kind === "wikipedia") {
+      const r = await retrieveWikipedia(urlStr, cls)
+      if (r) return r
+    } else if (cls.kind === "arxiv") {
+      const r = await retrieveArxiv(urlStr, cls)
+      if (r) return r
+    } else if (cls.kind === "doi") {
+      const r = await retrieveDoi(urlStr, cls)
+      if (r) return r
+    } else if (cls.kind === "reddit") {
+      const r = await retrieveReddit(urlStr)
+      if (r) return r
+    } else if (cls.kind === "hackernews") {
+      const r = await retrieveHackerNews(cls)
+      if (r) return r
+    } else if (cls.kind === "youtube") {
+      const r = await retrieveYoutube(urlStr)
+      if (r) return r
+    }
+  } catch {
+    // Any unhandled exception inside a specialized handler → fall through
+  }
+
+  // Tier 2: Jina Reader
+  try {
+    const r = await retrieveViaJina(urlStr)
+    if (r) return r
+  } catch {
+    /* fall through */
+  }
+
+  // Tier 3: Local Readability + NodeHtmlMarkdown
+  try {
+    const r = await retrieveViaReadability(urlStr)
+    if (r) return r
+  } catch {
+    /* give up */
+  }
+
+  return null
+}
+
+// =============================================================================
+// MAIN HANDLER
+// =============================================================================
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders })
+  }
+
+  let runId: string | null = null
+  let agentRunId: string | null = null
+  const startedAt = Date.now()
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  )
+
+  // Helper: mark both run tables with a terminal status.
+  // NOTE: do NOT use `.catch(() => {})` on supabase query builders here —
+  // it breaks the await chain in Deno edge runtime, silently hanging the
+  // request and causing the worker to be killed mid-write. Destructure
+  // `error` from the awaited result instead.
+  const finishRun = async (
+    status: "completed" | "failed",
+    opts: {
+      summary?: string
+      detail?: Record<string, unknown>
+      compilation?: Record<string, unknown>
+    },
+  ) => {
+    const finished_at = new Date().toISOString()
+    const duration_ms = Date.now() - startedAt
+    if (runId) {
+      const { error } = await supabase.from("compilation_runs").update({
+        status,
+        ...(opts.compilation ?? {}),
+        finished_at,
+      }).eq("id", runId)
+      if (error) console.error("[compile-source] compilation_runs finish update error", error)
+    }
+    if (agentRunId) {
+      const { error } = await supabase.from("agent_runs").update({
+        status,
+        summary: opts.summary?.slice(0, 300) ?? null,
+        detail: opts.detail ?? {},
+        duration_ms,
+        finished_at,
+      }).eq("id", agentRunId)
+      if (error) console.error("[compile-source] agent_runs finish update error", error)
+    }
+  }
+
+  try {
+    const { source_id } = await req.json()
+    if (!source_id) {
+      return new Response(JSON.stringify({ error: "source_id required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    const { data: openaiKey } = await supabase.rpc("get_openai_key")
+    if (!openaiKey) {
+      return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    const { data: source, error: sourceErr } = await supabase
+      .from("sources")
+      .select("*")
+      .eq("id", source_id)
+      .single()
+
+    if (sourceErr || !source) {
+      return new Response(JSON.stringify({ error: "Source not found", detail: sourceErr }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    // Dual-write: compilation_runs (legacy) + agent_runs (new)
+    const { data: run } = await supabase
+      .from("compilation_runs")
+      .insert({
+        engram_id: source.engram_id,
+        source_id: source_id,
+        trigger_type: "feed",
+        status: "running",
+        started_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single()
+
+    runId = run?.id ?? null
+
+    const { data: agentRun } = await supabase
+      .from("agent_runs")
+      .insert({
+        engram_id: source.engram_id,
+        agent_type: "compile",
+        status: "running",
+        trigger_id: source_id,
+        detail: { source_title: source.title ?? null, source_type: source.source_type },
+      })
+      .select("id")
+      .single()
+
+    agentRunId = agentRun?.id ?? null
+
+    const updateStage = async (stage: string) => {
+      if (runId) {
+        await supabase.from("compilation_runs")
+          .update({ log: { stage } })
+          .eq("id", runId)
+      }
+      if (agentRunId) {
+        await supabase.from("agent_runs")
+          .update({ detail: { stage, source_title: source.title ?? null, source_type: source.source_type } })
+          .eq("id", agentRunId)
+      }
+    }
+
+    let content = source.content_md ?? ""
+
+    // --- URL retrieval (tiered: per-domain → Jina → local fallback) ---
+    if (source.source_type === "url" && source.source_url && !content) {
+      await updateStage("fetching")
+      const retrieveStart = Date.now()
+      const retrieved = await retrieveUrl(source.source_url)
+      const retrieveMs = Date.now() - retrieveStart
+
+      if (!retrieved) {
+        await supabase.from("sources").update({ status: "failed" }).eq("id", source_id)
+        await finishRun("failed", {
+          summary: "Could not retrieve URL content",
+          detail: {
+            stage: "fetching",
+            error: "All retrieval tiers failed",
+            url: source.source_url,
+            retrieve_ms: retrieveMs,
+          },
+          compilation: {
+            log: { stage: "fetching", error: "All retrieval tiers failed", retrieve_ms: retrieveMs },
+          },
+        })
+        return new Response(JSON.stringify({ error: "Could not retrieve URL content" }), {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        })
+      }
+
+      content = retrieved.markdown
+
+      const contentHash = await sha256(content.trim())
+      const newTitle =
+        (!source.title || source.title === source.source_url) && retrieved.title
+          ? retrieved.title
+          : source.title
+
+      await supabase
+        .from("sources")
+        .update({
+          content_md: content.slice(0, 50_000),
+          content_hash: contentHash,
+          title: newTitle,
+          metadata: {
+            ...(source.metadata ?? {}),
+            final_url: retrieved.final_url,
+            content_type: retrieved.content_type,
+            source_kind: retrieved.source_kind,
+            retrieved_at: new Date().toISOString(),
+            byte_length: retrieved.byte_length,
+            retrieve_ms: retrieveMs,
+          },
+        })
+        .eq("id", source_id)
+    }
+
+    if (!content.trim()) {
+      await supabase.from("sources").update({ status: "failed" }).eq("id", source_id)
+      await finishRun("failed", {
+        summary: "No content to compile",
+        detail: { stage: "compiling", error: "No content to compile" },
+        compilation: { log: { stage: "compiling", error: "No content to compile" } },
+      })
+      return new Response(JSON.stringify({ error: "No content to compile" }), {
+        status: 422,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    // --- Compilation ---
+    await updateStage("compiling")
+
+    const truncated = content.slice(0, 24_000)
+
+    const { data: existingArticles } = await supabase
+      .from("articles")
+      .select("slug, title, summary")
+      .eq("engram_id", source.engram_id)
+
+    const existingSlugSet = new Set((existingArticles ?? []).map((a: any) => a.slug))
+    const wikiIndex = (existingArticles ?? [])
+      .map(
+        (a: any) => `- ${a.slug}: ${a.title}${a.summary ? " — " + a.summary : ""}`,
+      )
+      .join("\n")
+
+    const systemPrompt = `You are a knowledge compiler for a wiki system called Engrams. Given a source document and an existing wiki index, extract the key concepts and produce structured wiki articles.
+
+Rules:
+- Each article covers ONE concept or topic. Prefer depth over breadth.
+- Use [[slug]] syntax to link between articles in content_md (both new articles you're creating and existing ones from the wiki index).
+- Slugs are kebab-case (e.g., "machine-learning", "neural-networks").
+- If an existing article in the wiki index covers the same topic, mark it as "update" with the SAME slug. Otherwise "create" with a new slug.
+- Write in clear, encyclopedic prose. No first person. No hedging. No "it is important to note".
+- Assign confidence 0.0-1.0 based on how well the source supports the claims.
+- article_type is "concept" for standalone topics or "synthesis" for articles that tie multiple concepts together.
+- Tags should be lowercase, 1-2 words each.
+
+CRITICAL — EDGES:
+- You MUST populate the edges array. For every new article, create at least one edge to an existing wiki article whenever there is any conceptual relationship — shared domain, prerequisite knowledge, contrasting approaches, related techniques, etc.
+- Use these relations: "related" (general connection), "extends" (builds on), "contradicts" (conflicts with), "requires" (prerequisite), "part_of" (is a sub-topic of).
+- Do not invent slugs that don't exist. Edges must reference either a slug from the wiki index or a slug you are creating in this same compilation.
+- If the wiki index is empty, no edges are required.
+- If the wiki index is non-empty, you should produce roughly one edge per existing article that shares any topic overlap with the new article. Err on the side of more edges.
+
+- IMPORTANT: Also identify unresolved questions — things this source raises, references, or explicitly leaves open that are NOT answered in the source or the existing wiki. These should be genuine research questions, not trivial gaps.
+
+Return ONLY valid JSON, no markdown fences.`
+
+    const userPrompt = `## Source Title\n${source.title ?? "Untitled"}\n\n## Source Content\n${truncated}\n\n## Existing Wiki Index\n${wikiIndex || "(empty - this is the first source)"}\n\n## Output Format\n{\n  "articles": [\n    {\n      "action": "create" | "update",\n      "slug": "kebab-case-slug",\n      "title": "Article Title",\n      "summary": "One-sentence summary.",\n      "content_md": "Full article in markdown. Use [[slug]] to link.",\n      "tags": ["tag1", "tag2"],\n      "confidence": 0.85,\n      "article_type": "concept"\n    }\n  ],\n  "edges": [\n    { "from_slug": "slug-a", "to_slug": "slug-b", "relation": "related" }\n  ],\n  "unresolved_questions": [\n    "What specific mechanism causes X to affect Y?"\n  ]\n}`
+
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${openaiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+      }),
+    })
+
+    if (!openaiRes.ok) {
+      const errBody = await openaiRes.text()
+      await supabase.from("sources").update({ status: "failed" }).eq("id", source_id)
+      await finishRun("failed", {
+        summary: "OpenAI error during compilation",
+        detail: { stage: "compiling", error: errBody.slice(0, 500) },
+        compilation: { log: { stage: "compiling", error: errBody } },
+      })
+      return new Response(JSON.stringify({ error: "OpenAI API error", detail: errBody }), {
+        status: 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    const openaiData = await openaiRes.json()
+    const result = JSON.parse(openaiData.choices[0].message.content)
+
+    // --- Writing articles and edges ---
+    await updateStage("writing")
+
+    const newSlugSet = new Set<string>(existingSlugSet)
+    for (const a of (result.articles ?? [])) {
+      if (a.slug) newSlugSet.add(a.slug)
+    }
+
+    const extractWikiLinks = (md: string): string[] => {
+      const matches = md.matchAll(/\[\[([a-z0-9-]+)\]\]/g)
+      const slugs = new Set<string>()
+      for (const m of matches) slugs.add(m[1])
+      return Array.from(slugs)
+    }
+
+    let articlesCreated = 0
+    let articlesUpdated = 0
+
+    for (const article of result.articles ?? []) {
+      const linkedSlugs = extractWikiLinks(article.content_md ?? "")
+        .filter((s) => s !== article.slug && newSlugSet.has(s))
+
+      if (article.action === "update") {
+        const { data: existing } = await supabase
+          .from("articles")
+          .select("id, source_ids, related_slugs")
+          .eq("engram_id", source.engram_id)
+          .eq("slug", article.slug)
+          .single()
+
+        if (existing) {
+          const sourceIds = [...new Set([...(existing.source_ids ?? []), source_id])]
+          const relatedSlugs = [
+            ...new Set([...(existing.related_slugs ?? []), ...linkedSlugs]),
+          ]
+
+          await supabase
+            .from("articles")
+            .update({
+              title: article.title,
+              summary: article.summary,
+              content_md: article.content_md,
+              confidence: article.confidence,
+              article_type: article.article_type,
+              tags: article.tags,
+              source_ids: sourceIds,
+              related_slugs: relatedSlugs,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existing.id)
+
+          articlesUpdated++
+        } else {
+          article.action = "create"
+        }
+      }
+
+      if (article.action === "create") {
+        await supabase.from("articles").insert({
+          engram_id: source.engram_id,
+          slug: article.slug,
+          title: article.title,
+          summary: article.summary,
+          content_md: article.content_md,
+          confidence: article.confidence,
+          article_type: article.article_type ?? "concept",
+          tags: article.tags ?? [],
+          source_ids: [source_id],
+          related_slugs: linkedSlugs,
+        })
+
+        articlesCreated++
+      }
+    }
+
+    const edgeSet = new Set<string>()
+    let edgesCreated = 0
+    const insertEdge = async (from_slug: string, to_slug: string, relation: string) => {
+      if (from_slug === to_slug) return
+      if (!newSlugSet.has(from_slug) || !newSlugSet.has(to_slug)) return
+      const key = `${from_slug}|${to_slug}|${relation}`
+      if (edgeSet.has(key)) return
+      edgeSet.add(key)
+      const { error: edgeErr } = await supabase.from("edges").insert({
+        engram_id: source.engram_id,
+        from_slug,
+        to_slug,
+        relation,
+        weight: 1.0,
+      })
+      if (!edgeErr) edgesCreated++
+    }
+
+    for (const edge of result.edges ?? []) {
+      await insertEdge(edge.from_slug, edge.to_slug, edge.relation ?? "related")
+    }
+
+    for (const article of result.articles ?? []) {
+      if (!article.slug || !article.content_md) continue
+      const linkedSlugs = extractWikiLinks(article.content_md)
+      for (const target of linkedSlugs) {
+        if (target === article.slug) continue
+        if (!newSlugSet.has(target)) continue
+        await insertEdge(article.slug, target, "related")
+      }
+    }
+
+    const unresolvedQuestions = result.unresolved_questions ?? []
+    if (unresolvedQuestions.length > 0) {
+      await supabase.from("sources").update({ unresolved_questions: unresolvedQuestions }).eq("id", source_id)
+    }
+
+    const summaryParts: string[] = []
+    if (articlesCreated > 0) summaryParts.push(`${articlesCreated} created`)
+    if (articlesUpdated > 0) summaryParts.push(`${articlesUpdated} updated`)
+    if (edgesCreated > 0) summaryParts.push(`${edgesCreated} connection${edgesCreated !== 1 ? "s" : ""}`)
+    const summary = summaryParts.length > 0
+      ? summaryParts.join(". ") + "."
+      : "No changes."
+
+    await finishRun("completed", {
+      summary,
+      detail: {
+        source_title: source.title ?? null,
+        articles_created: articlesCreated,
+        articles_updated: articlesUpdated,
+        edges_created: edgesCreated,
+        unresolved_questions: unresolvedQuestions.length,
+      },
+      compilation: {
+        articles_created: articlesCreated,
+        articles_updated: articlesUpdated,
+        edges_created: edgesCreated,
+        log: {
+          stage: "completed",
+          articles: result.articles?.length ?? 0,
+          edges: edgesCreated,
+          unresolved_questions: unresolvedQuestions.length,
+        },
+      },
+    })
+
+    await supabase.from("sources").update({ status: "compiled" }).eq("id", source_id)
+
+    // --- Recount both articles AND sources ---
+    const { count: articleCount } = await supabase
+      .from("articles")
+      .select("id", { count: "exact", head: true })
+      .eq("engram_id", source.engram_id)
+
+    const { count: sourceCount } = await supabase
+      .from("sources")
+      .select("id", { count: "exact", head: true })
+      .eq("engram_id", source.engram_id)
+      .eq("status", "compiled")
+
+    await supabase
+      .from("engrams")
+      .update({ article_count: articleCount ?? 0, source_count: sourceCount ?? 0 })
+      .eq("id", source.engram_id)
+
+    return new Response(JSON.stringify({
+      articles_created: articlesCreated,
+      articles_updated: articlesUpdated,
+      edges_created: edgesCreated,
+      unresolved_questions: unresolvedQuestions.length,
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
+
+  } catch (err) {
+    await finishRun("failed", {
+      summary: String(err).slice(0, 300),
+      detail: { stage: "error", error: String(err) },
+      compilation: { log: { stage: "error", error: String(err) } },
+    })
+    return new Response(JSON.stringify({ error: String(err) }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
+  }
+})

@@ -55,3 +55,6 @@ skills/
 skills-lock.json
 .mcp.json
 .vercel
+
+# local reference material (third-party repos cloned for study, not for distribution)
+.reference/
