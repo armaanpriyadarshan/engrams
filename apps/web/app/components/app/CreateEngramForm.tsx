@@ -76,8 +76,9 @@ export default function CreateEngramForm({ userId, variant = "page", onCancel, o
 
       if (source) {
         await supabase.rpc("increment_source_count", { eid: engram.id })
-        setStatus("Compiling...")
-        await supabase.functions.invoke("compile-source", { body: { source_id: source.id } })
+        // Fire-and-forget: navigate immediately and let the engram page
+        // show compilation progress via CompilationToast.
+        supabase.functions.invoke("compile-source", { body: { source_id: source.id } })
         supabase.functions.invoke("generate-embedding", { body: { engram_id: engram.id } })
         supabase.functions.invoke("detect-gaps", { body: { engram_id: engram.id, trigger_source_id: source.id } })
         supabase.functions.invoke("lint-engram", { body: { engram_id: engram.id } })
