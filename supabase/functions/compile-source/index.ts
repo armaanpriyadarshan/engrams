@@ -885,6 +885,227 @@ async function retrieveUrl(urlStr: string): Promise<RetrievalResult | null> {
 // MAIN HANDLER
 // =============================================================================
 
+// ═══════════════════════════════════════════════════════════════
+// Two-pass compilation helpers.
+//
+// runPassA turns raw source content into a dense summary plus a list
+// of concepts worthy of their own articles. One LLM call. Its output
+// is the durable intermediate artifact the whole pipeline depends on.
+//
+// runPassB turns a single concept + the new summary + any existing
+// concept article into a rewritten concept article. One LLM call per
+// concept. Sees only the summary, never the full source — so prompts
+// stay small and prompt caching hits hard across the N concepts in
+// a compile run.
+// ═══════════════════════════════════════════════════════════════
+
+interface PassAConceptCandidate {
+  name: string
+  definition?: string
+}
+
+interface PassAResult {
+  summaryMd: string
+  concepts: PassAConceptCandidate[]
+  unresolvedQuestions: string[]
+}
+
+async function runPassA(opts: {
+  openaiKey: string
+  sourceTitle: string
+  sourceContent: string
+}): Promise<PassAResult | { error: string }> {
+  const systemPrompt = `You are a source summarizer for Engrams, an LLM-compiled knowledge base.
+
+Your job in this pass is twofold:
+1. Produce a dense, encyclopedic summary of the given source — capturing its central claims, definitions, and any unique facts, in markdown. Prefer depth over breadth. 400–800 words is a good target for most sources.
+2. Identify the distinct concepts in the source that deserve their own standalone wiki articles. A concept is a named idea, technique, entity, or claim that could be explained without the source in front of you. Typically 1–6 per source.
+
+Rules for the summary:
+- Third-person, encyclopedic voice. No first person. No hedging. No filler like "it is important to note".
+- Preserve concrete facts, numbers, names, and terminology from the source.
+- Do not fabricate.
+
+Rules for the concepts:
+- Each concept is a short name (2–4 words typically) plus a one-sentence working definition drawn from the source.
+- Concepts should be specific enough to be useful ("Reciprocal Rank Fusion", not "ranking").
+- Do not invent concepts that the source does not substantively cover.
+
+Also identify unresolved questions — things this source raises or leaves open. Genuine research questions, not trivial gaps.
+
+Return ONLY valid JSON, no markdown fences.`
+
+  const userPrompt =
+    `## Source Title\n${opts.sourceTitle}\n\n## Source Content\n${opts.sourceContent}\n\n## Output Format\n` +
+    `{\n` +
+    `  "summary_md": "Full summary of the source in markdown.",\n` +
+    `  "concepts": [\n` +
+    `    { "name": "Concept Name", "definition": "One-sentence working definition." }\n` +
+    `  ],\n` +
+    `  "unresolved_questions": [\n` +
+    `    "Open question the source raises."\n` +
+    `  ]\n` +
+    `}`
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${opts.openaiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+    }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text()
+    return { error: body.slice(0, 500) }
+  }
+
+  const data = await res.json()
+  const content = data.choices?.[0]?.message?.content
+  if (!content) return { error: "empty response" }
+
+  try {
+    const parsed = JSON.parse(content)
+    const summaryMd: string = typeof parsed.summary_md === "string" ? parsed.summary_md : ""
+    const rawConcepts: unknown[] = Array.isArray(parsed.concepts) ? parsed.concepts : []
+    const concepts: PassAConceptCandidate[] = rawConcepts
+      .map((c) => {
+        if (!c || typeof c !== "object") return null
+        const obj = c as Record<string, unknown>
+        const name = typeof obj.name === "string" ? obj.name : null
+        if (!name) return null
+        const definition =
+          typeof obj.definition === "string" ? obj.definition : undefined
+        return { name, definition }
+      })
+      .filter((c): c is PassAConceptCandidate => c !== null)
+    const unresolvedQuestions: string[] = Array.isArray(parsed.unresolved_questions)
+      ? parsed.unresolved_questions.filter((q: unknown): q is string => typeof q === "string")
+      : []
+
+    if (!summaryMd.trim()) {
+      return { error: "Pass A produced no summary_md" }
+    }
+
+    return { summaryMd, concepts, unresolvedQuestions }
+  } catch (err) {
+    return { error: `parse error: ${String(err).slice(0, 200)}` }
+  }
+}
+
+interface PassBResult {
+  title: string
+  summary: string
+  content_md: string
+  tags: string[]
+  confidence: number
+  article_type: string
+}
+
+async function runPassB(opts: {
+  openaiKey: string
+  conceptName: string
+  conceptDefinition: string
+  existingArticleMd: string | null
+  newSummaryMd: string
+  wikiIndex: string
+}): Promise<PassBResult | { error: string }> {
+  const systemPrompt = `You are a wiki article writer for Engrams, an LLM-compiled knowledge base.
+
+You will write or rewrite a single concept article. The input gives you:
+- The concept name and a working definition.
+- The new summary of a source that mentions this concept (Pass A output).
+- The existing article for this concept, if one already exists.
+- The wiki index — a flat list of all other article slugs so you can link to them.
+
+Your job:
+- Produce a clear, encyclopedic article that explains the concept in its own right, drawing on the new summary and the existing article.
+- When an existing article is provided, treat it as the working draft and update it with any new information from the summary. Preserve its voice and any still-accurate claims.
+- Use [[slug]] syntax to link to related articles from the wiki index. Only reference slugs that actually appear in the index or in this concept's new slug.
+- Third person, encyclopedic. No first person. No hedging. No filler.
+- Assign confidence 0.0–1.0 based on how well the sources support the claims.
+- Tags are lowercase, 1–2 words each, 2–5 total.
+- article_type should be "concept" unless the article explicitly synthesizes across many topics (then "synthesis").
+
+Return ONLY valid JSON, no markdown fences.`
+
+  const existingBlock = opts.existingArticleMd
+    ? `## Existing Article\n${opts.existingArticleMd}`
+    : `## Existing Article\n(none — this is a new concept)`
+
+  const userPrompt =
+    `## Concept\n${opts.conceptName}${
+      opts.conceptDefinition ? ` — ${opts.conceptDefinition}` : ""
+    }\n\n` +
+    `## New Source Summary\n${opts.newSummaryMd}\n\n` +
+    `${existingBlock}\n\n` +
+    `## Wiki Index\n${opts.wikiIndex}\n\n` +
+    `## Output Format\n` +
+    `{\n` +
+    `  "title": "Article Title",\n` +
+    `  "summary": "One-sentence summary.",\n` +
+    `  "content_md": "Article body in markdown. Use [[slug]] links.",\n` +
+    `  "tags": ["tag1", "tag2"],\n` +
+    `  "confidence": 0.85,\n` +
+    `  "article_type": "concept"\n` +
+    `}`
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${opts.openaiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+    }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text()
+    return { error: body.slice(0, 500) }
+  }
+
+  const data = await res.json()
+  const content = data.choices?.[0]?.message?.content
+  if (!content) return { error: "empty response" }
+
+  try {
+    const parsed = JSON.parse(content)
+    const title = typeof parsed.title === "string" ? parsed.title : opts.conceptName
+    const summary =
+      typeof parsed.summary === "string" ? parsed.summary : opts.conceptDefinition
+    const content_md = typeof parsed.content_md === "string" ? parsed.content_md : ""
+    if (!content_md.trim()) {
+      return { error: "Pass B produced no content_md" }
+    }
+    const tags: string[] = Array.isArray(parsed.tags)
+      ? parsed.tags.filter((t: unknown): t is string => typeof t === "string")
+      : []
+    const confidence = typeof parsed.confidence === "number" ? parsed.confidence : 0.7
+    const article_type =
+      typeof parsed.article_type === "string" ? parsed.article_type : "concept"
+    return { title, summary, content_md, tags, confidence, article_type }
+  } catch (err) {
+    return { error: `parse error: ${String(err).slice(0, 200)}` }
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders })
@@ -1181,89 +1402,32 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // --- Compilation ---
-    await updateStage("compiling")
-
-    const truncated = content.slice(0, 24_000)
-
-    const { data: existingArticles } = await supabase
-      .from("articles")
-      .select("slug, title, summary")
-      .eq("engram_id", source.engram_id)
-
-    const existingSlugSet = new Set((existingArticles ?? []).map((a: any) => a.slug))
-    const wikiIndex = (existingArticles ?? [])
-      .map(
-        (a: any) => `- ${a.slug}: ${a.title}${a.summary ? " — " + a.summary : ""}`,
-      )
-      .join("\n")
-
-    const systemPrompt = `You are a knowledge compiler for a wiki system called Engrams. Given a source document and an existing wiki index, extract the key concepts and produce structured wiki articles.
-
-Rules:
-- Each article covers ONE concept or topic. Prefer depth over breadth.
-- Use [[slug]] syntax to link between articles in content_md (both new articles you're creating and existing ones from the wiki index).
-- Slugs are kebab-case (e.g., "machine-learning", "neural-networks").
-- If an existing article in the wiki index covers the same topic, mark it as "update" with the SAME slug. Otherwise "create" with a new slug.
-- Write in clear, encyclopedic prose. No first person. No hedging. No "it is important to note".
-- Assign confidence 0.0-1.0 based on how well the source supports the claims.
-- article_type is "concept" for standalone topics or "synthesis" for articles that tie multiple concepts together.
-- Tags should be lowercase, 1-2 words each.
-
-CRITICAL — EDGES:
-- You MUST populate the edges array. For every new article, create at least one edge to an existing wiki article whenever there is any conceptual relationship — shared domain, prerequisite knowledge, contrasting approaches, related techniques, etc.
-- Use these relations: "related" (general connection), "extends" (builds on), "contradicts" (conflicts with), "requires" (prerequisite), "part_of" (is a sub-topic of).
-- Do not invent slugs that don't exist. Edges must reference either a slug from the wiki index or a slug you are creating in this same compilation.
-- If the wiki index is empty, no edges are required.
-- If the wiki index is non-empty, you should produce roughly one edge per existing article that shares any topic overlap with the new article. Err on the side of more edges.
-
-- IMPORTANT: Also identify unresolved questions — things this source raises, references, or explicitly leaves open that are NOT answered in the source or the existing wiki. These should be genuine research questions, not trivial gaps.
-
-Return ONLY valid JSON, no markdown fences.`
-
-    const userPrompt = `## Source Title\n${source.title ?? "Untitled"}\n\n## Source Content\n${truncated}\n\n## Existing Wiki Index\n${wikiIndex || "(empty - this is the first source)"}\n\n## Output Format\n{\n  "articles": [\n    {\n      "action": "create" | "update",\n      "slug": "kebab-case-slug",\n      "title": "Article Title",\n      "summary": "One-sentence summary.",\n      "content_md": "Full article in markdown. Use [[slug]] to link.",\n      "tags": ["tag1", "tag2"],\n      "confidence": 0.85,\n      "article_type": "concept"\n    }\n  ],\n  "edges": [\n    { "from_slug": "slug-a", "to_slug": "slug-b", "relation": "related" }\n  ],\n  "unresolved_questions": [\n    "What specific mechanism causes X to affect Y?"\n  ]\n}`
-
-    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${openaiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.3,
-        response_format: { type: "json_object" },
-      }),
-    })
-
-    if (!openaiRes.ok) {
-      const errBody = await openaiRes.text()
-      await supabase.from("sources").update({ status: "failed" }).eq("id", source_id)
-      await finishRun("failed", {
-        summary: "OpenAI error during compilation",
-        detail: { stage: "compiling", error: errBody.slice(0, 500) },
-        compilation: { log: { stage: "compiling", error: errBody } },
-      })
-      return new Response(JSON.stringify({ error: "OpenAI API error", detail: errBody }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
-
-    const openaiData = await openaiRes.json()
-    const result = JSON.parse(openaiData.choices[0].message.content)
-
-    // --- Writing articles and edges ---
-    await updateStage("writing")
-
-    const newSlugSet = new Set<string>(existingSlugSet)
-    for (const a of (result.articles ?? [])) {
-      if (a.slug) newSlugSet.add(a.slug)
-    }
+    // ══════════════════════════════════════════════════════════════
+    // Two-pass compilation.
+    //
+    // Pass A — summarize (always runs, one LLM call).
+    //   Input:  raw source content (truncated)
+    //   Output: a dense summary article (article_type='summary') plus
+    //           a list of concepts worth their own articles
+    //   Write:  upsert the summary article row, update sources.summary_slug
+    //
+    // Pass B — write concept articles (one LLM call per concept).
+    //   Input:  existing concept article if any + the new summary article
+    //           + the flat wiki index
+    //   Output: the updated concept article body
+    //   Write:  upsert the concept article row, collect extracted wiki-links
+    //
+    // Edges are still derived from [[wikilinks]] in the generated content
+    // after both passes complete.
+    //
+    // Separating summarize from write is the single biggest quality +
+    // cost lever in the plan. Re-compiles of an unchanged source short-
+    // circuit at the hash gate above. Re-compiles of a changed source
+    // only re-run Pass A + the Pass B calls for concepts that actually
+    // shift, not the whole pipeline. Propagation of downstream articles
+    // (handled by propagate-edits) reads the short summary instead of
+    // the long raw source, cutting prompt input ~10×.
+    // ══════════════════════════════════════════════════════════════
 
     const extractWikiLinks = (md: string): string[] => {
       const matches = md.matchAll(/\[\[([a-z0-9-]+)\]\]/g)
@@ -1272,71 +1436,226 @@ Return ONLY valid JSON, no markdown fences.`
       return Array.from(slugs)
     }
 
+    const slugify = (s: string): string =>
+      s
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+
+    const summarySlugFor = (id: string): string => `s-${id.slice(0, 8)}`
+
+    // Load the wiki index once per run. Excludes summary rows — Pass B
+    // only cares about concept/synthesis articles for wikilink targets.
+    const { data: existingArticles } = await supabase
+      .from("articles")
+      .select("slug, title, summary, article_type")
+      .eq("engram_id", source.engram_id)
+      .neq("article_type", "summary")
+
+    const existingSlugSet = new Set<string>(
+      (existingArticles ?? []).map((a: { slug: string }) => a.slug),
+    )
+    const wikiIndex = (existingArticles ?? [])
+      .map(
+        (a: { slug: string; title: string; summary: string | null }) =>
+          `- ${a.slug}: ${a.title}${a.summary ? " — " + a.summary : ""}`,
+      )
+      .join("\n")
+
+    // ── Pass A — summarize ───────────────────────────────────────
+    await updateStage("summarizing")
+
+    const truncated = content.slice(0, 24_000)
+
+    const passAResult = await runPassA({
+      openaiKey,
+      sourceTitle: source.title ?? "Untitled",
+      sourceContent: truncated,
+    })
+
+    if ("error" in passAResult) {
+      await supabase.from("sources").update({ status: "failed" }).eq("id", source_id)
+      await finishRun("failed", {
+        summary: "OpenAI error during Pass A (summarize)",
+        detail: { stage: "summarizing", error: passAResult.error.slice(0, 500) },
+        compilation: { log: { stage: "summarizing", error: passAResult.error } },
+      })
+      return new Response(
+        JSON.stringify({ error: "OpenAI API error (Pass A)", detail: passAResult.error }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      )
+    }
+
+    const { summaryMd, concepts: conceptCandidates, unresolvedQuestions: qsFromPassA } = passAResult
+
+    // Upsert the summary article. We use a deterministic slug so repeated
+    // compiles overwrite the same row rather than stacking summaries.
+    const summarySlug = summarySlugFor(source_id)
+    const summaryTitle = `Summary: ${source.title ?? "Untitled"}`
+
+    const { data: existingSummary } = await supabase
+      .from("articles")
+      .select("id")
+      .eq("engram_id", source.engram_id)
+      .eq("slug", summarySlug)
+      .maybeSingle()
+
+    if (existingSummary) {
+      await supabase
+        .from("articles")
+        .update({
+          title: summaryTitle,
+          summary: conceptCandidates.length
+            ? `Summary of ${source.title ?? "source"}. Concepts: ${conceptCandidates.map((c) => c.name).slice(0, 5).join(", ")}.`
+            : `Summary of ${source.title ?? "source"}.`,
+          content_md: summaryMd,
+          article_type: "summary",
+          tags: ["summary"],
+          source_ids: [source_id],
+          confidence: 0.9,
+          metadata: { concepts: conceptCandidates, source_id },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingSummary.id)
+    } else {
+      await supabase.from("articles").insert({
+        engram_id: source.engram_id,
+        slug: summarySlug,
+        title: summaryTitle,
+        summary: conceptCandidates.length
+          ? `Summary of ${source.title ?? "source"}. Concepts: ${conceptCandidates.map((c) => c.name).slice(0, 5).join(", ")}.`
+          : `Summary of ${source.title ?? "source"}.`,
+        content_md: summaryMd,
+        article_type: "summary",
+        tags: ["summary"],
+        source_ids: [source_id],
+        related_slugs: [],
+        confidence: 0.9,
+        metadata: { concepts: conceptCandidates, source_id },
+      })
+    }
+
+    // Persist the summary_slug back on the source so propagate-edits can
+    // find it without regenerating.
+    if (source.summary_slug !== summarySlug) {
+      await supabase
+        .from("sources")
+        .update({ summary_slug: summarySlug })
+        .eq("id", source_id)
+    }
+
+    // ── Pass B — write concept articles ──────────────────────────
+    await updateStage("writing")
+
+    // The universe of slugs Pass B can legally reference in [[wikilinks]]:
+    // existing concept slugs plus any new slugs Pass B will itself create.
+    // We don't know the new ones yet — assemble them progressively so
+    // later concepts can link to earlier ones in the same run.
+    const newSlugSet = new Set<string>(existingSlugSet)
+    newSlugSet.add(summarySlug) // legal edge target even though hidden
+
     let articlesCreated = 0
     let articlesUpdated = 0
+    const writtenConcepts: { slug: string; content_md: string }[] = []
 
-    for (const article of result.articles ?? []) {
-      const linkedSlugs = extractWikiLinks(article.content_md ?? "")
-        .filter((s) => s !== article.slug && newSlugSet.has(s))
+    for (const candidate of conceptCandidates) {
+      // Resolve the concept to a slug. If it matches an existing article
+      // (exact slug or fuzzy-slugified name), this is an update — else
+      // a create.
+      const candidateSlug = slugify(candidate.name)
+      if (!candidateSlug) continue
 
-      if (article.action === "update") {
-        const { data: existing } = await supabase
-          .from("articles")
-          .select("id, source_ids, related_slugs")
-          .eq("engram_id", source.engram_id)
-          .eq("slug", article.slug)
-          .single()
+      let existingId: string | null = null
+      let existingSourceIds: string[] = []
+      let existingContent: string | null = null
+      let existingConfidence: number | null = null
 
-        if (existing) {
-          const sourceIds = [...new Set([...(existing.source_ids ?? []), source_id])]
-          const relatedSlugs = [
-            ...new Set([...(existing.related_slugs ?? []), ...linkedSlugs]),
-          ]
+      // Try exact slug first, then by slugified title via a case-insensitive
+      // search. Cheap because the article count per engram is small.
+      const { data: exact } = await supabase
+        .from("articles")
+        .select("id, slug, source_ids, content_md, confidence")
+        .eq("engram_id", source.engram_id)
+        .eq("slug", candidateSlug)
+        .maybeSingle()
 
-          await supabase
-            .from("articles")
-            .update({
-              title: article.title,
-              summary: article.summary,
-              content_md: article.content_md,
-              confidence: article.confidence,
-              article_type: article.article_type,
-              tags: article.tags,
-              source_ids: sourceIds,
-              related_slugs: relatedSlugs,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", existing.id)
-
-          articlesUpdated++
-        } else {
-          article.action = "create"
-        }
+      if (exact) {
+        existingId = exact.id
+        existingSourceIds = exact.source_ids ?? []
+        existingContent = exact.content_md
+        existingConfidence = exact.confidence
       }
 
-      if (article.action === "create") {
+      const conceptResult = await runPassB({
+        openaiKey,
+        conceptName: candidate.name,
+        conceptDefinition: candidate.definition ?? "",
+        existingArticleMd: existingContent,
+        newSummaryMd: summaryMd,
+        wikiIndex: wikiIndex || "(empty)",
+      })
+
+      if ("error" in conceptResult) {
+        console.error("[compile-source] Pass B failed for", candidate.name, conceptResult.error)
+        continue
+      }
+
+      const finalSlug = exact ? exact.slug : candidateSlug
+      const linkedSlugs = extractWikiLinks(conceptResult.content_md).filter(
+        (s) => s !== finalSlug,
+      )
+
+      if (existingId) {
+        const mergedSourceIds = [
+          ...new Set([...existingSourceIds, source_id]),
+        ]
+        await supabase
+          .from("articles")
+          .update({
+            title: conceptResult.title,
+            summary: conceptResult.summary,
+            content_md: conceptResult.content_md,
+            confidence: conceptResult.confidence ?? existingConfidence ?? 0.7,
+            article_type: conceptResult.article_type ?? "concept",
+            tags: conceptResult.tags ?? [],
+            source_ids: mergedSourceIds,
+            related_slugs: linkedSlugs,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingId)
+        articlesUpdated++
+      } else {
         await supabase.from("articles").insert({
           engram_id: source.engram_id,
-          slug: article.slug,
-          title: article.title,
-          summary: article.summary,
-          content_md: article.content_md,
-          confidence: article.confidence,
-          article_type: article.article_type ?? "concept",
-          tags: article.tags ?? [],
+          slug: finalSlug,
+          title: conceptResult.title,
+          summary: conceptResult.summary,
+          content_md: conceptResult.content_md,
+          confidence: conceptResult.confidence ?? 0.7,
+          article_type: conceptResult.article_type ?? "concept",
+          tags: conceptResult.tags ?? [],
           source_ids: [source_id],
           related_slugs: linkedSlugs,
         })
-
         articlesCreated++
       }
+
+      newSlugSet.add(finalSlug)
+      writtenConcepts.push({ slug: finalSlug, content_md: conceptResult.content_md })
     }
 
+    // ── Edges from wiki-links in the Pass B output ───────────────
     const edgeSet = new Set<string>()
     let edgesCreated = 0
     const insertEdge = async (from_slug: string, to_slug: string, relation: string) => {
       if (from_slug === to_slug) return
       if (!newSlugSet.has(from_slug) || !newSlugSet.has(to_slug)) return
+      // Never create edges to/from the hidden summary article. Summaries
+      // are plumbing, not nodes on the knowledge graph.
+      if (from_slug === summarySlug || to_slug === summarySlug) return
       const key = `${from_slug}|${to_slug}|${relation}`
       if (edgeSet.has(key)) return
       edgeSet.add(key)
@@ -1350,18 +1669,20 @@ Return ONLY valid JSON, no markdown fences.`
       if (!edgeErr) edgesCreated++
     }
 
-    for (const edge of result.edges ?? []) {
-      await insertEdge(edge.from_slug, edge.to_slug, edge.relation ?? "related")
+    for (const w of writtenConcepts) {
+      const linked = extractWikiLinks(w.content_md)
+      for (const target of linked) {
+        if (target === w.slug) continue
+        if (!newSlugSet.has(target)) continue
+        await insertEdge(w.slug, target, "related")
+      }
     }
 
-    for (const article of result.articles ?? []) {
-      if (!article.slug || !article.content_md) continue
-      const linkedSlugs = extractWikiLinks(article.content_md)
-      for (const target of linkedSlugs) {
-        if (target === article.slug) continue
-        if (!newSlugSet.has(target)) continue
-        await insertEdge(article.slug, target, "related")
-      }
+    // Synthesize the `result` object the downstream propagation logic
+    // uses so the existing enqueue code keeps working unchanged.
+    const result = {
+      articles: writtenConcepts.map((w) => ({ slug: w.slug })),
+      unresolved_questions: qsFromPassA,
     }
 
     const unresolvedQuestions = result.unresolved_questions ?? []
@@ -1391,10 +1712,16 @@ Return ONLY valid JSON, no markdown fences.`
       // .contains() helper URL-encodes the braces in a way that can
       // fail type resolution on uuid[] columns — this literal form is
       // what PostgREST natively parses for array containment.
+      //
+      // Exclude article_type='summary'. The summary article for this
+      // very source also cites the source (it IS the source's summary)
+      // and would otherwise land in the propagation queue, wasting an
+      // LLM call to re-summarize its own input.
       const { data: downstream, error: dsErr } = await supabase
         .from("articles")
         .select("slug")
         .eq("engram_id", source.engram_id)
+        .neq("article_type", "summary")
         .filter("source_ids", "cs", `{${source_id}}`)
 
       if (dsErr) {

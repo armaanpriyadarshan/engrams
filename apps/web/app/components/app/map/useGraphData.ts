@@ -41,11 +41,16 @@ export function useGraphData(engramId: string | null) {
       setError(null)
       const supabase = createClient()
 
+      // Exclude article_type='summary' — summaries are internal intermediate
+      // artifacts from the two-pass compiler (Pass A output). They're
+      // reachable by direct URL for debugging but should never appear in
+      // the wiki sections list or the knowledge graph.
       const [articlesResult, edgesResult] = await Promise.all([
         supabase
           .from("articles")
           .select("slug, title, summary, confidence, article_type, tags, source_ids, related_slugs, content_md")
-          .eq("engram_id", engramId),
+          .eq("engram_id", engramId)
+          .neq("article_type", "summary"),
         supabase
           .from("edges")
           .select("from_slug, to_slug, relation, weight")

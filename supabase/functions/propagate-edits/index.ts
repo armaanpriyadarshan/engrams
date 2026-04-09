@@ -55,6 +55,7 @@ interface SourceRow {
   title: string | null
   source_type: string | null
   content_md: string | null
+  summary_slug: string | null
 }
 
 Deno.serve(async (req: Request) => {
@@ -229,7 +230,7 @@ async function rewriteOne(
   // Load the current sources this article cites.
   const { data: sources, error: srcErr } = await supabase
     .from("sources")
-    .select("id, title, source_type, content_md")
+    .select("id, title, source_type, content_md, summary_slug")
     .in("id", sourceIds)
 
   if (srcErr) {
@@ -242,13 +243,42 @@ async function rewriteOne(
     return
   }
 
-  // Build the source context block. Truncate each source individually so
-  // one giant source can't starve the others.
+  // Prefer summary articles over raw source content. Pre-load every
+  // summary article for this batch of sources in a single round-trip.
+  //
+  // Why: a concept article's re-write should read the LLM-authored
+  // summary of each cited source, not the raw source. Summaries are
+  // ~10× smaller and are the durable intermediate artifact the two-
+  // pass compiler produces. Sources that don't have a summary yet
+  // (legacy pre-Sprint-1.4 sources) fall back to content_md.
+  const summarySlugs = srcRows
+    .map((s) => s.summary_slug)
+    .filter((slug): slug is string => !!slug)
+
+  const summaryBySlug = new Map<string, string>()
+  if (summarySlugs.length > 0) {
+    const { data: summaries } = await supabase
+      .from("articles")
+      .select("slug, content_md")
+      .eq("engram_id", art.engram_id)
+      .in("slug", summarySlugs)
+    for (const row of (summaries ?? []) as { slug: string; content_md: string | null }[]) {
+      if (row.content_md) summaryBySlug.set(row.slug, row.content_md)
+    }
+  }
+
+  // Build the context block. For each source: prefer its summary, fall
+  // back to a truncated slice of the raw content_md. Truncate each
+  // entry individually so one giant source can't starve the others.
   const sourceContext = srcRows
     .map((s, i) => {
-      const content = (s.content_md ?? "").slice(0, MAX_SOURCE_CONTEXT)
-      const head = `## Source ${i + 1}: ${s.title ?? s.source_type ?? "untitled"}\n\n`
-      return head + content
+      const usingSummary = s.summary_slug && summaryBySlug.has(s.summary_slug)
+      const body = usingSummary
+        ? (summaryBySlug.get(s.summary_slug!) ?? "")
+        : (s.content_md ?? "").slice(0, MAX_SOURCE_CONTEXT)
+      const kind = usingSummary ? "summary" : "raw"
+      const head = `## Source ${i + 1} (${kind}): ${s.title ?? s.source_type ?? "untitled"}\n\n`
+      return head + body
     })
     .join("\n\n---\n\n")
 
