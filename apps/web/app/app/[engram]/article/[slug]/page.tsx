@@ -5,6 +5,8 @@ import ArticleContent from "@/app/components/app/ArticleContent"
 import { ArticleUpdatingBadge } from "@/app/components/app/ArticleUpdatingBadge"
 import { CorrectionForm } from "@/app/components/app/CorrectionForm"
 import { getArticleTypeMeta } from "@/lib/article-types"
+import { parseHeadings } from "@/lib/slugify-heading"
+import ArticleToc from "@/app/components/app/ArticleToc"
 
 export default async function ArticlePage({ params }: { params: Promise<{ engram: string; slug: string }> }) {
   const { engram: engramSlug, slug } = await params
@@ -34,8 +36,25 @@ export default async function ArticlePage({ params }: { params: Promise<{ engram
     .eq("engram_id", engram.id)
     .contains("related_slugs", [slug])
 
+  // Load all slug names in the engram so ArticleContent can render
+  // [[wikilinks]] pointing to nonexistent targets as broken (gray +
+  // tooltip) instead of live links. Single query, cheap.
+  const { data: allSlugRows } = await supabase
+    .from("articles")
+    .select("slug")
+    .eq("engram_id", engram.id)
+    .neq("article_type", "summary")
+  const knownSlugs = new Set<string>(
+    ((allSlugRows ?? []) as { slug: string }[]).map((r) => r.slug),
+  )
+
+  // Parse headings server-side so ArticleToc (client) and
+  // ArticleContent (client, inside ReactMarkdown) agree on id strings
+  // without either having to re-parse the markdown.
+  const headings = parseHeadings(article.content_md ?? "")
+
   return (
-    <div className="max-w-[660px] mx-auto px-6 py-10 h-full overflow-y-auto scrollbar-hidden">
+    <div data-reader-scroll className="max-w-[660px] mx-auto px-6 py-10 h-full overflow-y-auto scrollbar-hidden">
       <Link
         href={`/app/${engramSlug}`}
         className="text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-120 font-mono"
@@ -87,10 +106,16 @@ export default async function ArticlePage({ params }: { params: Promise<{ engram
 
         <div className="mt-8 border-t border-border pt-8">
           <div className="prose-engram leading-[1.65] text-[15px] text-text-primary">
-            <ArticleContent contentMd={article.content_md} engramSlug={engramSlug} />
+            <ArticleContent
+              contentMd={article.content_md}
+              engramSlug={engramSlug}
+              knownSlugs={knownSlugs}
+            />
           </div>
         </div>
       </article>
+
+      <ArticleToc headings={headings} />
 
       {backlinks && backlinks.length > 0 && (
         <div className="mt-12 border-t border-border pt-8">

@@ -1,9 +1,10 @@
 "use client"
 
-import { useRef, useCallback } from "react"
+import { useRef, useCallback, useMemo } from "react"
 import Link from "next/link"
 import ReactMarkdown from "react-markdown"
 import type { Components } from "react-markdown"
+import { slugifyHeading } from "@/lib/slugify-heading"
 import hljs from "highlight.js/lib/core"
 import javascript from "highlight.js/lib/languages/javascript"
 import typescript from "highlight.js/lib/languages/typescript"
@@ -48,10 +49,41 @@ interface ArticleContentProps {
   contentMd: string
   engramSlug: string
   linkPrefix?: string
+  /**
+   * Slugs of articles that actually exist in the current engram. When
+   * provided, [[wikilinks]] pointing to slugs NOT in this set render
+   * in text-ghost with a "not yet compiled" title tooltip, so readers
+   * see the broken reference without clicking through. Omit to
+   * disable broken-link detection (all wiki-links render as active).
+   */
+  knownSlugs?: Set<string>
 }
 
-function WikiLink({ slug, engramSlug, linkPrefix }: { slug: string; engramSlug: string; linkPrefix?: string }) {
+function WikiLink({
+  slug,
+  engramSlug,
+  linkPrefix,
+  broken,
+}: {
+  slug: string
+  engramSlug: string
+  linkPrefix?: string
+  broken?: boolean
+}) {
   const base = linkPrefix ?? `/app/${engramSlug}`
+  if (broken) {
+    // Render the missing target as a quiet ghost span — no link, no
+    // underline, a title tooltip for the curious reader. Clicking
+    // nothing is the right affordance: there's nothing to navigate to.
+    return (
+      <span
+        className="text-text-ghost italic cursor-help"
+        title="Not yet compiled. This target does not exist in the engram."
+      >
+        {slug.replace(/-/g, " ")}
+      </span>
+    )
+  }
   return (
     <Link
       href={`${base}/article/${slug}`}
@@ -62,15 +94,46 @@ function WikiLink({ slug, engramSlug, linkPrefix }: { slug: string; engramSlug: 
   )
 }
 
-function processWikiLinks(text: string, engramSlug: string, linkPrefix?: string): React.ReactNode[] {
+function processWikiLinks(
+  text: string,
+  engramSlug: string,
+  linkPrefix: string | undefined,
+  knownSlugs: Set<string> | undefined,
+): React.ReactNode[] {
   const parts = text.split(/(\[\[[^\]]+\]\])/)
   return parts.map((part, i) => {
     const match = part.match(/^\[\[([^\]]+)\]\]$/)
     if (match) {
-      return <WikiLink key={i} slug={match[1]} engramSlug={engramSlug} linkPrefix={linkPrefix} />
+      const slug = match[1]
+      const broken = knownSlugs ? !knownSlugs.has(slug) : false
+      return (
+        <WikiLink
+          key={i}
+          slug={slug}
+          engramSlug={engramSlug}
+          linkPrefix={linkPrefix}
+          broken={broken}
+        />
+      )
     }
     return part
   })
+}
+
+// Extract a plain-text key from react-markdown heading children so we
+// can slug the heading and emit a stable id. react-markdown passes
+// either a string, a React element, or an array; this function walks
+// the tree and concatenates the text leaves.
+function headingText(children: React.ReactNode): string {
+  if (children === null || children === undefined) return ""
+  if (typeof children === "string") return children
+  if (typeof children === "number") return String(children)
+  if (Array.isArray(children)) return children.map(headingText).join("")
+  if (typeof children === "object" && "props" in children) {
+    // @ts-expect-error — ReactElement children access
+    return headingText(children.props?.children)
+  }
+  return ""
 }
 
 function CodeBlock({ html, lang, code }: { html: string; lang: string; code: string }) {
@@ -103,21 +166,53 @@ function CodeBlock({ html, lang, code }: { html: string; lang: string; code: str
   )
 }
 
-export default function ArticleContent({ contentMd, engramSlug, linkPrefix }: ArticleContentProps) {
-  // Pre-process: temporarily replace [[slug]] with placeholders for markdown parsing,
-  // then restore them. Simpler approach: use custom components to handle text nodes.
+export default function ArticleContent({
+  contentMd,
+  engramSlug,
+  linkPrefix,
+  knownSlugs,
+}: ArticleContentProps) {
+  // Heading id collision tracking. react-markdown walks the tree in
+  // document order so a simple counter per slugified id resolves dups
+  // deterministically and matches the algorithm in slugifyHeadings.
+  // Reset the counter each render by keying it on contentMd.
+  const headingCounts = useMemo(() => new Map<string, number>(), [contentMd])
+  const makeHeadingId = (children: React.ReactNode): string => {
+    const text = headingText(children)
+    const base = slugifyHeading(text) || "section"
+    const count = headingCounts.get(base) ?? 0
+    headingCounts.set(base, count + 1)
+    return count === 0 ? base : `${base}-${count + 1}`
+  }
+
   const components: Components = {
     p({ children }) {
-      return <p className="mb-4">{processChildren(children, engramSlug, linkPrefix)}</p>
+      return <p className="mb-4">{processChildren(children, engramSlug, linkPrefix, knownSlugs)}</p>
     },
     h1({ children }) {
       return <h1 className="font-heading text-xl text-text-emphasis mt-8 mb-3">{children}</h1>
     },
     h2({ children }) {
-      return <h2 className="font-heading text-lg text-text-emphasis mt-6 mb-2">{children}</h2>
+      const id = makeHeadingId(children)
+      return (
+        <h2
+          id={id}
+          className="font-heading text-lg text-text-emphasis mt-6 mb-2 scroll-mt-24"
+        >
+          {children}
+        </h2>
+      )
     },
     h3({ children }) {
-      return <h3 className="font-heading text-base text-text-emphasis mt-5 mb-2">{children}</h3>
+      const id = makeHeadingId(children)
+      return (
+        <h3
+          id={id}
+          className="font-heading text-base text-text-emphasis mt-5 mb-2 scroll-mt-24"
+        >
+          {children}
+        </h3>
+      )
     },
     ul({ children }) {
       return <ul className="list-disc list-outside ml-5 mb-4 space-y-1">{children}</ul>
@@ -126,7 +221,7 @@ export default function ArticleContent({ contentMd, engramSlug, linkPrefix }: Ar
       return <ol className="list-decimal list-outside ml-5 mb-4 space-y-1">{children}</ol>
     },
     li({ children }) {
-      return <li>{processChildren(children, engramSlug, linkPrefix)}</li>
+      return <li>{processChildren(children, engramSlug, linkPrefix, knownSlugs)}</li>
     },
     strong({ children }) {
       return <strong className="text-text-emphasis font-medium">{children}</strong>
@@ -178,14 +273,19 @@ export default function ArticleContent({ contentMd, engramSlug, linkPrefix }: Ar
   return <ReactMarkdown components={components}>{contentMd}</ReactMarkdown>
 }
 
-function processChildren(children: React.ReactNode, engramSlug: string, linkPrefix?: string): React.ReactNode {
+function processChildren(
+  children: React.ReactNode,
+  engramSlug: string,
+  linkPrefix: string | undefined,
+  knownSlugs: Set<string> | undefined,
+): React.ReactNode {
   if (typeof children === "string") {
-    return processWikiLinks(children, engramSlug, linkPrefix)
+    return processWikiLinks(children, engramSlug, linkPrefix, knownSlugs)
   }
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === "string") {
-        const processed = processWikiLinks(child, engramSlug, linkPrefix)
+        const processed = processWikiLinks(child, engramSlug, linkPrefix, knownSlugs)
         return processed.length === 1 ? processed[0] : <span key={i}>{processed}</span>
       }
       return child

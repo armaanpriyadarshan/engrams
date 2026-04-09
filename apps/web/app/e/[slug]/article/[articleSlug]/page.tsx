@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import ArticleContent from "@/app/components/app/ArticleContent"
+import ArticleToc from "@/app/components/app/ArticleToc"
+import { parseHeadings } from "@/lib/slugify-heading"
 
 export default async function PublishedArticlePage({
   params,
@@ -36,8 +38,20 @@ export default async function PublishedArticlePage({
     .eq("engram_id", engram.id)
     .contains("related_slugs", [articleSlug])
 
+  // Broken-link detection set — same as the private reader.
+  const { data: allSlugRows } = await supabase
+    .from("articles")
+    .select("slug")
+    .eq("engram_id", engram.id)
+    .neq("article_type", "summary")
+  const knownSlugs = new Set<string>(
+    ((allSlugRows ?? []) as { slug: string }[]).map((r) => r.slug),
+  )
+
+  const headings = parseHeadings(article.content_md ?? "")
+
   return (
-    <div className="max-w-[660px] mx-auto px-6 py-10 overflow-y-auto scrollbar-hidden h-full">
+    <div data-reader-scroll className="max-w-[660px] mx-auto px-6 py-10 overflow-y-auto scrollbar-hidden h-full">
       <Link
         href={`/e/${slug}`}
         className="text-xs text-text-ghost hover:text-text-tertiary transition-colors duration-120 font-mono"
@@ -68,10 +82,17 @@ export default async function PublishedArticlePage({
 
         <div className="mt-8 border-t border-border pt-8">
           <div className="prose-engram leading-[1.65] text-[15px] text-text-primary">
-            <ArticleContent contentMd={article.content_md} engramSlug={slug} linkPrefix={`/e/${slug}`} />
+            <ArticleContent
+              contentMd={article.content_md}
+              engramSlug={slug}
+              linkPrefix={`/e/${slug}`}
+              knownSlugs={knownSlugs}
+            />
           </div>
         </div>
       </article>
+
+      <ArticleToc headings={headings} />
 
       {backlinks && backlinks.length > 0 && (
         <div className="mt-12 border-t border-border pt-8">
