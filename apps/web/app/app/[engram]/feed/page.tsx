@@ -257,9 +257,17 @@ export default function FeedPage() {
   const handleFile = useCallback(async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
     const name = file.name.replace(/\.[^.]+$/, "")
-    const binaryFormats = ["pdf", "docx", "pptx", "xlsx"]
+    // Formats that need parse-file's extractor pipeline. Includes
+    // genuine binary formats (pdf/docx/pptx/xlsx/epub) AND structured
+    // text formats whose raw bytes wouldn't compile cleanly without
+    // pre-processing (csv → markdown table, eml → headers + body,
+    // vtt/srt → cue-text-only).
+    const needsParsing = [
+      "pdf", "docx", "pptx", "xlsx",
+      "epub", "eml", "csv", "vtt", "srt",
+    ]
 
-    if (binaryFormats.includes(ext)) {
+    if (needsParsing.includes(ext)) {
       setSubmitting(true)
       setMessage("Parsing...")
       const buffer = await file.arrayBuffer()
@@ -380,7 +388,7 @@ export default function FeedPage() {
           <input
             ref={fileRef}
             type="file"
-            accept=".txt,.md,.pdf,.docx,.pptx,.xlsx,.csv"
+            accept=".txt,.md,.pdf,.docx,.pptx,.xlsx,.csv,.epub,.eml,.vtt,.srt,.log,.yaml,.yml,.json"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0]

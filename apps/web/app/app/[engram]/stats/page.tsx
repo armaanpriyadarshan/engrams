@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import VoronoiHeatmap from "@/app/components/app/VoronoiHeatmap"
 import LintFindingsPanel from "@/app/components/app/LintFindingsPanel"
+import HealthCheckPanel from "@/app/components/app/HealthCheckPanel"
 
 export default async function StatsPage({ params }: { params: Promise<{ engram: string }> }) {
   const { engram: engramSlug } = await params
@@ -129,6 +130,9 @@ export default async function StatsPage({ params }: { params: Promise<{ engram: 
 
       {/* Lint findings */}
       <LintFindingsPanel engramId={engram.id} engramSlug={engramSlug} />
+
+      {/* Doctor */}
+      <HealthCheckPanel engramId={engram.id} />
     </div>
     </div>
   )

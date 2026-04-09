@@ -274,9 +274,15 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
     for (const file of Array.from(files)) {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
       const name = file.name.replace(/\.[^.]+$/, "")
-      const binaryFormats = ["pdf", "docx", "pptx", "xlsx"]
+      // Route through parse-file for anything with a dedicated
+      // extractor. Plain text / markdown / code files fall through
+      // to the inline text reader path below.
+      const needsParsing = [
+        "pdf", "docx", "pptx", "xlsx",
+        "epub", "eml", "csv", "vtt", "srt",
+      ]
 
-      if (binaryFormats.includes(ext)) {
+      if (needsParsing.includes(ext)) {
         setSubmitting(true)
         setMessage({ type: "ok", text: "Parsing..." })
         const buffer = await file.arrayBuffer()
@@ -428,7 +434,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
                 ref={fileRef}
                 type="file"
                 multiple
-                accept=".pdf,.md,.txt,.csv,.json,.docx,.pptx"
+                accept=".pdf,.md,.txt,.csv,.json,.docx,.pptx,.xlsx,.epub,.eml,.vtt,.srt,.log,.yaml,.yml"
                 onChange={(e) => handleFiles(e.target.files)}
                 className="hidden"
               />
