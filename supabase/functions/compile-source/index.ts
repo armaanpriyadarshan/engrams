@@ -1008,7 +1008,11 @@ Deno.serve(async (req: Request) => {
     let content = source.content_md ?? ""
 
     // --- URL retrieval (tiered: per-domain → Jina → local fallback) ---
-    if (source.source_type === "url" && source.source_url && !content) {
+    // Always re-fetch URL sources so the hash gate below can detect whether
+    // the upstream page actually changed. The only reason content_md might
+    // already be populated is that a previous compile wrote it — we're
+    // happy to overwrite with a fresh retrieval.
+    if (source.source_type === "url" && source.source_url) {
       await updateStage("fetching")
       const retrieveStart = Date.now()
       const retrieved = await retrieveUrl(source.source_url)
@@ -1042,6 +1046,66 @@ Deno.serve(async (req: Request) => {
           ? retrieved.title
           : source.title
 
+      // ── Hash gate ────────────────────────────────────────────────
+      // If the retrieved content hashes identically to what we last
+      // stored, this is a no-op: skip the LLM pass entirely, mark the
+      // run as completed with a no-op summary, and return. Cheapest
+      // possible outcome for unchanged URLs.
+      const isRecompile = source.status === "compiled"
+      const hashUnchanged =
+        isRecompile && source.content_hash === contentHash
+      if (hashUnchanged) {
+        // Refresh the metadata blob so the "last retrieved" timestamp
+        // is current — useful for the freshener agent — without touching
+        // content_md, title, or content_hash.
+        await supabase
+          .from("sources")
+          .update({
+            metadata: {
+              ...(source.metadata ?? {}),
+              final_url: retrieved.final_url,
+              content_type: retrieved.content_type,
+              source_kind: retrieved.source_kind,
+              retrieved_at: new Date().toISOString(),
+              byte_length: retrieved.byte_length,
+              retrieve_ms: retrieveMs,
+              last_hash_check: new Date().toISOString(),
+            },
+          })
+          .eq("id", source_id)
+
+        await finishRun("completed", {
+          summary: "Source unchanged. No recompile.",
+          detail: {
+            source_title: source.title ?? null,
+            stage: "hash_gate",
+            hash_unchanged: true,
+            retrieve_ms: retrieveMs,
+          },
+          compilation: {
+            articles_created: 0,
+            articles_updated: 0,
+            edges_created: 0,
+            log: {
+              stage: "hash_gate",
+              hash_unchanged: true,
+              retrieve_ms: retrieveMs,
+            },
+          },
+        })
+
+        return new Response(
+          JSON.stringify({
+            articles_created: 0,
+            articles_updated: 0,
+            edges_created: 0,
+            unresolved_questions: 0,
+            hash_unchanged: true,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        )
+      }
+
       await supabase
         .from("sources")
         .update({
@@ -1072,6 +1136,49 @@ Deno.serve(async (req: Request) => {
         status: 422,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
+    }
+
+    // ── Hash gate for non-URL sources ────────────────────────────────
+    // File/text sources arrive with content_md already populated by the
+    // client. Compute their hash here so re-feeds of unchanged content
+    // short-circuit the same way URL sources do. Only fires when the
+    // source was previously compiled and has a stored hash to compare
+    // against — first-time compiles always proceed.
+    if (source.source_type !== "url") {
+      const fileHash = await sha256(content.trim())
+      const wasCompiled = source.status === "compiled"
+      if (wasCompiled && source.content_hash === fileHash) {
+        await finishRun("completed", {
+          summary: "Source unchanged. No recompile.",
+          detail: {
+            source_title: source.title ?? null,
+            stage: "hash_gate",
+            hash_unchanged: true,
+          },
+          compilation: {
+            articles_created: 0,
+            articles_updated: 0,
+            edges_created: 0,
+            log: { stage: "hash_gate", hash_unchanged: true },
+          },
+        })
+        return new Response(
+          JSON.stringify({
+            articles_created: 0,
+            articles_updated: 0,
+            edges_created: 0,
+            unresolved_questions: 0,
+            hash_unchanged: true,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        )
+      }
+      if (!source.content_hash || source.content_hash !== fileHash) {
+        await supabase
+          .from("sources")
+          .update({ content_hash: fileHash })
+          .eq("id", source_id)
+      }
     }
 
     // --- Compilation ---
@@ -1262,10 +1369,99 @@ Return ONLY valid JSON, no markdown fences.`
       await supabase.from("sources").update({ unresolved_questions: unresolvedQuestions }).eq("id", source_id)
     }
 
+    // ── Downstream propagation ──────────────────────────────────────
+    // This is a re-compile of a source whose content actually changed
+    // (the unchanged case already returned above via the hash gate).
+    // Every article that cites this source but was NOT touched by the
+    // write pass above needs to be re-written against the latest source
+    // content. Enqueue them and hand off to propagate-edits.
+    //
+    // Only propagate when this is a re-compile (previous status was
+    // 'compiled'). First-time compiles don't have downstream yet.
+    let propagatedCount = 0
+    if (source.status === "compiled") {
+      // Articles the LLM just wrote or updated — already fresh.
+      const justWrittenSlugs = new Set<string>(
+        (result.articles ?? [])
+          .map((a: { slug?: string }) => a.slug)
+          .filter((s: unknown): s is string => typeof s === "string"),
+      )
+
+      // Use filter() with raw cs operator syntax. The JS client's
+      // .contains() helper URL-encodes the braces in a way that can
+      // fail type resolution on uuid[] columns — this literal form is
+      // what PostgREST natively parses for array containment.
+      const { data: downstream, error: dsErr } = await supabase
+        .from("articles")
+        .select("slug")
+        .eq("engram_id", source.engram_id)
+        .filter("source_ids", "cs", `{${source_id}}`)
+
+      if (dsErr) {
+        console.error("[compile-source] downstream query error", dsErr)
+      }
+
+      const downstreamSlugs = (downstream ?? []).map(
+        (a: { slug: string }) => a.slug,
+      )
+      const toEnqueue = downstreamSlugs.filter(
+        (slug: string) => !justWrittenSlugs.has(slug),
+      )
+
+      if (toEnqueue.length > 0) {
+        // Pre-filter against existing pending rows. The partial unique
+        // index on (engram_id, article_slug) WHERE status='pending'
+        // can't back an ON CONFLICT clause in Postgres (partial indexes
+        // are not usable as conflict targets), so we do a read-then-
+        // insert pattern instead. The index still enforces the
+        // invariant as a safety net.
+        const { data: existingPending } = await supabase
+          .from("recompile_queue")
+          .select("article_slug")
+          .eq("engram_id", source.engram_id)
+          .eq("status", "pending")
+          .in("article_slug", toEnqueue)
+
+        const alreadyPending = new Set<string>(
+          (existingPending ?? []).map((r: { article_slug: string }) => r.article_slug),
+        )
+        const freshSlugs = toEnqueue.filter((s: string) => !alreadyPending.has(s))
+
+        if (freshSlugs.length > 0) {
+          const rows = freshSlugs.map((slug: string) => ({
+            engram_id: source.engram_id,
+            article_slug: slug,
+            reason: `source:${source_id}`,
+            status: "pending",
+          }))
+          const { error: enqErr } = await supabase
+            .from("recompile_queue")
+            .insert(rows)
+          if (!enqErr) {
+            propagatedCount = freshSlugs.length
+          } else {
+            console.error("[compile-source] enqueue error", enqErr)
+          }
+        }
+
+        // Always invoke propagate-edits if there's anything to drain,
+        // including already-pending rows from a previous compile that
+        // may not have finished yet.
+        if (propagatedCount > 0 || alreadyPending.size > 0) {
+          supabase.functions.invoke("propagate-edits", {
+            body: { engram_id: source.engram_id },
+          }).catch((e) =>
+            console.error("[compile-source] propagate-edits invoke failed", e),
+          )
+        }
+      }
+    }
+
     const summaryParts: string[] = []
     if (articlesCreated > 0) summaryParts.push(`${articlesCreated} created`)
     if (articlesUpdated > 0) summaryParts.push(`${articlesUpdated} updated`)
     if (edgesCreated > 0) summaryParts.push(`${edgesCreated} connection${edgesCreated !== 1 ? "s" : ""}`)
+    if (propagatedCount > 0) summaryParts.push(`${propagatedCount} propagating`)
     const summary = summaryParts.length > 0
       ? summaryParts.join(". ") + "."
       : "No changes."
@@ -1277,6 +1473,7 @@ Return ONLY valid JSON, no markdown fences.`
         articles_created: articlesCreated,
         articles_updated: articlesUpdated,
         edges_created: edgesCreated,
+        propagated_queued: propagatedCount,
         unresolved_questions: unresolvedQuestions.length,
       },
       compilation: {
@@ -1287,6 +1484,7 @@ Return ONLY valid JSON, no markdown fences.`
           stage: "completed",
           articles: result.articles?.length ?? 0,
           edges: edgesCreated,
+          propagated_queued: propagatedCount,
           unresolved_questions: unresolvedQuestions.length,
         },
       },
@@ -1315,6 +1513,7 @@ Return ONLY valid JSON, no markdown fences.`
       articles_created: articlesCreated,
       articles_updated: articlesUpdated,
       edges_created: edgesCreated,
+      propagated_queued: propagatedCount,
       unresolved_questions: unresolvedQuestions.length,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

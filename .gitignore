@@ -58,3 +58,7 @@ skills-lock.json
 
 # local reference material (third-party repos cloned for study, not for distribution)
 .reference/
+
+# supabase cli workspace
+supabase/.temp/
+supabase/.branches/

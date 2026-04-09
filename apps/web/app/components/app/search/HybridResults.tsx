@@ -12,6 +12,7 @@ import Link from "next/link"
 import { useEffect, useRef } from "react"
 import type { HybridResult, MatchSignal } from "./useHybridSearch"
 import { matchSignalOf } from "./useHybridSearch"
+import { UpdatingDot } from "../UpdatingDot"
 
 interface HybridResultsProps {
   engramSlug: string
@@ -23,6 +24,9 @@ interface HybridResultsProps {
   query: string
   /** Called when the user clicks or keyboard-enters a row. */
   onOpen?: (slug: string) => void
+  /** Optional predicates for the "updating / just rewritten" dot. */
+  isUpdating?: (slug: string) => boolean
+  wasJustRewritten?: (slug: string) => boolean
 }
 
 // Signal bar colors. All reference existing engrams tokens.
@@ -41,6 +45,8 @@ export function HybridResults({
   error,
   query,
   onOpen,
+  isUpdating,
+  wasJustRewritten,
 }: HybridResultsProps) {
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -117,6 +123,10 @@ export function HybridResults({
                 {r.title}
               </h3>
               <div className="flex items-center gap-2 shrink-0">
+                <UpdatingDot
+                  updating={isUpdating?.(r.slug) ?? false}
+                  rewritten={wasJustRewritten?.(r.slug) ?? false}
+                />
                 {/* Rank badge — only shown when the gap between both ranks is
                     meaningful enough that it's worth telegraphing. */}
                 <RankBadge result={r} />

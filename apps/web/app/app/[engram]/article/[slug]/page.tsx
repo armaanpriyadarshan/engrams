@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import ArticleContent from "@/app/components/app/ArticleContent"
+import { ArticleUpdatingBadge } from "@/app/components/app/ArticleUpdatingBadge"
 
 export default async function ArticlePage({ params }: { params: Promise<{ engram: string; slug: string }> }) {
   const { engram: engramSlug, slug } = await params
@@ -59,6 +60,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ engram
               ))}
             </>
           )}
+          <ArticleUpdatingBadge engramId={engram.id} slug={slug} />
         </div>
 
         <div className="mt-8 border-t border-border pt-8">

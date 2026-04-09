@@ -22,6 +22,8 @@ import { createSnapshot } from "@/lib/snapshots"
 import { useHybridSearch } from "@/app/components/app/search/useHybridSearch"
 import { HybridSearchBar } from "@/app/components/app/search/HybridSearchBar"
 import { HybridResults } from "@/app/components/app/search/HybridResults"
+import { useRecompileQueue } from "@/app/components/app/useRecompileQueue"
+import { UpdatingDot } from "@/app/components/app/UpdatingDot"
 
 function HideWhenPanelOpen({ children }: { children: React.ReactNode }) {
   const { openId } = usePanelContext()
@@ -268,6 +270,7 @@ export default function EngramPage() {
   const search = useHybridSearch({ engramId, allTags })
   const searchActive = search.query.trim().length >= 2
   const sectionsToShow = wikiSections
+  const recompile = useRecompileQueue(engramId)
 
   // Build a map of slug -> connected article titles for cross-references
   const connectionMap = useMemo(() => {
@@ -418,6 +421,8 @@ export default function EngramPage() {
                 searching={search.searching}
                 error={search.error}
                 query={search.query}
+                isUpdating={recompile.isUpdating}
+                wasJustRewritten={recompile.wasJustRewritten}
               />
             ) : (
               <>
@@ -474,6 +479,10 @@ export default function EngramPage() {
                                   {node.title}
                                 </h3>
                                 <div className="flex items-center gap-2 shrink-0">
+                                  <UpdatingDot
+                                    updating={recompile.isUpdating(node.slug)}
+                                    rewritten={recompile.wasJustRewritten(node.slug)}
+                                  />
                                   {connections.length > 0 && (
                                     <span className="text-[10px] font-mono text-text-ghost">
                                       {connections.length} link{connections.length !== 1 ? "s" : ""}
