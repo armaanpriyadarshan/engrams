@@ -11,6 +11,7 @@ import {
   searchArticles,
   readArticle,
   listArticles,
+  captureKnowledge,
 } from "./tools.js";
 
 // Handle --token flag from install command
@@ -160,6 +161,51 @@ server.tool(
     engram_slug: z.string().describe("The slug of the engram"),
   },
   requireAuth(async (params) => await listArticles(params))
+);
+
+server.tool(
+  "engrams_capture",
+  `Capture durable knowledge from the current conversation into an engram. Use this when the user asks you to "save what we just figured out", "capture this to my wiki", "remember this for later", or similar. Pass the relevant conversation excerpt as 'content'. The tool extracts decisions, discoveries, corrections, and gotchas — filtering out greetings, retries, and dead ends — and files each as its own source in the engram. The wiki compiler picks them up and merges them into articles automatically. Omit chit-chat; include the substantive back-and-forth.`,
+  {
+    engram_slug: z
+      .string()
+      .describe("The slug of the engram to capture into"),
+    content: z
+      .string()
+      .describe(
+        "The conversation excerpt to extract knowledge from. Up to ~40k characters. Paste the relevant back-and-forth including your own prior messages and the user's.",
+      ),
+    context: z
+      .string()
+      .optional()
+      .describe(
+        "Optional one-line description of what the conversation was about. Helps the extractor pick the right items.",
+      ),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Optional tag hints to attach to the captured sources. Lowercase, 1-2 words each.",
+      ),
+  },
+  requireAuth(async (params) => {
+    const result = await captureKnowledge(params);
+    if (result.items_captured === 0) {
+      const reason = result.skipped_reason ?? "no durable content";
+      return `Nothing captured. Reason: ${reason}`;
+    }
+    const lines = [
+      `Captured ${result.items_captured} item${result.items_captured === 1 ? "" : "s"} into '${params.engram_slug}':`,
+      "",
+      ...result.items.map(
+        (it: { title: string; kind: string }) =>
+          `- [${it.kind}] ${it.title}`,
+      ),
+      "",
+      `The wiki compiler is now processing these. Run engrams_list_articles in a minute or two to see the new concept articles.`,
+    ];
+    return lines.join("\n");
+  })
 );
 
 async function main() {

@@ -133,6 +133,35 @@ export async function readArticle(params: {
   return { ...article, backlinks: backlinks ?? [] };
 }
 
+export async function captureKnowledge(params: {
+  engram_slug: string
+  content: string
+  context?: string
+  tags?: string[]
+}) {
+  const supabase = await getSupabase()
+
+  const { data: engram } = await supabase
+    .from("engrams")
+    .select("id")
+    .eq("slug", params.engram_slug)
+    .single()
+
+  if (!engram) throw new Error(`Engram '${params.engram_slug}' not found`)
+
+  const { data, error } = await supabase.functions.invoke("capture-knowledge", {
+    body: {
+      engram_id: engram.id,
+      content: params.content,
+      context: params.context ?? null,
+      tags: params.tags ?? [],
+    },
+  })
+
+  if (error) throw new Error(`Capture failed: ${error.message}`)
+  return data
+}
+
 export async function listArticles(params: { engram_slug: string }) {
   const supabase = await getSupabase();
 
