@@ -4,6 +4,7 @@ import Link from "next/link"
 import ArticleContent from "@/app/components/app/ArticleContent"
 import { ArticleUpdatingBadge } from "@/app/components/app/ArticleUpdatingBadge"
 import { CorrectionForm } from "@/app/components/app/CorrectionForm"
+import { getArticleTypeMeta } from "@/lib/article-types"
 
 export default async function ArticlePage({ params }: { params: Promise<{ engram: string; slug: string }> }) {
   const { engram: engramSlug, slug } = await params
@@ -49,9 +50,29 @@ export default async function ArticlePage({ params }: { params: Promise<{ engram
           <p className="mt-3 text-sm text-text-secondary leading-relaxed">{article.summary}</p>
         )}
 
-        <div className="mt-2 flex items-center gap-3 text-[10px] font-mono text-text-ghost">
-          <span>{article.article_type}</span>
-          <span>&middot;</span>
+        <div className="mt-3 flex items-center gap-3 text-[10px] font-mono text-text-ghost">
+          {(() => {
+            const meta = getArticleTypeMeta(article.article_type)
+            return (
+              <span
+                className="inline-flex items-center gap-1.5 px-1.5 py-0.5 border"
+                style={{
+                  color: meta.colorVar,
+                  borderColor: meta.colorVar,
+                  // Hairline only — the color is already enough signal.
+                  opacity: 0.85,
+                }}
+                title={meta.description}
+              >
+                <span
+                  className="w-1 h-1 rounded-full"
+                  style={{ backgroundColor: meta.colorVar }}
+                  aria-hidden
+                />
+                {meta.label}
+              </span>
+            )
+          })()}
           <span>confidence {((article.confidence ?? 0) * 100).toFixed(0)}%</span>
           {article.tags && article.tags.length > 0 && (
             <>

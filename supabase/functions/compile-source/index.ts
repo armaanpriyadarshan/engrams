@@ -921,20 +921,28 @@ Rules for the concepts:
 
 Also identify unresolved questions — things this source raises or leaves open. Genuine research questions, not trivial gaps.`
 
-const DEFAULT_WRITE_GUIDANCE = `You will write or rewrite a single concept article. The input gives you:
-- The concept name and a working definition.
-- The new summary of a source that mentions this concept (Pass A output).
-- The existing article for this concept, if one already exists.
+const DEFAULT_WRITE_GUIDANCE = `You will write or rewrite a single wiki article. The input gives you:
+- The topic name and a working definition.
+- The new summary of a source that mentions this topic (Pass A output).
+- The existing article for this topic, if one already exists.
 - The wiki index — a flat list of all other article slugs so you can link to them.
 
 Your job:
-- Produce a clear, encyclopedic article that explains the concept in its own right, drawing on the new summary and the existing article.
+- Produce a clear, encyclopedic article that explains the topic in its own right, drawing on the new summary and the existing article.
 - When an existing article is provided, treat it as the working draft and update it with any new information from the summary. Preserve its voice and any still-accurate claims.
 - Use [[slug]] syntax to link to related articles from the wiki index. Only reference slugs that actually appear in the index or in this concept's new slug.
 - Third person, encyclopedic. No first person. No hedging. No filler.
 - Assign confidence 0.0–1.0 based on how well the sources support the claims.
 - Tags are lowercase, 1–2 words each, 2–5 total.
-- article_type should be "concept" unless the article explicitly synthesizes across many topics (then "synthesis").`
+
+Pick the article_type that best matches what the article actually is. Use the most specific type that applies — do not default to concept unless nothing else fits.
+- technique — use when the article is primarily about how to do something, a method, procedure, process, or workflow. Titles like "Dry Process", "V60 Brew", "Git Rebase".
+- claim — use when the article's main purpose is to defend or challenge a specific falsifiable assertion.
+- artifact — use when the article is primarily about a specific file, document, paper, dataset, or external reference the wiki cites directly.
+- synthesis — use when the article explicitly ties multiple other concepts together and would not stand on its own without them.
+- concept — use when the article is a named idea, definition, or theory and none of the above apply. This is the fallback, not the default.
+
+Pick carefully. A good signal: if the title starts with a gerund ("Aging", "Roasting") or describes a step or process, it's almost always a technique. If it names a theory, object, or idea, it's a concept.`
 
 async function loadActiveTemplates(
   supabase: ReturnType<typeof import("jsr:@supabase/supabase-js@2").createClient>,
@@ -1766,12 +1774,13 @@ Deno.serve(async (req: Request) => {
       let existingSourceIds: string[] = []
       let existingContent: string | null = null
       let existingConfidence: number | null = null
+      let existingType: string | null = null
 
       // Try exact slug first, then by slugified title via a case-insensitive
       // search. Cheap because the article count per engram is small.
       const { data: exact } = await supabase
         .from("articles")
-        .select("id, slug, source_ids, content_md, confidence")
+        .select("id, slug, source_ids, content_md, confidence, article_type")
         .eq("engram_id", source.engram_id)
         .eq("slug", candidateSlug)
         .maybeSingle()
@@ -1781,6 +1790,7 @@ Deno.serve(async (req: Request) => {
         existingSourceIds = exact.source_ids ?? []
         existingContent = exact.content_md
         existingConfidence = exact.confidence
+        existingType = exact.article_type
       }
 
       // Filter rules by tag overlap with this concept. The candidate
@@ -1821,6 +1831,13 @@ Deno.serve(async (req: Request) => {
         const mergedSourceIds = [
           ...new Set([...existingSourceIds, source_id]),
         ]
+        // Preserve the existing article_type on updates. The LLM's pick
+        // on a re-compile is unreliable (it doesn't see enough context
+        // to revisit the classification) and would otherwise clobber
+        // any manual reclassification the user did from the reader.
+        // Only fall through to Pass B's choice if the existing type
+        // is null or somehow missing.
+        const preservedType = existingType ?? conceptResult.article_type ?? "concept"
         await supabase
           .from("articles")
           .update({
@@ -1828,7 +1845,7 @@ Deno.serve(async (req: Request) => {
             summary: conceptResult.summary,
             content_md: conceptResult.content_md,
             confidence: conceptResult.confidence ?? existingConfidence ?? 0.7,
-            article_type: conceptResult.article_type ?? "concept",
+            article_type: preservedType,
             tags: conceptResult.tags ?? [],
             source_ids: mergedSourceIds,
             related_slugs: linkedSlugs,

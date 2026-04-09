@@ -24,6 +24,7 @@ import { HybridSearchBar } from "@/app/components/app/search/HybridSearchBar"
 import { HybridResults } from "@/app/components/app/search/HybridResults"
 import { useRecompileQueue } from "@/app/components/app/useRecompileQueue"
 import { UpdatingDot } from "@/app/components/app/UpdatingDot"
+import { formatArticleTypeHeading, getArticleTypeMeta } from "@/lib/article-types"
 
 function HideWhenPanelOpen({ children }: { children: React.ReactNode }) {
   const { openId } = usePanelContext()
@@ -441,17 +442,25 @@ export default function EngramPage() {
                   <nav className="mb-12">
                     <h2 className="font-heading text-xs text-text-ghost uppercase tracking-widest mb-3">Contents</h2>
                     <ol className="space-y-1">
-                      {sectionsToShow.map(([type, nodes]) => (
-                        <li key={type}>
-                          <a
-                            href={`#section-${type}`}
-                            className="text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120"
-                          >
-                            {type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")}
-                            <span className="text-text-ghost ml-2 font-mono text-[10px]">{nodes.length}</span>
-                          </a>
-                        </li>
-                      ))}
+                      {sectionsToShow.map(([type, nodes]) => {
+                        const meta = getArticleTypeMeta(type)
+                        return (
+                          <li key={type}>
+                            <a
+                              href={`#section-${type}`}
+                              className="text-sm text-text-secondary hover:text-text-emphasis transition-colors duration-120 inline-flex items-center gap-2"
+                            >
+                              <span
+                                className="w-1 h-1 rounded-full shrink-0"
+                                style={{ backgroundColor: meta.colorVar }}
+                                aria-hidden
+                              />
+                              {formatArticleTypeHeading(type)}
+                              <span className="text-text-ghost font-mono text-[10px]">{nodes.length}</span>
+                            </a>
+                          </li>
+                        )
+                      })}
                     </ol>
                   </nav>
                 )}
@@ -461,8 +470,13 @@ export default function EngramPage() {
                   {sectionsToShow.map(([type, nodes]) => (
                     <section key={type} id={`section-${type}`}>
                       {sectionsToShow.length > 1 && (
-                        <h2 className="font-heading text-xs text-text-ghost uppercase tracking-widest mb-6 border-b border-border/50 pb-2">
-                          {type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")}
+                        <h2 className="font-heading text-xs text-text-ghost uppercase tracking-widest mb-6 border-b border-border/50 pb-2 inline-flex items-center gap-2">
+                          <span
+                            className="w-1 h-1 rounded-full shrink-0"
+                            style={{ backgroundColor: getArticleTypeMeta(type).colorVar }}
+                            aria-hidden
+                          />
+                          {formatArticleTypeHeading(type)}
                         </h2>
                       )}
                       <div className="space-y-1">

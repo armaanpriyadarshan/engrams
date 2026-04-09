@@ -4,6 +4,11 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import * as THREE from "three"
 import type { GraphData } from "./useGraphData"
+import {
+  ARTICLE_TYPE_META,
+  getArticleTypeMeta,
+  type ArticleType,
+} from "@/lib/article-types"
 
 interface EngineGraphProps {
   data: GraphData
@@ -13,33 +18,52 @@ interface EngineGraphProps {
   nodeVisible?: Uint8Array | null
 }
 
-const nodeTypeDisplay: Record<string, { label: string; color: string }> = {
-  concept: { label: "concept", color: "rgb(107,128,240)" },
-  process: { label: "process", color: "rgb(240,158,77)" },
-  event: { label: "event", color: "rgb(158,217,140)" },
-  synthesis: { label: "synthesis", color: "rgb(199,107,199)" },
+// Convert a hex color like "#7A8F76" to the [0..1] RGB triple the shader
+// consumes. Memoized per hex string so the conversion happens once per
+// unique palette color, not per node per render.
+const _hexToRgbCache = new Map<string, [number, number, number]>()
+function hexToRgb01(hex: string): [number, number, number] {
+  const cached = _hexToRgbCache.get(hex)
+  if (cached) return cached
+  const h = hex.replace("#", "")
+  const r = parseInt(h.slice(0, 2), 16) / 255
+  const g = parseInt(h.slice(2, 4), 16) / 255
+  const b = parseInt(h.slice(4, 6), 16) / 255
+  const rgb: [number, number, number] = [r, g, b]
+  _hexToRgbCache.set(hex, rgb)
+  return rgb
 }
+
 const edgeTypeDisplay: Record<string, { label: string; color: string }> = {
   related: { label: "related", color: "rgb(85,85,85)" },
   requires: { label: "requires", color: "rgb(143,89,41)" },
   extends: { label: "extends", color: "rgb(41,115,143)" },
-  causation: { label: "causation", color: "rgb(143,41,41)" },
-  contradiction: { label: "contradiction", color: "rgb(143,115,41)" },
-  evolution: { label: "evolution", color: "rgb(41,115,143)" },
-  supports: { label: "supports", color: "rgb(77,115,77)" },
+  contradicts: { label: "contradicts", color: "rgb(143,64,64)" },
+  "part_of": { label: "part of", color: "rgb(77,115,77)" },
+  synthesized_from: { label: "synthesized from", color: "rgb(118,128,143)" },
 }
 
 function GraphLegend({ data }: { data: GraphData }) {
-  const nodeTypes = [...new Set(data.nodes.map(n => n.articleType))].filter(t => t in nodeTypeDisplay)
+  // Only show legend entries for types actually present in the graph.
+  const typePresence = new Set<string>(data.nodes.map((n) => n.articleType))
+  const visibleNodeTypes = Array.from(typePresence).filter(
+    (t) => t in ARTICLE_TYPE_META && !ARTICLE_TYPE_META[t as ArticleType].hidden,
+  )
   const edgeTypes = [...new Set(data.edges.map(e => e.relation))].filter(r => r in edgeTypeDisplay)
-  if (nodeTypes.length === 0 && edgeTypes.length === 0) return null
+  if (visibleNodeTypes.length === 0 && edgeTypes.length === 0) return null
   return (
     <div className="absolute bottom-3 right-3 pointer-events-none">
       <div className="bg-surface/70 backdrop-blur-sm border border-border rounded-sm px-3 py-2 space-y-1.5">
-        {nodeTypes.map(t => (
-          <div key={t} className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: nodeTypeDisplay[t].color }} /><span className="text-[9px] font-mono text-text-ghost">{nodeTypeDisplay[t].label}</span></div>
-        ))}
-        {edgeTypes.length > 0 && nodeTypes.length > 0 && <div className="border-t border-border/50 my-1" />}
+        {visibleNodeTypes.map((t) => {
+          const meta = ARTICLE_TYPE_META[t as ArticleType]
+          return (
+            <div key={t} className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: meta.colorHex }} />
+              <span className="text-[9px] font-mono text-text-ghost">{meta.label}</span>
+            </div>
+          )
+        })}
+        {edgeTypes.length > 0 && visibleNodeTypes.length > 0 && <div className="border-t border-border/50 my-1" />}
         {edgeTypes.map(r => (
           <div key={r} className="flex items-center gap-2"><div className="w-3 h-px" style={{ backgroundColor: edgeTypeDisplay[r].color }} /><span className="text-[9px] font-mono text-text-ghost">{edgeTypeDisplay[r].label}</span></div>
         ))}
@@ -254,14 +278,10 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
     const driftSpd = new Float32Array(count)
     const depthArr = new Float32Array(count)
 
-    // Type → color mapping (muted, fits dark monochrome)
-    const typeColors: Record<string, [number, number, number]> = {
-      concept: [0.42, 0.50, 0.94],    // blue
-      process: [0.94, 0.62, 0.30],    // amber
-      event: [0.62, 0.85, 0.55],      // green
-      synthesis: [0.78, 0.42, 0.78],   // purple
-    }
-    const defaultColor: [number, number, number] = [0.65, 0.68, 0.72]
+    // Per-node color derived from the canonical article-type taxonomy.
+    // getArticleTypeMeta returns a hex from the engrams palette; hexToRgb01
+    // converts it once per unique color and caches the result. Unknown
+    // legacy types fall through to 'concept' which is text-primary.
     const nodeColors = new Float32Array(count * 3)
 
     for (let i = 0; i < count; i++) {
@@ -281,7 +301,7 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
       driftOff[i] = i * 1.618
       driftSpd[i] = 0.6 + (((i * 7) % 11) / 11) * 0.8
       depthArr[i] = d
-      const col = typeColors[data.nodes[i].articleType] ?? defaultColor
+      const col = hexToRgb01(getArticleTypeMeta(data.nodes[i].articleType).colorHex)
       nodeColors[i3] = col[0]
       nodeColors[i3 + 1] = col[1]
       nodeColors[i3 + 2] = col[2]
