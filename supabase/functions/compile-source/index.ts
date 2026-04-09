@@ -886,6 +886,100 @@ async function retrieveUrl(urlStr: string): Promise<RetrievalResult | null> {
 // =============================================================================
 
 // ═══════════════════════════════════════════════════════════════
+// Prompt templates.
+//
+// Each compile-source prompt is composed at runtime as:
+//
+//   [fixed persona header]
+//   [guidance: either user-overridden template body or hardcoded default]
+//   [fixed output format spec]
+//   [prevention rules block]
+//
+// Only the guidance block is user-editable (via Settings > Prompts).
+// The persona and output format stay rigid so the JSON response
+// contract is always valid and parsing never breaks.
+// ═══════════════════════════════════════════════════════════════
+
+const TEMPLATE_NAMES = ["summarize_source", "write_concept"] as const
+type TemplateName = typeof TEMPLATE_NAMES[number]
+
+type TemplateMap = Partial<Record<TemplateName, string>>
+
+const DEFAULT_SUMMARIZE_GUIDANCE = `Your job in this pass is twofold:
+1. Produce a dense, encyclopedic summary of the given source — capturing its central claims, definitions, and any unique facts, in markdown. Prefer depth over breadth. 400–800 words is a good target for most sources.
+2. Identify the distinct concepts in the source that deserve their own standalone wiki articles. A concept is a named idea, technique, entity, or claim that could be explained without the source in front of you. Typically 1–6 per source.
+
+Rules for the summary:
+- Third-person, encyclopedic voice. No first person. No hedging. No filler like "it is important to note".
+- Preserve concrete facts, numbers, names, and terminology from the source.
+- Do not fabricate.
+
+Rules for the concepts:
+- Each concept is a short name (2–4 words typically) plus a one-sentence working definition drawn from the source.
+- Concepts should be specific enough to be useful ("Reciprocal Rank Fusion", not "ranking").
+- Do not invent concepts that the source does not substantively cover.
+
+Also identify unresolved questions — things this source raises or leaves open. Genuine research questions, not trivial gaps.`
+
+const DEFAULT_WRITE_GUIDANCE = `You will write or rewrite a single concept article. The input gives you:
+- The concept name and a working definition.
+- The new summary of a source that mentions this concept (Pass A output).
+- The existing article for this concept, if one already exists.
+- The wiki index — a flat list of all other article slugs so you can link to them.
+
+Your job:
+- Produce a clear, encyclopedic article that explains the concept in its own right, drawing on the new summary and the existing article.
+- When an existing article is provided, treat it as the working draft and update it with any new information from the summary. Preserve its voice and any still-accurate claims.
+- Use [[slug]] syntax to link to related articles from the wiki index. Only reference slugs that actually appear in the index or in this concept's new slug.
+- Third person, encyclopedic. No first person. No hedging. No filler.
+- Assign confidence 0.0–1.0 based on how well the sources support the claims.
+- Tags are lowercase, 1–2 words each, 2–5 total.
+- article_type should be "concept" unless the article explicitly synthesizes across many topics (then "synthesis").`
+
+async function loadActiveTemplates(
+  supabase: ReturnType<typeof import("jsr:@supabase/supabase-js@2").createClient>,
+  engramId: string,
+): Promise<TemplateMap> {
+  const { data, error } = await supabase
+    .from("prompt_templates")
+    .select("name, body")
+    .eq("engram_id", engramId)
+    .eq("status", "active")
+
+  if (error) {
+    console.error("[compile-source] loadActiveTemplates error", error)
+    return {}
+  }
+
+  const map: TemplateMap = {}
+  for (const row of (data ?? []) as { name: string; body: string }[]) {
+    if (TEMPLATE_NAMES.includes(row.name as TemplateName)) {
+      map[row.name as TemplateName] = row.body
+    }
+  }
+  return map
+}
+
+function guidanceFor(
+  templates: TemplateMap,
+  name: TemplateName,
+): { body: string; source: "user" | "default" } {
+  const override = templates[name]
+  if (override && override.trim()) {
+    return { body: override.trim(), source: "user" }
+  }
+  const defaults: Record<TemplateName, string> = {
+    summarize_source: DEFAULT_SUMMARIZE_GUIDANCE,
+    write_concept: DEFAULT_WRITE_GUIDANCE,
+  }
+  return { body: defaults[name], source: "default" }
+}
+
+// Note: the Settings > Prompts UI mirrors DEFAULT_SUMMARIZE_GUIDANCE and
+// DEFAULT_WRITE_GUIDANCE verbatim in apps/web/lib/prompt-defaults.ts.
+// Keep both in sync when tuning the defaults.
+
+// ═══════════════════════════════════════════════════════════════
 // Prevention rule loading + prompt formatting.
 //
 // Rules are captured from user corrections (and, later, lint findings)
@@ -1012,25 +1106,15 @@ async function runPassA(opts: {
   sourceTitle: string
   sourceContent: string
   preventionRules: PreventionRule[]
+  guidance: string
 }): Promise<PassAResult | { error: string }> {
   const rulesBlock = formatRulesForPrompt(opts.preventionRules)
+  // Fixed persona + user/default guidance + fixed output contract + rules.
+  // The only mutable block is `opts.guidance`. Everything else is
+  // non-negotiable scaffolding that protects the JSON contract.
   const systemPrompt = `You are a source summarizer for Engrams, an LLM-compiled knowledge base.
 
-Your job in this pass is twofold:
-1. Produce a dense, encyclopedic summary of the given source — capturing its central claims, definitions, and any unique facts, in markdown. Prefer depth over breadth. 400–800 words is a good target for most sources.
-2. Identify the distinct concepts in the source that deserve their own standalone wiki articles. A concept is a named idea, technique, entity, or claim that could be explained without the source in front of you. Typically 1–6 per source.
-
-Rules for the summary:
-- Third-person, encyclopedic voice. No first person. No hedging. No filler like "it is important to note".
-- Preserve concrete facts, numbers, names, and terminology from the source.
-- Do not fabricate.
-
-Rules for the concepts:
-- Each concept is a short name (2–4 words typically) plus a one-sentence working definition drawn from the source.
-- Concepts should be specific enough to be useful ("Reciprocal Rank Fusion", not "ranking").
-- Do not invent concepts that the source does not substantively cover.
-
-Also identify unresolved questions — things this source raises or leaves open. Genuine research questions, not trivial gaps.
+${opts.guidance}
 
 Return ONLY valid JSON, no markdown fences.
 
@@ -1120,24 +1204,12 @@ async function runPassB(opts: {
   newSummaryMd: string
   wikiIndex: string
   preventionRules: PreventionRule[]
+  guidance: string
 }): Promise<PassBResult | { error: string }> {
   const rulesBlock = formatRulesForPrompt(opts.preventionRules)
   const systemPrompt = `You are a wiki article writer for Engrams, an LLM-compiled knowledge base.
 
-You will write or rewrite a single concept article. The input gives you:
-- The concept name and a working definition.
-- The new summary of a source that mentions this concept (Pass A output).
-- The existing article for this concept, if one already exists.
-- The wiki index — a flat list of all other article slugs so you can link to them.
-
-Your job:
-- Produce a clear, encyclopedic article that explains the concept in its own right, drawing on the new summary and the existing article.
-- When an existing article is provided, treat it as the working draft and update it with any new information from the summary. Preserve its voice and any still-accurate claims.
-- Use [[slug]] syntax to link to related articles from the wiki index. Only reference slugs that actually appear in the index or in this concept's new slug.
-- Third person, encyclopedic. No first person. No hedging. No filler.
-- Assign confidence 0.0–1.0 based on how well the sources support the claims.
-- Tags are lowercase, 1–2 words each, 2–5 total.
-- article_type should be "concept" unless the article explicitly synthesizes across many topics (then "synthesis").
+${opts.guidance}
 
 Return ONLY valid JSON, no markdown fences.
 
@@ -1567,6 +1639,14 @@ Deno.serve(async (req: Request) => {
     const passARules = allRules.slice(0, 10)
     const injectedRuleIds = new Set<string>(passARules.map((r) => r.id))
 
+    // Load any active prompt template overrides for this engram so the
+    // user's custom guidance (if any) flows into Pass A and Pass B.
+    // Fall-through to the hardcoded defaults for any template they
+    // haven't overridden.
+    const templates = await loadActiveTemplates(supabase, source.engram_id)
+    const summarizeGuidance = guidanceFor(templates, "summarize_source")
+    const writeGuidance = guidanceFor(templates, "write_concept")
+
     const existingSlugSet = new Set<string>(
       (existingArticles ?? []).map((a: { slug: string }) => a.slug),
     )
@@ -1587,6 +1667,7 @@ Deno.serve(async (req: Request) => {
       sourceTitle: source.title ?? "Untitled",
       sourceContent: truncated,
       preventionRules: passARules,
+      guidance: summarizeGuidance.body,
     })
 
     if ("error" in passAResult) {
@@ -1723,6 +1804,7 @@ Deno.serve(async (req: Request) => {
         newSummaryMd: summaryMd,
         wikiIndex: wikiIndex || "(empty)",
         preventionRules: passBRules,
+        guidance: writeGuidance.body,
       })
 
       if ("error" in conceptResult) {
@@ -1936,6 +2018,8 @@ Deno.serve(async (req: Request) => {
         edges_created: edgesCreated,
         propagated_queued: propagatedCount,
         rules_injected: appliedRuleIds.length,
+        template_summarize: summarizeGuidance.source,
+        template_write: writeGuidance.source,
         unresolved_questions: unresolvedQuestions.length,
       },
       compilation: {
