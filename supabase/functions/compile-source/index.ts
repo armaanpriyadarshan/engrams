@@ -2055,6 +2055,18 @@ Deno.serve(async (req: Request) => {
 
     await supabase.from("sources").update({ status: "compiled" }).eq("id", source_id)
 
+    // Fire-and-forget: refresh deterministic lint findings for this engram
+    // so Stats always reflects the current state. The semantic (LLM) pass
+    // is NOT invoked here — it's expensive and the user can trigger it
+    // manually from the Stats page via the "deep scan" button.
+    supabase.functions
+      .invoke("lint-engram", {
+        body: { engram_id: source.engram_id, mode: "deterministic" },
+      })
+      .catch((e) =>
+        console.error("[compile-source] deterministic lint invoke failed", e),
+      )
+
     // --- Recount both articles AND sources ---
     const { count: articleCount } = await supabase
       .from("articles")
