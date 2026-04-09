@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import ArticleContent from "@/app/components/app/ArticleContent"
 import { ArticleUpdatingBadge } from "@/app/components/app/ArticleUpdatingBadge"
+import { CorrectionForm } from "@/app/components/app/CorrectionForm"
 
 export default async function ArticlePage({ params }: { params: Promise<{ engram: string; slug: string }> }) {
   const { engram: engramSlug, slug } = await params
@@ -93,6 +94,16 @@ export default async function ArticlePage({ params }: { params: Promise<{ engram
           <p className="text-xs text-text-ghost font-mono">{article.source_ids.length} source{article.source_ids.length !== 1 ? "s" : ""}</p>
         </div>
       )}
+
+      {/* Correction affordance — hairline-quiet, at the end of the reader
+          where a user would naturally arrive after finishing. */}
+      <div className="mt-10 border-t border-border pt-6">
+        <CorrectionForm
+          engramId={engram.id}
+          articleSlug={slug}
+          articleTags={article.tags ?? []}
+        />
+      </div>
     </div>
   )
 }

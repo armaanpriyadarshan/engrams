@@ -886,6 +886,103 @@ async function retrieveUrl(urlStr: string): Promise<RetrievalResult | null> {
 // =============================================================================
 
 // ═══════════════════════════════════════════════════════════════
+// Prevention rule loading + prompt formatting.
+//
+// Rules are captured from user corrections (and, later, lint findings)
+// and stored in the prevention_rules table in WHEN/CHECK/BECAUSE form.
+// At compile time we load the top-weighted active rules for the engram
+// and inject them into the Pass A and Pass B system prompts so the
+// compiler doesn't repeat past mistakes.
+//
+// Pass A sees ALL active rules (capped at 10) because the source is
+// ungeneralized content and we don't know its tags yet. Pass B sees
+// rules whose tags overlap with the concept being written (capped at
+// 15) — tag match is a cheap relevance signal that scales well even
+// when an engram has hundreds of rules.
+// ═══════════════════════════════════════════════════════════════
+
+interface PreventionRule {
+  id: string
+  when_condition: string
+  check_condition: string
+  because: string
+  tags: string[]
+  weight: number
+}
+
+async function loadActiveRules(
+  supabase: ReturnType<typeof import("jsr:@supabase/supabase-js@2").createClient>,
+  engramId: string,
+): Promise<PreventionRule[]> {
+  const { data, error } = await supabase
+    .from("prevention_rules")
+    .select("id, when_condition, check_condition, because, tags, weight")
+    .eq("engram_id", engramId)
+    .eq("status", "active")
+    .order("weight", { ascending: false })
+    .limit(50)
+
+  if (error) {
+    console.error("[compile-source] loadActiveRules error", error)
+    return []
+  }
+  return (data ?? []) as PreventionRule[]
+}
+
+function pickRulesByTagOverlap(
+  rules: PreventionRule[],
+  targetTags: string[],
+  cap: number,
+): PreventionRule[] {
+  if (rules.length === 0) return []
+  if (targetTags.length === 0) {
+    // No tags to match against — return top N by weight.
+    return rules.slice(0, cap)
+  }
+  const targetSet = new Set(targetTags.map((t) => t.toLowerCase()))
+  return rules
+    .map((r) => {
+      const overlap = r.tags.reduce(
+        (n, t) => (targetSet.has(t.toLowerCase()) ? n + 1 : n),
+        0,
+      )
+      // Rules with no tags are always-on (priority boost). Rules with
+      // tag overlap get a stronger priority boost. Rules with tags but
+      // no overlap fall to the bottom but aren't excluded.
+      const alwaysOn = r.tags.length === 0 ? 0.5 : 0
+      const score = overlap * 2 + r.weight + alwaysOn
+      return { rule: r, score }
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, cap)
+    .map((entry) => entry.rule)
+}
+
+function formatRulesForPrompt(rules: PreventionRule[]): string {
+  if (rules.length === 0) return ""
+  const lines = rules.map((r, i) => {
+    // Keep it dense — one line per rule, WHEN/CHECK only, BECAUSE on a
+    // continuation line. Saves tokens vs a verbose bullet list.
+    return `${i + 1}. WHEN ${r.when_condition} CHECK ${r.check_condition} — BECAUSE ${r.because}`
+  })
+  return `## Previously-corrected issues in this wiki (follow these rules):\n${lines.join("\n")}\n`
+}
+
+async function incrementRuleUsage(
+  supabase: ReturnType<typeof import("jsr:@supabase/supabase-js@2").createClient>,
+  ruleIds: string[],
+): Promise<void> {
+  if (ruleIds.length === 0) return
+  // Fire-and-forget. Usage counters are nice-to-have analytics, not
+  // load-bearing, so we don't gate the compile on a failure here.
+  supabase
+    .rpc("increment_rule_usage", { rule_ids: ruleIds })
+    .then(({ error }) => {
+      if (error) console.error("[compile-source] increment_rule_usage error", error)
+    })
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Two-pass compilation helpers.
 //
 // runPassA turns raw source content into a dense summary plus a list
@@ -914,7 +1011,9 @@ async function runPassA(opts: {
   openaiKey: string
   sourceTitle: string
   sourceContent: string
+  preventionRules: PreventionRule[]
 }): Promise<PassAResult | { error: string }> {
+  const rulesBlock = formatRulesForPrompt(opts.preventionRules)
   const systemPrompt = `You are a source summarizer for Engrams, an LLM-compiled knowledge base.
 
 Your job in this pass is twofold:
@@ -933,7 +1032,9 @@ Rules for the concepts:
 
 Also identify unresolved questions — things this source raises or leaves open. Genuine research questions, not trivial gaps.
 
-Return ONLY valid JSON, no markdown fences.`
+Return ONLY valid JSON, no markdown fences.
+
+${rulesBlock}`
 
   const userPrompt =
     `## Source Title\n${opts.sourceTitle}\n\n## Source Content\n${opts.sourceContent}\n\n## Output Format\n` +
@@ -1018,7 +1119,9 @@ async function runPassB(opts: {
   existingArticleMd: string | null
   newSummaryMd: string
   wikiIndex: string
+  preventionRules: PreventionRule[]
 }): Promise<PassBResult | { error: string }> {
+  const rulesBlock = formatRulesForPrompt(opts.preventionRules)
   const systemPrompt = `You are a wiki article writer for Engrams, an LLM-compiled knowledge base.
 
 You will write or rewrite a single concept article. The input gives you:
@@ -1036,7 +1139,9 @@ Your job:
 - Tags are lowercase, 1–2 words each, 2–5 total.
 - article_type should be "concept" unless the article explicitly synthesizes across many topics (then "synthesis").
 
-Return ONLY valid JSON, no markdown fences.`
+Return ONLY valid JSON, no markdown fences.
+
+${rulesBlock}`
 
   const existingBlock = opts.existingArticleMd
     ? `## Existing Article\n${opts.existingArticleMd}`
@@ -1455,6 +1560,13 @@ Deno.serve(async (req: Request) => {
       .eq("engram_id", source.engram_id)
       .neq("article_type", "summary")
 
+    // Load prevention rules once per compile run. Pass A sees the
+    // top-10 by weight; each Pass B call filters by tag overlap with
+    // the concept being written.
+    const allRules = await loadActiveRules(supabase, source.engram_id)
+    const passARules = allRules.slice(0, 10)
+    const injectedRuleIds = new Set<string>(passARules.map((r) => r.id))
+
     const existingSlugSet = new Set<string>(
       (existingArticles ?? []).map((a: { slug: string }) => a.slug),
     )
@@ -1474,6 +1586,7 @@ Deno.serve(async (req: Request) => {
       openaiKey,
       sourceTitle: source.title ?? "Untitled",
       sourceContent: truncated,
+      preventionRules: passARules,
     })
 
     if ("error" in passAResult) {
@@ -1589,6 +1702,19 @@ Deno.serve(async (req: Request) => {
         existingConfidence = exact.confidence
       }
 
+      // Filter rules by tag overlap with this concept. The candidate
+      // name contributes pseudo-tags via a dumb word split so rules
+      // with domain tags like "coffee" still match a concept named
+      // "Coffee Plant" even before the article exists.
+      const candidateTags = [
+        ...candidate.name
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((w) => w.length > 2),
+      ]
+      const passBRules = pickRulesByTagOverlap(allRules, candidateTags, 15)
+      for (const r of passBRules) injectedRuleIds.add(r.id)
+
       const conceptResult = await runPassB({
         openaiKey,
         conceptName: candidate.name,
@@ -1596,6 +1722,7 @@ Deno.serve(async (req: Request) => {
         existingArticleMd: existingContent,
         newSummaryMd: summaryMd,
         wikiIndex: wikiIndex || "(empty)",
+        preventionRules: passBRules,
       })
 
       if ("error" in conceptResult) {
@@ -1793,6 +1920,13 @@ Deno.serve(async (req: Request) => {
       ? summaryParts.join(". ") + "."
       : "No changes."
 
+    // Bump usage counters for rules that actually landed in at least
+    // one prompt this run. Fire-and-forget — analytics, not critical.
+    const appliedRuleIds = Array.from(injectedRuleIds)
+    if (appliedRuleIds.length > 0) {
+      incrementRuleUsage(supabase, appliedRuleIds)
+    }
+
     await finishRun("completed", {
       summary,
       detail: {
@@ -1801,6 +1935,7 @@ Deno.serve(async (req: Request) => {
         articles_updated: articlesUpdated,
         edges_created: edgesCreated,
         propagated_queued: propagatedCount,
+        rules_injected: appliedRuleIds.length,
         unresolved_questions: unresolvedQuestions.length,
       },
       compilation: {
