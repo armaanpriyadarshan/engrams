@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import * as THREE from "three"
 import type { GraphData } from "./useGraphData"
 import type { LayoutMeta } from "./useForceLayout"
+import { getSafeViewport, isInSafeViewport } from "@/lib/map-viewport-bounds"
 import { ARTICLE_TYPE_META, type ArticleType } from "@/lib/article-types"
 import type { GraphBuffers } from "./reconcileGraph"
 import { reconcileGraph } from "./reconcileGraph"
@@ -32,6 +33,7 @@ const edgeTypeDisplay: Record<string, { label: string; color: string }> = {
 type RefLike<T> = { current: T }
 
 interface SceneState {
+  container: HTMLDivElement
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   renderer: THREE.WebGLRenderer
@@ -81,6 +83,15 @@ interface SceneState {
   isPanning: boolean
   isOrbiting: boolean
   orbitStart: { x: number; y: number }
+
+  // Attention pan — when a new node lands outside the safe viewport, the
+  // camera gently drifts to bring it in, holds for a beat, and drifts
+  // back. Manual panning cancels this.
+  attentionPan: {
+    target: { x: number; y: number }
+    returnTo: { x: number; y: number }
+    startMs: number
+  } | null
 
   // Lifecycle
   frameHandle: number
@@ -213,6 +224,7 @@ function buildMountScene(
 
     // ── Initial SceneState ──
     const state: SceneState = {
+      container,
       scene,
       camera,
       renderer,
@@ -269,6 +281,7 @@ function buildMountScene(
       isPanning: false,
       isOrbiting: false,
       orbitStart: { x: 0, y: 0 },
+      attentionPan: null,
       frameHandle: 0,
       disposed: false,
     }
@@ -311,9 +324,12 @@ function buildMountScene(
     }
     const onMouseDown = (e: MouseEvent) => {
       if (e.button === 0 && state.currentHovered < 0) {
+        // Manual pan cancels any in-flight attention drift — user input wins.
+        state.attentionPan = null
         state.isPanning = true
         state.panStart = { x: e.clientX, y: e.clientY }
       } else if (e.button === 2) {
+        state.attentionPan = null
         state.isOrbiting = true
         state.orbitStart = { x: e.clientX, y: e.clientY }
       }
@@ -376,6 +392,35 @@ function buildMountScene(
 
       // Camera orbit + drift
       const driftScale = Math.min(Math.max((count - 5) / 10, 0), 1)
+
+      // ── Attention pan state machine ──
+      if (state.attentionPan) {
+        const t = performance.now() - state.attentionPan.startMs
+        const { target, returnTo } = state.attentionPan
+        if (t < 600) {
+          // Phase 1: ease-out toward target (600ms)
+          const p = t / 600
+          const k = 1 - Math.pow(1 - p, 3) // ease-out cubic
+          state.panOffset.x = returnTo.x + (target.x - returnTo.x) * k
+          state.panOffset.y = returnTo.y + (target.y - returnTo.y) * k
+        } else if (t < 1600) {
+          // Phase 2: hold at target (1000ms)
+          state.panOffset.x = target.x
+          state.panOffset.y = target.y
+        } else if (t < 2400) {
+          // Phase 3: ease-out back to returnTo (800ms)
+          const p = (t - 1600) / 800
+          const k = 1 - Math.pow(1 - p, 3)
+          state.panOffset.x = target.x + (returnTo.x - target.x) * k
+          state.panOffset.y = target.y + (returnTo.y - target.y) * k
+        } else {
+          // Done
+          state.panOffset.x = returnTo.x
+          state.panOffset.y = returnTo.y
+          state.attentionPan = null
+        }
+      }
+
       state.currentZoom += (state.targetZ - state.currentZoom) * 0.1
       state.orbitTheta += (state.targetTheta - state.orbitTheta) * 0.08
       state.orbitPhi += (state.targetPhi - state.orbitPhi) * 0.08
@@ -665,6 +710,54 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   state.maxZoom = camZ * 1.5
   state.minZoom = Math.max(camZ * 0.15, 80)
   state.targetZ = Math.max(state.minZoom, Math.min(state.maxZoom, state.targetZ))
+
+  // ── Start an attention pan if any new node would land outside the
+  // safe viewport. Only REPLACE an in-flight pan if there's a new target
+  // to drive toward — otherwise leave the existing drift alone so it can
+  // finish its phase. ──
+  if (meta.newSlugs.size > 0) {
+    const safe =
+      typeof window !== "undefined"
+        ? getSafeViewport(window.innerWidth, window.innerHeight)
+        : null
+    if (safe) {
+      const rect = state.container.getBoundingClientRect()
+      const projVec = new THREE.Vector3()
+      let offScreenCount = 0
+      let centroidX = 0
+      let centroidY = 0
+      for (let i = 0; i < next.count; i++) {
+        if (!meta.newSlugs.has(next.slugs[i])) continue
+        const i3 = i * 3
+        projVec
+          .set(next.targetPos[i3], next.targetPos[i3 + 1], next.targetPos[i3 + 2])
+          .project(state.camera)
+        const sx = (projVec.x * 0.5 + 0.5) * rect.width + rect.left
+        const sy = (-projVec.y * 0.5 + 0.5) * rect.height + rect.top
+        if (!isInSafeViewport(sx, sy, safe)) {
+          offScreenCount += 1
+          centroidX += next.targetPos[i3]
+          centroidY += next.targetPos[i3 + 1]
+        }
+      }
+      if (offScreenCount > 0) {
+        // Use the CURRENT returnTo if a pan is already in-flight — don't
+        // trap the user at a mid-drift position when a second reconcile
+        // lands. Otherwise capture the current resting panOffset.
+        const returnTo = state.attentionPan
+          ? state.attentionPan.returnTo
+          : { x: state.panOffset.x, y: state.panOffset.y }
+        state.attentionPan = {
+          target: { x: centroidX / offScreenCount, y: centroidY / offScreenCount },
+          returnTo,
+          startMs: performance.now(),
+        }
+      }
+      // If offScreenCount is 0, leave any in-flight attentionPan alone so
+      // it can finish its three-phase drift. A new reconcile without
+      // off-screen nodes doesn't need to steal the camera.
+    }
+  }
 
   // ── Force hover recompute on next frame: surviving slugs may have moved
   // to new indices, so the old index would point at the wrong node. ──
