@@ -65,6 +65,9 @@ skills-lock.json
 # playwright mcp workspace
 .playwright-mcp/
 
+# brainstorming visual companion workspace
+.superpowers/
+
 # supabase cli workspace
 supabase/.temp/
 supabase/.branches/
