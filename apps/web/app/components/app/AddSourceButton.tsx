@@ -67,14 +67,12 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
     setCompiling(true)
     supabaseRef.current = supabase
 
+    // Show "taking longer" after 60s but DON'T tear down the channel —
+    // compilation can legitimately exceed 60s and we still want the
+    // completed handler to fire whenever it finally arrives.
     timeoutRef.current = setTimeout(() => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current)
-        channelRef.current = null
-      }
       timeoutRef.current = null
       setMessage({ type: "ok", text: "Taking longer than expected. Check back shortly." })
-      setCompiling(false)
     }, 60000)
 
     const channel = supabase
@@ -85,7 +83,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
         table: "compilation_runs",
         filter: `source_id=eq.${sourceId}`,
       }, async (payload) => {
-        const run = payload.new as any
+        const run = payload.new as { status?: string; log?: { stage?: string; error?: string }; articles_created?: number; articles_updated?: number; edges_created?: number }
         const stage = run.log?.stage
 
         if (run.status === "completed") {
@@ -125,14 +123,23 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
           setMessage({ type: "ok", text: "Writing articles..." })
         }
       })
-      .subscribe()
+      .subscribe((status) => {
+        // Only invoke compile-source once the channel is actually subscribed.
+        // Otherwise the INSERT/UPDATE events can land before the subscription
+        // is ready and the completed handler never fires.
+        if (status === "SUBSCRIBED") {
+          supabase.functions.invoke("compile-source", { body: { source_id: sourceId } })
+        }
+      })
 
     channelRef.current = channel
   }, [engramId, router])
 
   const triggerCompilation = useCallback((supabase: ReturnType<typeof createClient>, sourceId: string) => {
+    // compile-source is invoked from inside the SUBSCRIBED callback of
+    // subscribeToCompilation to avoid a race where the compilation row is
+    // updated before the subscription is active.
     subscribeToCompilation(supabase, sourceId)
-    supabase.functions.invoke("compile-source", { body: { source_id: sourceId } })
   }, [subscribeToCompilation])
 
   const feed = useCallback(async (sourceType: string, content: string, title: string) => {
