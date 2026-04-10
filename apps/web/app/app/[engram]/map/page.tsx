@@ -25,9 +25,9 @@ export default function MapPage() {
   }, [engramSlug])
 
   const { data, loading } = useGraphData(engramId)
-  const positions = useForceLayout(data, 1200, 800)
+  const layoutResult = useForceLayout(data, 1200, 800)
 
-  if (loading || !data || !positions) {
+  if (loading || !data || !layoutResult) {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <p className="text-xs font-mono text-text-ghost">
@@ -37,9 +37,11 @@ export default function MapPage() {
     )
   }
 
+  const { positions, meta: layoutMeta } = layoutResult
+
   return (
     <div className="w-full h-full relative">
-      <EngineGraph data={data} positions={positions} engramSlug={engramSlug} />
+      <EngineGraph data={data} positions={positions} layoutMeta={layoutMeta} engramSlug={engramSlug} />
       <div className="absolute top-0 left-0 right-0 px-4 py-2 bg-void/80 backdrop-blur-sm pointer-events-none">
         <span className="text-[10px] font-mono text-text-ghost">
           {data.nodes.length} articles &middot; {data.edges.length} connections

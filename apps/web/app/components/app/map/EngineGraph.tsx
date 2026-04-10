@@ -4,6 +4,7 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import * as THREE from "three"
 import type { GraphData } from "./useGraphData"
+import type { LayoutMeta } from "./useForceLayout"
 import { ARTICLE_TYPE_META, type ArticleType } from "@/lib/article-types"
 import type { GraphBuffers } from "./reconcileGraph"
 import { reconcileGraph } from "./reconcileGraph"
@@ -11,6 +12,7 @@ import { reconcileGraph } from "./reconcileGraph"
 interface EngineGraphProps {
   data: GraphData
   positions: Float32Array
+  layoutMeta: LayoutMeta
   engramSlug: string
   onNodeClick?: (slug: string, x: number, y: number) => void
   nodeVisible?: Uint8Array | null
@@ -655,7 +657,7 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   state.currentHoveredEdge = -1
 }
 
-export default function EngineGraph({ data, positions, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
+export default function EngineGraph({ data, positions, layoutMeta, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const nodeVisibleRef = useRef<Uint8Array | null>(null)
@@ -665,6 +667,9 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
   const [sceneReady, setSceneReady] = useState(false)
   useEffect(() => { dataRef.current = data }, [data])
   useEffect(() => { positionsRef.current = positions }, [positions])
+  // Temporarily reference layoutMeta so TypeScript's noUnusedLocals stays
+  // quiet between this task and Task 4, which actually consumes it.
+  void layoutMeta
   const router = useRouter()
 
   // Keep nodeVisible ref in sync without re-running the whole setup
