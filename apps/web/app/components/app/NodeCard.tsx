@@ -5,6 +5,12 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { deleteArticle } from "@/lib/delete-article"
+import {
+  SOURCE_TREE_RIGHT_EDGE,
+  AGENT_TIMELINE_LEFT_EDGE,
+  TOP_RESERVED,
+  BOTTOM_RESERVED,
+} from "@/lib/map-viewport-bounds"
 import ArticleContent from "./ArticleContent"
 
 interface NodeCardProps {
@@ -19,12 +25,6 @@ interface NodeCardProps {
 const CARD_WIDTH = 340
 const CARD_HEIGHT = 480 // approximate; max-h-[60vh] caps it
 
-// Layout constants for the engram view: avoid the side widgets and the
-// view toggle / ask bar so the article never opens covered by chrome.
-const SOURCE_TREE_RIGHT_EDGE = 296   // SourceTree widget at top-3 left-3, ~260px wide + gutter
-const AGENT_TIMELINE_LEFT_EDGE = 224 // AgentTimeline widget at top-3 right-3, ~200px wide + gutter
-const TOP_RESERVED = 60              // ViewToggle pill area
-const BOTTOM_RESERVED = 160          // AskBar at bottom-10
 const ANCHOR_GAP = 32                // distance between the anchor (clicked node) and the card edge
 
 function computeIntentionalPosition(anchor: { x: number; y: number } | null | undefined) {
