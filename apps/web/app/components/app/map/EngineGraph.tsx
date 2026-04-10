@@ -147,12 +147,12 @@ function buildMountScene(
         uRippleTime: { value: -100.0 },
       },
       vertexShader: `
-        attribute float aSize, aPhase, aFade;
+        attribute float aSize, aPhase, aFade, aAttention;
         attribute vec3 aColor;
         uniform float uTime;
         uniform vec2 uMouse, uRippleOrigin;
         uniform float uRippleTime;
-        varying float vPulse, vMouseProx, vDepth, vFade;
+        varying float vPulse, vMouseProx, vDepth, vFade, vAttention;
         varying vec3 vColor;
 
         void main() {
@@ -169,22 +169,23 @@ function buildMountScene(
 
           vPulse = clamp(pulse, 0.0, 1.4);
           vFade = aFade;
+          vAttention = aAttention;
           vColor = aColor;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           vDepth = smoothstep(-1400.0, -700.0, mv.z);
-          gl_PointSize = aSize * (0.85 + vPulse * 0.3) * (500.0 / -mv.z);
+          gl_PointSize = aSize * (0.85 + vPulse * 0.3 + vAttention * 0.25) * (500.0 / -mv.z);
           gl_Position = projectionMatrix * mv;
         }
       `,
       fragmentShader: `
-        varying float vPulse, vMouseProx, vDepth, vFade;
+        varying float vPulse, vMouseProx, vDepth, vFade, vAttention;
         varying vec3 vColor;
 
         void main() {
           float d = length(gl_PointCoord - 0.5);
           if (d > 0.5) discard;
           float core = exp(-d * 30.0);
-          float a = (exp(-d * 2.5) * 0.06 + exp(-d * 5.0) * 0.18 + exp(-d * 12.0) * 0.5 + core) * vPulse * vDepth * vFade;
+          float a = (exp(-d * 2.5) * 0.06 + exp(-d * 5.0) * 0.18 + exp(-d * 12.0) * 0.5 + core) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6);
           vec3 col = mix(vColor * 0.7, vColor, core);
           col = mix(col, vec3(1.0, 0.98, 0.96), vMouseProx * 0.4);
           gl_FragColor = vec4(col, a);
@@ -502,6 +503,18 @@ function buildMountScene(
       }
       if (count > 0) state.nodeGeo.attributes.aFade.needsUpdate = true
 
+      // Decay attention toward 0 at ~1/sec. Only mark the attribute as
+      // needing a GPU upload when something actually changed, to avoid
+      // gratuitous buffer transfers on an idle graph.
+      let attentionDirty = false
+      for (let i = 0; i < count; i++) {
+        if (buffers.attention[i] > 0) {
+          buffers.attention[i] = Math.max(0, buffers.attention[i] - delta)
+          attentionDirty = true
+        }
+      }
+      if (attentionDirty && count > 0) state.nodeGeo.attributes.aAttention.needsUpdate = true
+
       // Update edge positions from currentPos (every other frame to save work)
       frameToggle = !frameToggle
       if (frameToggle && edgeCount > 0) {
@@ -583,6 +596,7 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   nodeGeo.setAttribute("aSize", new THREE.BufferAttribute(next.sizes, 1))
   nodeGeo.setAttribute("aPhase", new THREE.BufferAttribute(next.phases, 1))
   nodeGeo.setAttribute("aFade", new THREE.BufferAttribute(next.fadeCurrent, 1))
+  nodeGeo.setAttribute("aAttention", new THREE.BufferAttribute(next.attention, 1))
   nodeGeo.setAttribute("aColor", new THREE.BufferAttribute(next.nodeColors, 3))
   const nodeMesh = new THREE.Points(nodeGeo, state.nodeMat)
   state.scene.add(nodeMesh)
