@@ -6,6 +6,7 @@
 import { useMemo, useRef } from "react"
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, type SimulationNodeDatum, type SimulationLinkDatum } from "d3-force"
 import type { GraphData } from "./useGraphData"
+import { getSafeViewport } from "@/lib/map-viewport-bounds"
 
 interface ForceNode extends SimulationNodeDatum {
   index: number
@@ -99,13 +100,10 @@ export function useForceLayout(
 
     const nodes: ForceNode[] = data.nodes.map((n, i) => {
       const cached = prev.get(n.slug)
-      if (isRefresh && cached) {
-        // Pin existing nodes hard (fx/fy) so the simulation only moves new
-        // ones. Without this, every tick nudges the whole layout around
-        // the new node's repulsion and the entire map drifts.
-        // NOTE: Task 6 will exempt rippleSlugs from pinning so they can
-        // react to adds/deletes. For now everyone except new nodes is
-        // still pinned — metadata is computed but not yet consumed.
+      const isRipple = rippleSlugs.has(n.slug)
+      if (isRefresh && cached && !isRipple) {
+        // Pin non-ripple existing nodes hard (fx/fy) so the simulation
+        // only moves new ones + direct neighbors of changes.
         return {
           index: i,
           slug: n.slug,
@@ -115,6 +113,9 @@ export function useForceLayout(
           fy: cached.y,
         }
       }
+      // New nodes and ripple neighbors are mobile. Ripple neighbors start
+      // at their cached position and get pushed around by the new node's
+      // repulsion (add case) or settle into the void (delete case).
       return {
         index: i,
         slug: n.slug,
@@ -129,13 +130,19 @@ export function useForceLayout(
     }))
 
     const nodeCount = nodes.length
-    const repulsion = -20 - Math.min(nodeCount, 60)
+    // Moderated repulsion so outlier nodes don't drift way past the edge.
+    const repulsion = -30 - Math.min(nodeCount, 40)
 
     const simulation = forceSimulation(nodes)
-      .force("link", forceLink(links).distance(25).strength(0.7))
+      // Looser link distance (was 25) makes linked clusters more readable
+      // without making them fly apart.
+      .force("link", forceLink(links).distance(40).strength(0.7))
       .force("charge", forceManyBody().strength(repulsion))
-      .force("center", forceCenter(0, 0).strength(0.4))
-      .force("collide", forceCollide().radius((_, i) => 18 + data.nodes[i].depth * 10).strength(1))
+      // Stronger center force (was 0.4) pulls distant outliers back in.
+      .force("center", forceCenter(0, 0).strength(0.6))
+      // Larger collide radius (was 18 + depth*10) enforces a minimum
+      // spacing so "extremely close" pairs can't form.
+      .force("collide", forceCollide().radius((_, i) => 22 + data.nodes[i].depth * 8).strength(1))
       .stop()
 
     // On refresh, only new nodes can move (existing are pinned), so fewer
@@ -146,15 +153,22 @@ export function useForceLayout(
     }
 
     // Establish the scale on first layout and never change it.
+    // targetRadius is derived from the safe viewport (the visible
+    // rectangle not covered by widgets) so the constellation naturally
+    // fits what the user can actually see.
     if (!scaleRef.current) {
       let maxR = 1
       for (const node of nodes) {
         const r = Math.sqrt((node.x ?? 0) ** 2 + (node.y ?? 0) ** 2)
         if (r > maxR) maxR = r
       }
+      const safe =
+        typeof window !== "undefined"
+          ? getSafeViewport(window.innerWidth, window.innerHeight)
+          : { width: 800, height: 600, left: 0, right: 800, top: 0, bottom: 600, centerX: 400, centerY: 300 }
       scaleRef.current = {
         maxR,
-        targetRadius: 100 + Math.min(nodeCount * 3, 150),
+        targetRadius: Math.min(safe.width, safe.height) * 0.35,
         yOffset: 15,
       }
     }
