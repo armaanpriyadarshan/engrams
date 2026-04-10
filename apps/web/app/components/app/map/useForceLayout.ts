@@ -83,6 +83,10 @@ export function useForceLayout(
         if (newSlugs.has(toSlug) && !newSlugs.has(fromSlug)) rippleSlugs.add(fromSlug)
       }
     }
+    // removedSlugs is only ever non-empty when isRefresh is true — see
+    // the population guard above. This block is safe on the first render
+    // because removedSlugs stays empty; future edits should preserve
+    // that invariant.
     if (removedSlugs.size > 0) {
       for (const slug of removedSlugs) {
         const neighbors = prevAdj.get(slug)
