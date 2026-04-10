@@ -4,11 +4,7 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import * as THREE from "three"
 import type { GraphData } from "./useGraphData"
-import {
-  ARTICLE_TYPE_META,
-  getArticleTypeMeta,
-  type ArticleType,
-} from "@/lib/article-types"
+import { ARTICLE_TYPE_META, type ArticleType } from "@/lib/article-types"
 import type { GraphBuffers } from "./reconcileGraph"
 import { reconcileGraph } from "./reconcileGraph"
 
@@ -18,22 +14,6 @@ interface EngineGraphProps {
   engramSlug: string
   onNodeClick?: (slug: string, x: number, y: number) => void
   nodeVisible?: Uint8Array | null
-}
-
-// Convert a hex color like "#7A8F76" to the [0..1] RGB triple the shader
-// consumes. Memoized per hex string so the conversion happens once per
-// unique palette color, not per node per render.
-const _hexToRgbCache = new Map<string, [number, number, number]>()
-function hexToRgb01(hex: string): [number, number, number] {
-  const cached = _hexToRgbCache.get(hex)
-  if (cached) return cached
-  const h = hex.replace("#", "")
-  const r = parseInt(h.slice(0, 2), 16) / 255
-  const g = parseInt(h.slice(2, 4), 16) / 255
-  const b = parseInt(h.slice(4, 6), 16) / 255
-  const rgb: [number, number, number] = [r, g, b]
-  _hexToRgbCache.set(hex, rgb)
-  return rgb
 }
 
 const edgeTypeDisplay: Record<string, { label: string; color: string }> = {
@@ -686,7 +666,6 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
   useEffect(() => { dataRef.current = data }, [data])
   useEffect(() => { positionsRef.current = positions }, [positions])
   const router = useRouter()
-  const [hoveredNode, setHoveredNode] = useState<number | null>(null)
 
   // Keep nodeVisible ref in sync without re-running the whole setup
   useEffect(() => { nodeVisibleRef.current = nodeVisible ?? null }, [nodeVisible])

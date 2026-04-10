@@ -1,3 +1,8 @@
+/* eslint-disable react-hooks/refs -- this hook deliberately uses refs as
+   cross-render caches for force-layout positions and scale so that new
+   data doesn't retrigger the full simulation. The React 19 rule is aware
+   that ref access inside useMemo is unusual but here it's the intended
+   behavior. */
 import { useMemo, useRef } from "react"
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, type SimulationNodeDatum, type SimulationLinkDatum } from "d3-force"
 import type { GraphData } from "./useGraphData"
