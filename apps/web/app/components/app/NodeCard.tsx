@@ -29,7 +29,7 @@ const ANCHOR_GAP = 32                // distance between the anchor (clicked nod
 
 function computeIntentionalPosition(anchor: { x: number; y: number } | null | undefined) {
   if (typeof window === "undefined") {
-    return { x: 296, y: 120 }
+    return { x: SOURCE_TREE_RIGHT_EDGE, y: 120 }
   }
   const vw = window.innerWidth
   const vh = window.innerHeight
