@@ -235,6 +235,7 @@ function buildMountScene(
         targetPos: new Float32Array(0),
         fadeCurrent: new Float32Array(0),
         fadeTarget: new Float32Array(0),
+        attention: new Float32Array(0),
         eSrc: new Uint16Array(0),
         eTgt: new Uint16Array(0),
         edgeColors: new Float32Array(0),
@@ -570,8 +571,8 @@ function buildMountScene(
   }
 }
 
-function applyReconcile(state: SceneState, data: GraphData, positions: Float32Array) {
-  const next = reconcileGraph(state.buffers, data, positions)
+function applyReconcile(state: SceneState, data: GraphData, positions: Float32Array, meta: LayoutMeta) {
+  const next = reconcileGraph(state.buffers, data, positions, meta)
   state.buffers = next
 
   // ── Rebuild node geometry with the new buffers ──
@@ -667,9 +668,6 @@ export default function EngineGraph({ data, positions, layoutMeta, engramSlug, o
   const [sceneReady, setSceneReady] = useState(false)
   useEffect(() => { dataRef.current = data }, [data])
   useEffect(() => { positionsRef.current = positions }, [positions])
-  // Temporarily reference layoutMeta so TypeScript's noUnusedLocals stays
-  // quiet between this task and Task 4, which actually consumes it.
-  void layoutMeta
   const router = useRouter()
 
   // Keep nodeVisible ref in sync without re-running the whole setup
@@ -713,8 +711,8 @@ export default function EngineGraph({ data, positions, layoutMeta, engramSlug, o
   useEffect(() => {
     const state = sceneRef.current
     if (!sceneReady || !state || data.nodes.length === 0) return
-    applyReconcile(state, data, positions)
-  }, [sceneReady, data, positions])
+    applyReconcile(state, data, positions, layoutMeta)
+  }, [sceneReady, data, positions, layoutMeta])
 
   return (
     <div className="relative w-full h-full">
