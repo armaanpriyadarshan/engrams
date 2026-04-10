@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { deleteArticle } from "@/lib/delete-article"
 import ArticleContent from "./ArticleContent"
 
 interface NodeCardProps {
@@ -86,35 +87,7 @@ export default function NodeCard({ slug, engramSlug, engramId, onClose, linkPref
 
   const handleDeleteArticle = useCallback(async () => {
     setDeleting(true)
-    const supabase = createClient()
-
-    // Delete edges referencing this article
-    await supabase.from("edges").delete().eq("engram_id", engramId).eq("from_slug", slug)
-    await supabase.from("edges").delete().eq("engram_id", engramId).eq("to_slug", slug)
-
-    // Remove from related_slugs on other articles
-    const { data: related } = await supabase
-      .from("articles")
-      .select("id, related_slugs")
-      .eq("engram_id", engramId)
-      .contains("related_slugs", [slug])
-
-    for (const art of related ?? []) {
-      const newSlugs = (art.related_slugs as string[]).filter(s => s !== slug)
-      await supabase.from("articles").update({ related_slugs: newSlugs }).eq("id", art.id)
-    }
-
-    // Delete the article
-    await supabase.from("articles").delete().eq("engram_id", engramId).eq("slug", slug)
-
-    // Recount articles
-    const { count } = await supabase
-      .from("articles")
-      .select("id", { count: "exact", head: true })
-      .eq("engram_id", engramId)
-
-    await supabase.from("engrams").update({ article_count: count ?? 0 }).eq("id", engramId)
-
+    await deleteArticle(createClient(), engramId, slug)
     setDeleting(false)
     onClose()
     router.refresh()

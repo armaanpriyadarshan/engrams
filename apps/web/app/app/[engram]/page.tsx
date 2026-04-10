@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { deleteArticle } from "@/lib/delete-article"
 import { useGraphData, type GraphNode, type GraphData } from "@/app/components/app/map/useGraphData"
 import { useForceLayout } from "@/app/components/app/map/useForceLayout"
 import GraphFilters, { type GraphFilterState } from "@/app/components/app/map/GraphFilters"
@@ -302,6 +303,15 @@ export default function EngramPage() {
     setNodeMenu(null)
   }, [nodeMenu])
 
+  const [menuDeleting, setMenuDeleting] = useState(false)
+  const deleteFromMenu = useCallback(async () => {
+    if (!nodeMenu || !engramId || menuDeleting) return
+    setMenuDeleting(true)
+    await deleteArticle(createClient(), engramId, nodeMenu.slug)
+    setMenuDeleting(false)
+    setNodeMenu(null)
+  }, [nodeMenu, engramId, menuDeleting])
+
   // Empty state
   if (!loading && graphData && graphData.nodes.length === 0) {
     return (
@@ -568,6 +578,13 @@ export default function EngramPage() {
             className="block w-full text-left px-4 py-2.5 text-xs text-text-secondary hover:text-text-emphasis hover:bg-surface-elevated transition-colors duration-120 cursor-pointer"
           >
             Open article
+          </button>
+          <button
+            onClick={deleteFromMenu}
+            disabled={menuDeleting}
+            className="block w-full text-left px-4 py-2.5 text-xs text-text-ghost hover:text-danger hover:bg-surface-elevated transition-colors duration-120 cursor-pointer border-t border-border disabled:opacity-30"
+          >
+            {menuDeleting ? "Deleting..." : "Delete article"}
           </button>
         </div>
       )}
