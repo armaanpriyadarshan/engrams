@@ -646,6 +646,17 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
     }
   }
 
+  // Clamp any stale sigEdge indices that may exceed the new edge count
+  // (happens when edgeCount decreases but desiredSigCount caps at 60).
+  if (next.edgeCount > 0) {
+    for (let i = 0; i < state.sigCount; i++) {
+      if (state.sigEdge[i] >= next.edgeCount) {
+        state.sigEdge[i] = Math.floor(Math.random() * next.edgeCount)
+        state.sigPhase[i] = Math.random()
+      }
+    }
+  }
+
   // ── Recompute pan limit + zoom extents based on new graph radius ──
   let graphRadius = 1
   for (let i = 0; i < next.count; i++) {
@@ -658,9 +669,10 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   state.minZoom = Math.max(camZ * 0.15, 80)
   state.targetZ = Math.max(state.minZoom, Math.min(state.maxZoom, state.targetZ))
 
-  // ── Reset hover state if the hovered node no longer exists ──
-  if (state.currentHovered >= next.count) state.currentHovered = -1
-  if (state.currentHoveredEdge >= next.edgeCount) state.currentHoveredEdge = -1
+  // ── Force hover recompute on next frame: surviving slugs may have moved
+  // to new indices, so the old index would point at the wrong node. ──
+  state.currentHovered = -1
+  state.currentHoveredEdge = -1
 }
 
 export default function EngineGraph({ data, positions, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
