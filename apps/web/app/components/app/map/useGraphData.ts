@@ -89,9 +89,14 @@ export function useGraphData(engramId: string | null) {
         }
       })
 
-      // Normalize depth
+      // Normalize depth on a log scale so one massive article doesn't
+      // dwarf everything else. A linear normalization pushes most nodes
+      // toward 0 whenever a single outlier sets maxDepth; log compression
+      // gives a gentler distribution where a 10x-smaller article still
+      // reads as substantial.
+      const logMax = Math.log(1 + maxDepth)
       for (const node of nodes) {
-        node.depth = Math.min(node.depth / maxDepth, 1)
+        node.depth = logMax > 0 ? Math.log(1 + node.depth) / logMax : 0
       }
 
       // Build edges strictly from the DB edges table — single source of truth.
