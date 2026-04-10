@@ -9,6 +9,8 @@ import {
   getArticleTypeMeta,
   type ArticleType,
 } from "@/lib/article-types"
+import type { GraphBuffers } from "./reconcileGraph"
+import { reconcileGraph } from "./reconcileGraph"
 
 interface EngineGraphProps {
   data: GraphData
@@ -43,6 +45,70 @@ const edgeTypeDisplay: Record<string, { label: string; color: string }> = {
   synthesized_from: { label: "synthesized from", color: "rgb(118,128,143)" },
 }
 
+// Inline ref shapes keep this function independent of React's type exports,
+// which shifted between 18 and 19.
+type RefLike<T> = { current: T }
+
+interface SceneState {
+  scene: THREE.Scene
+  camera: THREE.PerspectiveCamera
+  renderer: THREE.WebGLRenderer
+
+  // Materials — stable across data changes
+  nodeMat: THREE.ShaderMaterial
+  edgeMat: THREE.LineBasicMaterial
+  sigMat: THREE.PointsMaterial
+
+  // Meshes + geometries — rebuilt when node/edge count changes
+  nodeMesh: THREE.Points
+  nodeGeo: THREE.BufferGeometry
+  edgeMesh: THREE.LineSegments
+  edgeGeo: THREE.BufferGeometry
+  sigMesh: THREE.Points | null
+  sigGeo: THREE.BufferGeometry | null
+
+  // Data buffers (produced by reconcileGraph)
+  buffers: GraphBuffers
+
+  // Signal particles — count depends on edgeCount, so these live here too
+  sigCount: number
+  sigPos: Float32Array
+  sigEdge: Uint16Array
+  sigPhase: Float32Array
+  sigSpeed: Float32Array
+
+  // Hover / interaction state
+  currentHovered: number
+  currentHoveredEdge: number
+  mouse: { x: number; y: number; screenX: number; screenY: number }
+  smoothMouse: { x: number; y: number }
+  ripple: { x: number; y: number; time: number }
+
+  // Camera navigation state
+  panOffset: { x: number; y: number }
+  panLimit: number
+  panStart: { x: number; y: number }
+  orbitTheta: number
+  orbitPhi: number
+  targetTheta: number
+  targetPhi: number
+  targetZ: number
+  currentZoom: number
+  minZoom: number
+  maxZoom: number
+  isPanning: boolean
+  isOrbiting: boolean
+  orbitStart: { x: number; y: number }
+
+  // Lifecycle
+  frameHandle: number
+  disposed: boolean
+}
+
+// Temporarily reference types to prevent unused-import errors.
+// Consumed properly by Task 3.
+type _ScaffoldingTypes = GraphBuffers | SceneState | RefLike<unknown>
+
 function GraphLegend({ data }: { data: GraphData }) {
   // Only show legend entries for types actually present in the graph.
   const typePresence = new Set<string>(data.nodes.map((n) => n.articleType))
@@ -76,6 +142,12 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const nodeVisibleRef = useRef<Uint8Array | null>(null)
+  const sceneRef = useRef<SceneState | null>(null)
+  const dataRef = useRef<GraphData>(data)
+  const positionsRef = useRef<Float32Array>(positions)
+  const [sceneReady, setSceneReady] = useState(false)
+  useEffect(() => { dataRef.current = data }, [data])
+  useEffect(() => { positionsRef.current = positions }, [positions])
   const router = useRouter()
   const [hoveredNode, setHoveredNode] = useState<number | null>(null)
 
