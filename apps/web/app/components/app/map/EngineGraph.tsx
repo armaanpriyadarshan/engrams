@@ -4,11 +4,9 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import * as THREE from "three"
 import type { GraphData } from "./useGraphData"
-import {
-  ARTICLE_TYPE_META,
-  getArticleTypeMeta,
-  type ArticleType,
-} from "@/lib/article-types"
+import { ARTICLE_TYPE_META, type ArticleType } from "@/lib/article-types"
+import type { GraphBuffers } from "./reconcileGraph"
+import { reconcileGraph } from "./reconcileGraph"
 
 interface EngineGraphProps {
   data: GraphData
@@ -18,22 +16,6 @@ interface EngineGraphProps {
   nodeVisible?: Uint8Array | null
 }
 
-// Convert a hex color like "#7A8F76" to the [0..1] RGB triple the shader
-// consumes. Memoized per hex string so the conversion happens once per
-// unique palette color, not per node per render.
-const _hexToRgbCache = new Map<string, [number, number, number]>()
-function hexToRgb01(hex: string): [number, number, number] {
-  const cached = _hexToRgbCache.get(hex)
-  if (cached) return cached
-  const h = hex.replace("#", "")
-  const r = parseInt(h.slice(0, 2), 16) / 255
-  const g = parseInt(h.slice(2, 4), 16) / 255
-  const b = parseInt(h.slice(4, 6), 16) / 255
-  const rgb: [number, number, number] = [r, g, b]
-  _hexToRgbCache.set(hex, rgb)
-  return rgb
-}
-
 const edgeTypeDisplay: Record<string, { label: string; color: string }> = {
   related: { label: "related", color: "rgb(85,85,85)" },
   requires: { label: "requires", color: "rgb(143,89,41)" },
@@ -41,6 +23,66 @@ const edgeTypeDisplay: Record<string, { label: string; color: string }> = {
   contradicts: { label: "contradicts", color: "rgb(143,64,64)" },
   "part_of": { label: "part of", color: "rgb(77,115,77)" },
   synthesized_from: { label: "synthesized from", color: "rgb(118,128,143)" },
+}
+
+// Inline ref shapes keep this function independent of React's type exports,
+// which shifted between 18 and 19.
+type RefLike<T> = { current: T }
+
+interface SceneState {
+  scene: THREE.Scene
+  camera: THREE.PerspectiveCamera
+  renderer: THREE.WebGLRenderer
+
+  // Materials — stable across data changes
+  nodeMat: THREE.ShaderMaterial
+  edgeMat: THREE.LineBasicMaterial
+  sigMat: THREE.PointsMaterial
+
+  // Meshes + geometries — rebuilt when node/edge count changes
+  nodeMesh: THREE.Points
+  nodeGeo: THREE.BufferGeometry
+  edgeMesh: THREE.LineSegments
+  edgeGeo: THREE.BufferGeometry
+  sigMesh: THREE.Points | null
+  sigGeo: THREE.BufferGeometry | null
+
+  // Data buffers (produced by reconcileGraph)
+  buffers: GraphBuffers
+
+  // Signal particles — count depends on edgeCount, so these live here too
+  sigCount: number
+  sigPos: Float32Array
+  sigEdge: Uint16Array
+  sigPhase: Float32Array
+  sigSpeed: Float32Array
+
+  // Hover / interaction state
+  currentHovered: number
+  currentHoveredEdge: number
+  mouse: { x: number; y: number; screenX: number; screenY: number }
+  smoothMouse: { x: number; y: number }
+  ripple: { x: number; y: number; time: number }
+
+  // Camera navigation state
+  panOffset: { x: number; y: number }
+  panLimit: number
+  panStart: { x: number; y: number }
+  orbitTheta: number
+  orbitPhi: number
+  targetTheta: number
+  targetPhi: number
+  targetZ: number
+  currentZoom: number
+  minZoom: number
+  maxZoom: number
+  isPanning: boolean
+  isOrbiting: boolean
+  orbitStart: { x: number; y: number }
+
+  // Lifecycle
+  frameHandle: number
+  disposed: boolean
 }
 
 function GraphLegend({ data }: { data: GraphData }) {
@@ -72,248 +114,29 @@ function GraphLegend({ data }: { data: GraphData }) {
   )
 }
 
-export default function EngineGraph({ data, positions, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const tooltipRef = useRef<HTMLDivElement>(null)
-  const nodeVisibleRef = useRef<Uint8Array | null>(null)
-  const router = useRouter()
-  const [hoveredNode, setHoveredNode] = useState<number | null>(null)
-
-  // Keep nodeVisible ref in sync without re-running the whole setup
-  useEffect(() => { nodeVisibleRef.current = nodeVisible ?? null }, [nodeVisible])
-
-  const handleNodeClick = useCallback((slug: string, screenX: number, screenY: number) => {
-    if (onNodeClick) {
-      onNodeClick(slug, screenX, screenY)
-    } else {
-      router.push(`/app/${engramSlug}/article/${slug}`)
-    }
-  }, [router, engramSlug, onNodeClick])
-
-  useEffect(() => {
-    const container = containerRef.current
-    const tooltip = tooltipRef.current
-    if (!container || !tooltip || data.nodes.length === 0) return
-
-    let cleanup: (() => void) | undefined
-    const observer = new ResizeObserver((entries) => {
-      const { width, height } = entries[0].contentRect
-      if (width > 0 && height > 0 && !cleanup) {
-        cleanup = setup(container, tooltip, width, height)
-        observer.disconnect()
-      }
-    })
-    observer.observe(container)
-    return () => { observer.disconnect(); cleanup?.() }
-  }, [data, positions, engramSlug, handleNodeClick])
-
-  function setup(container: HTMLDivElement, tooltip: HTMLDivElement, initW: number, initH: number) {
-    const count = data.nodes.length
-    const edgeList = data.edges
-
-    // ── Scene ──
+function buildMountScene(
+  sceneRef: RefLike<SceneState | null>,
+  dataRef: RefLike<GraphData>,
+  nodeVisibleRef: RefLike<Uint8Array | null>,
+  handleNodeClick: (slug: string, sx: number, sy: number) => void,
+) {
+  return function mountScene(
+    container: HTMLDivElement,
+    tooltip: HTMLDivElement,
+    initW: number,
+    initH: number,
+  ): () => void {
+    // ── Scene / camera / renderer ──
     const scene = new THREE.Scene()
-    const camZ = 300 + Math.min(count * 5, 600)
+    const camZ = 400
     const camera = new THREE.PerspectiveCamera(55, initW / initH, 1, 3000)
     camera.position.set(0, 0, camZ)
-
     const renderer = new THREE.WebGLRenderer({ alpha: true, powerPreference: "high-performance" })
     renderer.setSize(initW, initH)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     container.appendChild(renderer.domElement)
 
-    // ── Compute graph extent from positions for zoom/pan scaling ──
-    let graphRadius = 1
-    for (let i = 0; i < count; i++) {
-      const r = Math.sqrt(positions[i * 2] ** 2 + positions[i * 2 + 1] ** 2)
-      if (r > graphRadius) graphRadius = r
-    }
-
-    // ── Camera zoom/pan state — scales with graph size ──
-    const maxZoom = camZ * 1.5
-    const minZoom = Math.max(camZ * 0.15, 80)
-    let targetZ = maxZoom
-    const panLimit = graphRadius * 1.2 // can pan slightly beyond the graph edge
-    const panOffset = { x: 0, y: 0 }
-    let isPanning = false
-    let panStart = { x: 0, y: 0 }
-
-    // ── Mouse ──
-    const mouse = { x: 0, y: 0, screenX: 0, screenY: 0 }
-    const smoothMouse = { x: 0, y: 0 }
-    const ripple = { x: 0, y: 0, time: -100 }
-    const unprojVec = new THREE.Vector3()
-    let currentHovered = -1
-    let currentHoveredEdge = -1
-
-    const screenToWorld = (cx: number, cy: number) => {
-      const rect = container.getBoundingClientRect()
-      unprojVec
-        .set(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1, 0.5)
-        .unproject(camera)
-      const dir = unprojVec.sub(camera.position).normalize()
-      const t = -camera.position.z / dir.z
-      return { x: camera.position.x + dir.x * t, y: camera.position.y + dir.y * t }
-    }
-
-    // Build neighbor sets for hover highlighting
-    const neighbors = new Map<number, Set<number>>()
-    for (let i = 0; i < count; i++) neighbors.set(i, new Set())
-    for (const e of edgeList) {
-      neighbors.get(e.sourceIdx)?.add(e.targetIdx)
-      neighbors.get(e.targetIdx)?.add(e.sourceIdx)
-    }
-
-    // Per-node fade target (1.0 = full, 0.08 = dimmed)
-    const fadeTarget = new Float32Array(count).fill(1.0)
-    const fadeCurrent = new Float32Array(count).fill(1.0)
-
-    const onMouseMove = (e: MouseEvent) => {
-      const w = screenToWorld(e.clientX, e.clientY)
-      mouse.x = w.x
-      mouse.y = w.y
-      mouse.screenX = e.clientX
-      mouse.screenY = e.clientY
-    }
-    const onClick = (e: MouseEvent) => {
-      if (currentHovered >= 0) {
-        handleNodeClick(data.nodes[currentHovered].slug, e.clientX, e.clientY)
-      } else {
-        const w = screenToWorld(e.clientX, e.clientY)
-        ripple.x = w.x
-        ripple.y = w.y
-        ripple.time = 0
-      }
-    }
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      targetZ = Math.max(minZoom, Math.min(maxZoom, targetZ + e.deltaY * 0.5))
-    }
-    let orbitTheta = 0 // horizontal orbit (right-click drag)
-    let orbitPhi = 0   // vertical orbit (right-click drag)
-    let targetTheta = 0
-    let targetPhi = 0
-    let isOrbiting = false
-    let orbitStart = { x: 0, y: 0 }
-    let currentZoom = targetZ
-
-    const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0 && currentHovered < 0) {
-        isPanning = true
-        panStart = { x: e.clientX, y: e.clientY }
-      } else if (e.button === 2) {
-        isOrbiting = true
-        orbitStart = { x: e.clientX, y: e.clientY }
-      }
-    }
-    const onMouseUp = () => { isPanning = false; isOrbiting = false }
-    const onPanMove = (e: MouseEvent) => {
-      if (isPanning) {
-        const scale = currentZoom * 0.002
-        const dx = -(e.clientX - panStart.x) * scale
-        const dy = (e.clientY - panStart.y) * scale
-        // Rotate pan delta by current orbit angle so drag stays consistent
-        const cosT = Math.cos(orbitTheta)
-        const sinT = Math.sin(orbitTheta)
-        panOffset.x = Math.max(-panLimit, Math.min(panLimit, panOffset.x + dx * cosT))
-        panOffset.y = Math.max(-panLimit, Math.min(panLimit, panOffset.y + dy))
-        panStart = { x: e.clientX, y: e.clientY }
-      }
-      if (isOrbiting) {
-        targetTheta -= (e.clientX - orbitStart.x) * 0.004
-        targetPhi = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, targetPhi + (e.clientY - orbitStart.y) * 0.004))
-        orbitStart = { x: e.clientX, y: e.clientY }
-      }
-    }
-    const onContextMenu = (e: MouseEvent) => {
-      e.preventDefault()
-    }
-
-    window.addEventListener("mousemove", onMouseMove, { passive: true })
-    window.addEventListener("mousemove", onPanMove, { passive: true })
-    window.addEventListener("click", onClick)
-    container.addEventListener("wheel", onWheel, { passive: false })
-    container.addEventListener("mousedown", onMouseDown)
-    container.addEventListener("contextmenu", onContextMenu)
-    window.addEventListener("mouseup", onMouseUp)
-
-    // ── Edges ──
-    const edgeCount = edgeList.length
-    const eSrc = new Uint16Array(edgeCount)
-    const eTgt = new Uint16Array(edgeCount)
-    // Relation → color mapping
-    const relationColors: Record<string, [number, number, number]> = {
-      related: [0.33, 0.33, 0.33],
-      requires: [0.56, 0.35, 0.16],
-      extends: [0.16, 0.45, 0.56],
-      causation: [0.56, 0.16, 0.16],
-      contradiction: [0.56, 0.45, 0.16],
-      evolution: [0.16, 0.45, 0.56],
-      supports: [0.30, 0.45, 0.30],
-    }
-    const defaultEdgeColor: [number, number, number] = [0.33, 0.33, 0.33]
-    const edgeColors = new Float32Array(edgeCount * 6) // 2 verts per edge, 3 components each
-    for (let i = 0; i < edgeCount; i++) {
-      eSrc[i] = edgeList[i].sourceIdx
-      eTgt[i] = edgeList[i].targetIdx
-      const col = relationColors[edgeList[i].relation] ?? defaultEdgeColor
-      const w = Math.max(0.3, Math.min(1.0, edgeList[i].weight))
-      const i6 = i * 6
-      edgeColors[i6] = col[0] * w; edgeColors[i6 + 1] = col[1] * w; edgeColors[i6 + 2] = col[2] * w
-      edgeColors[i6 + 3] = col[0] * w; edgeColors[i6 + 4] = col[1] * w; edgeColors[i6 + 5] = col[2] * w
-    }
-    const edgePositions = new Float32Array(edgeCount * 6)
-    const edgeGeo = new THREE.BufferGeometry()
-    edgeGeo.setAttribute("position", new THREE.BufferAttribute(edgePositions, 3))
-    edgeGeo.setAttribute("color", new THREE.BufferAttribute(edgeColors, 3))
-    const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.18 })
-    scene.add(new THREE.LineSegments(edgeGeo, edgeMat))
-
-    // ── Nodes ──
-    const nodePositions = new Float32Array(count * 3)
-    const basePos = new Float32Array(count * 3)
-    const sizes = new Float32Array(count)
-    const phases = new Float32Array(count)
-    const driftOff = new Float32Array(count)
-    const driftSpd = new Float32Array(count)
-    const depthArr = new Float32Array(count)
-
-    // Per-node color derived from the canonical article-type taxonomy.
-    // getArticleTypeMeta returns a hex from the engrams palette; hexToRgb01
-    // converts it once per unique color and caches the result. Unknown
-    // legacy types fall through to 'concept' which is text-primary.
-    const nodeColors = new Float32Array(count * 3)
-
-    for (let i = 0; i < count; i++) {
-      const d = data.nodes[i].depth
-      const x = positions[i * 2]
-      const y = positions[i * 2 + 1]
-      const z = -300 + d * 500
-      const i3 = i * 3
-      nodePositions[i3] = x
-      nodePositions[i3 + 1] = y
-      nodePositions[i3 + 2] = z
-      basePos[i3] = x
-      basePos[i3 + 1] = y
-      basePos[i3 + 2] = z
-      sizes[i] = 20 + d * 35
-      phases[i] = i * 2.39996
-      driftOff[i] = i * 1.618
-      driftSpd[i] = 0.6 + (((i * 7) % 11) / 11) * 0.8
-      depthArr[i] = d
-      const col = hexToRgb01(getArticleTypeMeta(data.nodes[i].articleType).colorHex)
-      nodeColors[i3] = col[0]
-      nodeColors[i3 + 1] = col[1]
-      nodeColors[i3 + 2] = col[2]
-    }
-
-    const nodeGeo = new THREE.BufferGeometry()
-    nodeGeo.setAttribute("position", new THREE.BufferAttribute(nodePositions, 3))
-    nodeGeo.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1))
-    nodeGeo.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1))
-    nodeGeo.setAttribute("aFade", new THREE.BufferAttribute(fadeCurrent, 1))
-    nodeGeo.setAttribute("aColor", new THREE.BufferAttribute(nodeColors, 3))
-
+    // ── Materials (stable across data changes) ──
     const nodeMat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
@@ -369,229 +192,348 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     })
-    scene.add(new THREE.Points(nodeGeo, nodeMat))
 
-    // ── Signal particles ──
-    const sigCount = Math.min(edgeCount * 2, 60)
-    const sigPos = new Float32Array(sigCount * 3)
-    const sigEdge = new Uint16Array(sigCount)
-    const sigPhase = new Float32Array(sigCount)
-    const sigSpeed = new Float32Array(sigCount)
-    for (let i = 0; i < sigCount; i++) {
-      sigEdge[i] = Math.floor(Math.random() * Math.max(edgeCount, 1))
-      sigPhase[i] = Math.random()
-      sigSpeed[i] = 0.15 + Math.random() * 0.25
-    }
-    const sigGeo = new THREE.BufferGeometry()
-    sigGeo.setAttribute("position", new THREE.BufferAttribute(sigPos, 3))
+    const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.18 })
     const sigMat = new THREE.PointsMaterial({
       color: 0x999999, size: 2, transparent: true, opacity: 0.35,
       blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
     })
-    if (edgeCount > 0) scene.add(new THREE.Points(sigGeo, sigMat))
 
-    // ── Projection helper for hover detection ──
+    // ── Empty geometries (populated by applyReconcile) ──
+    const nodeGeo = new THREE.BufferGeometry()
+    const nodeMesh = new THREE.Points(nodeGeo, nodeMat)
+    scene.add(nodeMesh)
+
+    const edgeGeo = new THREE.BufferGeometry()
+    const edgeMesh = new THREE.LineSegments(edgeGeo, edgeMat)
+    scene.add(edgeMesh)
+
+    // ── Initial SceneState ──
+    const state: SceneState = {
+      scene,
+      camera,
+      renderer,
+      nodeMat,
+      edgeMat,
+      sigMat,
+      nodeMesh,
+      nodeGeo,
+      edgeMesh,
+      edgeGeo,
+      sigMesh: null,
+      sigGeo: null,
+      buffers: {
+        count: 0,
+        edgeCount: 0,
+        nodeColors: new Float32Array(0),
+        sizes: new Float32Array(0),
+        phases: new Float32Array(0),
+        depthArr: new Float32Array(0),
+        currentPos: new Float32Array(0),
+        targetPos: new Float32Array(0),
+        fadeCurrent: new Float32Array(0),
+        fadeTarget: new Float32Array(0),
+        eSrc: new Uint16Array(0),
+        eTgt: new Uint16Array(0),
+        edgeColors: new Float32Array(0),
+        edgePositions: new Float32Array(0),
+        slugs: [],
+        slugToIndex: new Map(),
+        neighbors: new Map(),
+      },
+      sigCount: 0,
+      sigPos: new Float32Array(0),
+      sigEdge: new Uint16Array(0),
+      sigPhase: new Float32Array(0),
+      sigSpeed: new Float32Array(0),
+      currentHovered: -1,
+      currentHoveredEdge: -1,
+      mouse: { x: 0, y: 0, screenX: 0, screenY: 0 },
+      smoothMouse: { x: 0, y: 0 },
+      ripple: { x: 0, y: 0, time: -100 },
+      panOffset: { x: 0, y: 0 },
+      panLimit: 200,
+      panStart: { x: 0, y: 0 },
+      orbitTheta: 0,
+      orbitPhi: 0,
+      targetTheta: 0,
+      targetPhi: 0,
+      targetZ: camZ,
+      currentZoom: camZ,
+      minZoom: 80,
+      maxZoom: camZ * 1.5,
+      isPanning: false,
+      isOrbiting: false,
+      orbitStart: { x: 0, y: 0 },
+      frameHandle: 0,
+      disposed: false,
+    }
+    sceneRef.current = state
+
+    // ── Input helpers ──
+    const unprojVec = new THREE.Vector3()
     const projVec = new THREE.Vector3()
 
-    // ── Animation ──
-    let frame = 0
+    const screenToWorld = (cx: number, cy: number) => {
+      const rect = container.getBoundingClientRect()
+      unprojVec
+        .set(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1, 0.5)
+        .unproject(camera)
+      const dir = unprojVec.sub(camera.position).normalize()
+      const t = -camera.position.z / dir.z
+      return { x: camera.position.x + dir.x * t, y: camera.position.y + dir.y * t }
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      const w = screenToWorld(e.clientX, e.clientY)
+      state.mouse.x = w.x
+      state.mouse.y = w.y
+      state.mouse.screenX = e.clientX
+      state.mouse.screenY = e.clientY
+    }
+    const onClick = (e: MouseEvent) => {
+      if (state.currentHovered >= 0 && state.currentHovered < state.buffers.slugs.length) {
+        handleNodeClick(state.buffers.slugs[state.currentHovered], e.clientX, e.clientY)
+      } else {
+        const w = screenToWorld(e.clientX, e.clientY)
+        state.ripple.x = w.x
+        state.ripple.y = w.y
+        state.ripple.time = 0
+      }
+    }
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      state.targetZ = Math.max(state.minZoom, Math.min(state.maxZoom, state.targetZ + e.deltaY * 0.5))
+    }
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 0 && state.currentHovered < 0) {
+        state.isPanning = true
+        state.panStart = { x: e.clientX, y: e.clientY }
+      } else if (e.button === 2) {
+        state.isOrbiting = true
+        state.orbitStart = { x: e.clientX, y: e.clientY }
+      }
+    }
+    const onMouseUp = () => { state.isPanning = false; state.isOrbiting = false }
+    const onPanMove = (e: MouseEvent) => {
+      if (state.isPanning) {
+        const scale = state.currentZoom * 0.002
+        const dx = -(e.clientX - state.panStart.x) * scale
+        const dy = (e.clientY - state.panStart.y) * scale
+        const cosT = Math.cos(state.orbitTheta)
+        state.panOffset.x = Math.max(-state.panLimit, Math.min(state.panLimit, state.panOffset.x + dx * cosT))
+        state.panOffset.y = Math.max(-state.panLimit, Math.min(state.panLimit, state.panOffset.y + dy))
+        state.panStart = { x: e.clientX, y: e.clientY }
+      }
+      if (state.isOrbiting) {
+        state.targetTheta -= (e.clientX - state.orbitStart.x) * 0.004
+        state.targetPhi = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, state.targetPhi + (e.clientY - state.orbitStart.y) * 0.004))
+        state.orbitStart = { x: e.clientX, y: e.clientY }
+      }
+    }
+    const onContextMenu = (e: MouseEvent) => { e.preventDefault() }
+
+    window.addEventListener("mousemove", onMouseMove, { passive: true })
+    window.addEventListener("mousemove", onPanMove, { passive: true })
+    window.addEventListener("click", onClick)
+    container.addEventListener("wheel", onWheel, { passive: false })
+    container.addEventListener("mousedown", onMouseDown)
+    container.addEventListener("contextmenu", onContextMenu)
+    window.addEventListener("mouseup", onMouseUp)
+
+    // ── Animation loop ──
     let lastTime = performance.now()
     let frameToggle = false
 
     const animate = () => {
-      frame = requestAnimationFrame(animate)
+      if (state.disposed) return
+      state.frameHandle = requestAnimationFrame(animate)
       const now = performance.now()
       const delta = (now - lastTime) * 0.001
       lastTime = now
       const elapsed = now * 0.001
-      const t = elapsed * 0.07
 
-      smoothMouse.x += (mouse.x - smoothMouse.x) * 0.06
-      smoothMouse.y += (mouse.y - smoothMouse.y) * 0.06
+      const { buffers } = state
+      const count = buffers.count
+      const edgeCount = buffers.edgeCount
 
-      nodeMat.uniforms.uTime.value = elapsed
-      nodeMat.uniforms.uMouse.value.set(smoothMouse.x, smoothMouse.y)
+      state.smoothMouse.x += (state.mouse.x - state.smoothMouse.x) * 0.06
+      state.smoothMouse.y += (state.mouse.y - state.smoothMouse.y) * 0.06
 
-      if (ripple.time >= 0) {
-        ripple.time += delta
-        nodeMat.uniforms.uRippleOrigin.value.set(ripple.x, ripple.y)
-        nodeMat.uniforms.uRippleTime.value = ripple.time
-        if (ripple.time > 5) ripple.time = -100
+      state.nodeMat.uniforms.uTime.value = elapsed
+      state.nodeMat.uniforms.uMouse.value.set(state.smoothMouse.x, state.smoothMouse.y)
+
+      if (state.ripple.time >= 0) {
+        state.ripple.time += delta
+        state.nodeMat.uniforms.uRippleOrigin.value.set(state.ripple.x, state.ripple.y)
+        state.nodeMat.uniforms.uRippleTime.value = state.ripple.time
+        if (state.ripple.time > 5) state.ripple.time = -100
       }
 
-      // Camera orbit
-      // Scale drift with node count — no movement under 5 nodes
+      // Camera orbit + drift
       const driftScale = Math.min(Math.max((count - 5) / 10, 0), 1)
-      // Smooth zoom
-      currentZoom += (targetZ - currentZoom) * 0.1
-
-      // Smooth orbit angles
-      orbitTheta += (targetTheta - orbitTheta) * 0.08
-      orbitPhi += (targetPhi - orbitPhi) * 0.08
+      state.currentZoom += (state.targetZ - state.currentZoom) * 0.1
+      state.orbitTheta += (state.targetTheta - state.orbitTheta) * 0.08
+      state.orbitPhi += (state.targetPhi - state.orbitPhi) * 0.08
 
       const driftX = Math.sin(elapsed * 0.015) * 20 * driftScale
       const driftY = Math.cos(elapsed * 0.01) * 15 * driftScale
-      camera.position.x = panOffset.x + driftX + currentZoom * Math.sin(orbitTheta) * Math.cos(orbitPhi)
-      camera.position.y = panOffset.y + driftY + currentZoom * Math.sin(orbitPhi)
-      camera.position.z = currentZoom * Math.cos(orbitTheta) * Math.cos(orbitPhi)
-      camera.lookAt(panOffset.x, panOffset.y, 0)
+      state.camera.position.x = state.panOffset.x + driftX + state.currentZoom * Math.sin(state.orbitTheta) * Math.cos(state.orbitPhi)
+      state.camera.position.y = state.panOffset.y + driftY + state.currentZoom * Math.sin(state.orbitPhi)
+      state.camera.position.z = state.currentZoom * Math.cos(state.orbitTheta) * Math.cos(state.orbitPhi)
+      state.camera.lookAt(state.panOffset.x, state.panOffset.y, 0)
 
-      const mPX = (smoothMouse.x / 800) * -10
-      const mPY = (smoothMouse.y / 800) * -10
-
-      // Update node positions (drift)
-      for (let i = 0; i < count; i++) {
-        const off = driftOff[i], spd = driftSpd[i], d = depthArr[i]
-        const i3 = i * 3
-        nodePositions[i3] = basePos[i3]
-        nodePositions[i3 + 1] = basePos[i3 + 1]
-        nodePositions[i3 + 2] = basePos[i3 + 2]
+      // ── Lerp currentPos → targetPos ──
+      if (count > 0) {
+        const step = Math.min(delta * 6, 1)
+        const cp = buffers.currentPos
+        const tp = buffers.targetPos
+        for (let i = 0; i < count * 3; i++) {
+          cp[i] += (tp[i] - cp[i]) * step
+        }
+        state.nodeGeo.attributes.position.needsUpdate = true
       }
-      nodeGeo.attributes.position.needsUpdate = true
 
-      // Hover detection: project nodes to screen, find closest to cursor
+      // ── Hover detection ──
       let closest = -1
-      let closestDist = 25 // threshold in pixels
+      let closestDist = 25
       const rect = container.getBoundingClientRect()
+      const cp = buffers.currentPos
       for (let i = 0; i < count; i++) {
         const i3 = i * 3
-        projVec.set(nodePositions[i3], nodePositions[i3 + 1], nodePositions[i3 + 2])
-        projVec.project(camera)
+        projVec.set(cp[i3], cp[i3 + 1], cp[i3 + 2]).project(state.camera)
         const sx = (projVec.x * 0.5 + 0.5) * rect.width + rect.left
         const sy = (-projVec.y * 0.5 + 0.5) * rect.height + rect.top
-        const dist = Math.hypot(sx - mouse.screenX, sy - mouse.screenY)
-        if (dist < closestDist) {
-          closestDist = dist
-          closest = i
-        }
+        const dist = Math.hypot(sx - state.mouse.screenX, sy - state.mouse.screenY)
+        if (dist < closestDist) { closestDist = dist; closest = i }
       }
 
-      // Edge hover detection (point-to-line-segment distance)
+      // Edge hover
       let hoveredEdge = -1
       if (closest < 0 && edgeCount > 0) {
-        let bestEdgeDist = 8 // px threshold
+        let bestEdgeDist = 8
         for (let ei = 0; ei < edgeCount; ei++) {
-          const s3 = eSrc[ei] * 3, t3 = eTgt[ei] * 3
-          projVec.set(nodePositions[s3], nodePositions[s3 + 1], nodePositions[s3 + 2]).project(camera)
+          const s3 = buffers.eSrc[ei] * 3, t3 = buffers.eTgt[ei] * 3
+          projVec.set(cp[s3], cp[s3 + 1], cp[s3 + 2]).project(state.camera)
           const sx1 = (projVec.x * 0.5 + 0.5) * rect.width + rect.left
           const sy1 = (-projVec.y * 0.5 + 0.5) * rect.height + rect.top
-          projVec.set(nodePositions[t3], nodePositions[t3 + 1], nodePositions[t3 + 2]).project(camera)
+          projVec.set(cp[t3], cp[t3 + 1], cp[t3 + 2]).project(state.camera)
           const sx2 = (projVec.x * 0.5 + 0.5) * rect.width + rect.left
           const sy2 = (-projVec.y * 0.5 + 0.5) * rect.height + rect.top
-          // Point-to-segment distance
           const dx = sx2 - sx1, dy = sy2 - sy1
           const len2 = dx * dx + dy * dy
           if (len2 < 1) continue
-          const t2 = Math.max(0, Math.min(1, ((mouse.screenX - sx1) * dx + (mouse.screenY - sy1) * dy) / len2))
+          const t2 = Math.max(0, Math.min(1, ((state.mouse.screenX - sx1) * dx + (state.mouse.screenY - sy1) * dy) / len2))
           const px = sx1 + t2 * dx, py = sy1 + t2 * dy
-          const d2 = Math.hypot(mouse.screenX - px, mouse.screenY - py)
+          const d2 = Math.hypot(state.mouse.screenX - px, state.mouse.screenY - py)
           if (d2 < bestEdgeDist) { bestEdgeDist = d2; hoveredEdge = ei }
         }
       }
 
-      // Update hover fade targets (combined with filter visibility)
-      if (closest !== currentHovered || hoveredEdge !== currentHoveredEdge) {
-        currentHoveredEdge = hoveredEdge
-        currentHovered = closest
+      // Update hover fade targets
+      if (closest !== state.currentHovered || hoveredEdge !== state.currentHoveredEdge) {
+        state.currentHoveredEdge = hoveredEdge
+        state.currentHovered = closest
         if (closest >= 0) {
-          const nbs = neighbors.get(closest) ?? new Set()
+          const nbs = buffers.neighbors.get(closest) ?? new Set<number>()
           const vis = nodeVisibleRef.current
           for (let i = 0; i < count; i++) {
             const filterOk = !vis || vis[i] === 1
-            fadeTarget[i] = (i === closest || nbs.has(i)) ? 1.0 : (filterOk ? 0.08 : 0.02)
+            buffers.fadeTarget[i] = (i === closest || nbs.has(i)) ? 1.0 : (filterOk ? 0.08 : 0.02)
           }
-          // Show tooltip for node
           const i3 = closest * 3
-          projVec.set(nodePositions[i3], nodePositions[i3 + 1], nodePositions[i3 + 2])
-          projVec.project(camera)
+          projVec.set(cp[i3], cp[i3 + 1], cp[i3 + 2]).project(state.camera)
           const tx = (projVec.x * 0.5 + 0.5) * rect.width
           const ty = (-projVec.y * 0.5 + 0.5) * rect.height
           tooltip.style.left = `${tx}px`
           tooltip.style.top = `${ty - 12}px`
           tooltip.style.opacity = "1"
-          const node = data.nodes[closest]
-          const conf = Math.round(node.confidence * 100)
-          const tags = node.tags.slice(0, 3).join(", ")
-          tooltip.innerHTML = `<span style="color:var(--color-text-emphasis)">${node.title}</span><br/><span style="font-family:var(--font-mono);font-size:9px;color:var(--color-text-ghost)">${conf}%${node.articleType !== "concept" ? " · " + node.articleType : ""}${tags ? " · " + tags : ""}</span>`
+          const node = dataRef.current.nodes[closest]
+          if (node) {
+            const conf = Math.round(node.confidence * 100)
+            const tags = node.tags.slice(0, 3).join(", ")
+            tooltip.innerHTML = `<span style="color:var(--color-text-emphasis)">${node.title}</span><br/><span style="font-family:var(--font-mono);font-size:9px;color:var(--color-text-ghost)">${conf}%${node.articleType !== "concept" ? " · " + node.articleType : ""}${tags ? " · " + tags : ""}</span>`
+          }
           container.style.cursor = "pointer"
         } else if (hoveredEdge >= 0) {
-          // Show tooltip for edge
-          const edge = edgeList[hoveredEdge]
-          const fromNode = data.nodes[edge.sourceIdx]
-          const toNode = data.nodes[edge.targetIdx]
-          const s3 = edge.sourceIdx * 3, t3 = edge.targetIdx * 3
+          const edge = dataRef.current.edges[hoveredEdge]
+          const fromNode = edge ? dataRef.current.nodes[edge.sourceIdx] : null
+          const toNode = edge ? dataRef.current.nodes[edge.targetIdx] : null
+          const s3 = buffers.eSrc[hoveredEdge] * 3, t3 = buffers.eTgt[hoveredEdge] * 3
           projVec.set(
-            (nodePositions[s3] + nodePositions[t3]) / 2,
-            (nodePositions[s3 + 1] + nodePositions[t3 + 1]) / 2,
-            (nodePositions[s3 + 2] + nodePositions[t3 + 2]) / 2,
-          ).project(camera)
+            (cp[s3] + cp[t3]) / 2,
+            (cp[s3 + 1] + cp[t3 + 1]) / 2,
+            (cp[s3 + 2] + cp[t3 + 2]) / 2,
+          ).project(state.camera)
           const tx = (projVec.x * 0.5 + 0.5) * rect.width
           const ty = (-projVec.y * 0.5 + 0.5) * rect.height
           tooltip.style.left = `${tx}px`
           tooltip.style.top = `${ty - 12}px`
           tooltip.style.opacity = "1"
-          tooltip.innerHTML = `<span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-secondary)">${fromNode.title} <span style="color:var(--color-text-ghost)">&mdash; ${edge.relation} &mdash;</span> ${toNode.title}</span>`
+          if (fromNode && toNode && edge) {
+            tooltip.innerHTML = `<span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-secondary)">${fromNode.title} <span style="color:var(--color-text-ghost)">&mdash; ${edge.relation} &mdash;</span> ${toNode.title}</span>`
+          }
           container.style.cursor = "default"
-          // Highlight the two connected nodes
           const vis = nodeVisibleRef.current
           for (let i = 0; i < count; i++) {
             const filterOk = !vis || vis[i] === 1
-            fadeTarget[i] = (i === edge.sourceIdx || i === edge.targetIdx) ? 1.0 : (filterOk ? 0.12 : 0.02)
+            buffers.fadeTarget[i] = (i === buffers.eSrc[hoveredEdge] || i === buffers.eTgt[hoveredEdge]) ? 1.0 : (filterOk ? 0.12 : 0.02)
           }
         } else {
           const vis = nodeVisibleRef.current
-          for (let i = 0; i < count; i++) fadeTarget[i] = (!vis || vis[i] === 1) ? 1.0 : 0.04
+          for (let i = 0; i < count; i++) buffers.fadeTarget[i] = (!vis || vis[i] === 1) ? 1.0 : 0.04
           tooltip.style.opacity = "0"
           container.style.cursor = "default"
         }
       }
 
-      // Apply filter when not hovering (smooth update as filters change)
-      if (currentHovered < 0) {
+      // Filter update when not hovering
+      if (state.currentHovered < 0) {
         const vis = nodeVisibleRef.current
-        for (let i = 0; i < count; i++) fadeTarget[i] = (!vis || vis[i] === 1) ? 1.0 : 0.04
+        for (let i = 0; i < count; i++) buffers.fadeTarget[i] = (!vis || vis[i] === 1) ? 1.0 : 0.04
       }
 
       // Lerp fade values
       for (let i = 0; i < count; i++) {
-        fadeCurrent[i] += (fadeTarget[i] - fadeCurrent[i]) * Math.min(delta * 6, 1) // ~400ms
+        buffers.fadeCurrent[i] += (buffers.fadeTarget[i] - buffers.fadeCurrent[i]) * Math.min(delta * 6, 1)
       }
-      nodeGeo.attributes.aFade.needsUpdate = true
+      if (count > 0) state.nodeGeo.attributes.aFade.needsUpdate = true
 
-      // Update edges
+      // Update edge positions from currentPos (every other frame to save work)
       frameToggle = !frameToggle
       if (frameToggle && edgeCount > 0) {
+        const ep = buffers.edgePositions
         for (let e = 0; e < edgeCount; e++) {
-          const s3 = eSrc[e] * 3, t3 = eTgt[e] * 3, o = e * 6
-          edgePositions[o] = nodePositions[s3]
-          edgePositions[o + 1] = nodePositions[s3 + 1]
-          edgePositions[o + 2] = nodePositions[s3 + 2]
-          edgePositions[o + 3] = nodePositions[t3]
-          edgePositions[o + 4] = nodePositions[t3 + 1]
-          edgePositions[o + 5] = nodePositions[t3 + 2]
+          const s3 = buffers.eSrc[e] * 3, t3 = buffers.eTgt[e] * 3, o = e * 6
+          ep[o] = cp[s3]
+          ep[o + 1] = cp[s3 + 1]
+          ep[o + 2] = cp[s3 + 2]
+          ep[o + 3] = cp[t3]
+          ep[o + 4] = cp[t3 + 1]
+          ep[o + 5] = cp[t3 + 2]
         }
-        edgeGeo.attributes.position.needsUpdate = true
+        state.edgeGeo.attributes.position.needsUpdate = true
       }
 
-      // Update signal particles
-      if (edgeCount > 0) {
-        for (let i = 0; i < sigCount; i++) {
-          sigPhase[i] += delta * sigSpeed[i]
-          if (sigPhase[i] > 1) {
-            sigPhase[i] = 0
-            sigEdge[i] = Math.floor(Math.random() * edgeCount)
+      // Signal particles
+      if (state.sigGeo && state.sigCount > 0 && edgeCount > 0) {
+        for (let i = 0; i < state.sigCount; i++) {
+          state.sigPhase[i] += delta * state.sigSpeed[i]
+          if (state.sigPhase[i] > 1) {
+            state.sigPhase[i] = 0
+            state.sigEdge[i] = Math.floor(Math.random() * edgeCount)
           }
-          const s3 = eSrc[sigEdge[i]] * 3, t3 = eTgt[sigEdge[i]] * 3
-          const p = sigPhase[i], i3 = i * 3
-          sigPos[i3] = nodePositions[s3] + (nodePositions[t3] - nodePositions[s3]) * p
-          sigPos[i3 + 1] = nodePositions[s3 + 1] + (nodePositions[t3 + 1] - nodePositions[s3 + 1]) * p
-          sigPos[i3 + 2] = nodePositions[s3 + 2] + (nodePositions[t3 + 2] - nodePositions[s3 + 2]) * p
+          const s3 = buffers.eSrc[state.sigEdge[i]] * 3, t3 = buffers.eTgt[state.sigEdge[i]] * 3
+          const p = state.sigPhase[i], i3 = i * 3
+          state.sigPos[i3] = cp[s3] + (cp[t3] - cp[s3]) * p
+          state.sigPos[i3 + 1] = cp[s3 + 1] + (cp[t3 + 1] - cp[s3 + 1]) * p
+          state.sigPos[i3 + 2] = cp[s3 + 2] + (cp[t3 + 2] - cp[s3 + 2]) * p
         }
-        sigGeo.attributes.position.needsUpdate = true
+        state.sigGeo.attributes.position.needsUpdate = true
       }
 
-      edgeMat.opacity = 0.14 + Math.sin(elapsed * 0.5) * 0.06
-      renderer.render(scene, camera)
+      state.edgeMat.opacity = 0.14 + Math.sin(elapsed * 0.5) * 0.06
+      state.renderer.render(state.scene, state.camera)
     }
     animate()
 
@@ -599,13 +541,15 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
     const onResize = () => {
       const w = container.clientWidth, h = container.clientHeight
       if (w === 0 || h === 0) return
-      camera.aspect = w / h
-      camera.updateProjectionMatrix()
-      renderer.setSize(w, h)
+      state.camera.aspect = w / h
+      state.camera.updateProjectionMatrix()
+      state.renderer.setSize(w, h)
     }
     window.addEventListener("resize", onResize)
 
     return () => {
+      state.disposed = true
+      cancelAnimationFrame(state.frameHandle)
       window.removeEventListener("resize", onResize)
       window.removeEventListener("mousemove", onMouseMove)
       window.removeEventListener("mousemove", onPanMove)
@@ -614,14 +558,158 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
       container.removeEventListener("wheel", onWheel)
       container.removeEventListener("mousedown", onMouseDown)
       container.removeEventListener("contextmenu", onContextMenu)
-      cancelAnimationFrame(frame)
-      renderer.dispose()
-      edgeGeo.dispose(); edgeMat.dispose()
-      nodeGeo.dispose(); nodeMat.dispose()
-      sigGeo.dispose(); sigMat.dispose()
-      if (container.contains(renderer.domElement)) container.removeChild(renderer.domElement)
+      state.edgeGeo.dispose(); state.edgeMat.dispose()
+      state.nodeGeo.dispose(); state.nodeMat.dispose()
+      state.sigGeo?.dispose(); state.sigMat.dispose()
+      state.renderer.dispose()
+      if (container.contains(state.renderer.domElement)) container.removeChild(state.renderer.domElement)
+      sceneRef.current = null
     }
   }
+}
+
+function applyReconcile(state: SceneState, data: GraphData, positions: Float32Array) {
+  const next = reconcileGraph(state.buffers, data, positions)
+  state.buffers = next
+
+  // ── Rebuild node geometry with the new buffers ──
+  state.scene.remove(state.nodeMesh)
+  state.nodeGeo.dispose()
+  const nodeGeo = new THREE.BufferGeometry()
+  nodeGeo.setAttribute("position", new THREE.BufferAttribute(next.currentPos, 3))
+  nodeGeo.setAttribute("aSize", new THREE.BufferAttribute(next.sizes, 1))
+  nodeGeo.setAttribute("aPhase", new THREE.BufferAttribute(next.phases, 1))
+  nodeGeo.setAttribute("aFade", new THREE.BufferAttribute(next.fadeCurrent, 1))
+  nodeGeo.setAttribute("aColor", new THREE.BufferAttribute(next.nodeColors, 3))
+  const nodeMesh = new THREE.Points(nodeGeo, state.nodeMat)
+  state.scene.add(nodeMesh)
+  state.nodeGeo = nodeGeo
+  state.nodeMesh = nodeMesh
+
+  // ── Rebuild edge geometry ──
+  state.scene.remove(state.edgeMesh)
+  state.edgeGeo.dispose()
+  const edgeGeo = new THREE.BufferGeometry()
+  edgeGeo.setAttribute("position", new THREE.BufferAttribute(next.edgePositions, 3))
+  edgeGeo.setAttribute("color", new THREE.BufferAttribute(next.edgeColors, 3))
+  const edgeMesh = new THREE.LineSegments(edgeGeo, state.edgeMat)
+  state.scene.add(edgeMesh)
+  state.edgeGeo = edgeGeo
+  state.edgeMesh = edgeMesh
+
+  // ── Signal particles — allocate once, resize when edge count grows ──
+  const desiredSigCount = Math.min(next.edgeCount * 2, 60)
+  if (desiredSigCount !== state.sigCount) {
+    if (state.sigMesh) {
+      state.scene.remove(state.sigMesh)
+      state.sigGeo?.dispose()
+      state.sigMesh = null
+      state.sigGeo = null
+    }
+    state.sigCount = desiredSigCount
+    state.sigPos = new Float32Array(desiredSigCount * 3)
+    state.sigEdge = new Uint16Array(desiredSigCount)
+    state.sigPhase = new Float32Array(desiredSigCount)
+    state.sigSpeed = new Float32Array(desiredSigCount)
+    for (let i = 0; i < desiredSigCount; i++) {
+      state.sigEdge[i] = Math.floor(Math.random() * Math.max(next.edgeCount, 1))
+      state.sigPhase[i] = Math.random()
+      state.sigSpeed[i] = 0.15 + Math.random() * 0.25
+    }
+    if (desiredSigCount > 0 && next.edgeCount > 0) {
+      const sigGeo = new THREE.BufferGeometry()
+      sigGeo.setAttribute("position", new THREE.BufferAttribute(state.sigPos, 3))
+      const sigMesh = new THREE.Points(sigGeo, state.sigMat)
+      state.scene.add(sigMesh)
+      state.sigGeo = sigGeo
+      state.sigMesh = sigMesh
+    }
+  }
+
+  // Clamp any stale sigEdge indices that may exceed the new edge count
+  // (happens when edgeCount decreases but desiredSigCount caps at 60).
+  if (next.edgeCount > 0) {
+    for (let i = 0; i < state.sigCount; i++) {
+      if (state.sigEdge[i] >= next.edgeCount) {
+        state.sigEdge[i] = Math.floor(Math.random() * next.edgeCount)
+        state.sigPhase[i] = Math.random()
+      }
+    }
+  }
+
+  // ── Recompute pan limit + zoom extents based on new graph radius ──
+  let graphRadius = 1
+  for (let i = 0; i < next.count; i++) {
+    const r = Math.sqrt(next.targetPos[i * 3] ** 2 + next.targetPos[i * 3 + 1] ** 2)
+    if (r > graphRadius) graphRadius = r
+  }
+  state.panLimit = graphRadius * 1.2
+  const camZ = 300 + Math.min(next.count * 5, 600)
+  state.maxZoom = camZ * 1.5
+  state.minZoom = Math.max(camZ * 0.15, 80)
+  state.targetZ = Math.max(state.minZoom, Math.min(state.maxZoom, state.targetZ))
+
+  // ── Force hover recompute on next frame: surviving slugs may have moved
+  // to new indices, so the old index would point at the wrong node. ──
+  state.currentHovered = -1
+  state.currentHoveredEdge = -1
+}
+
+export default function EngineGraph({ data, positions, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const nodeVisibleRef = useRef<Uint8Array | null>(null)
+  const sceneRef = useRef<SceneState | null>(null)
+  const dataRef = useRef<GraphData>(data)
+  const positionsRef = useRef<Float32Array>(positions)
+  const [sceneReady, setSceneReady] = useState(false)
+  useEffect(() => { dataRef.current = data }, [data])
+  useEffect(() => { positionsRef.current = positions }, [positions])
+  const router = useRouter()
+
+  // Keep nodeVisible ref in sync without re-running the whole setup
+  useEffect(() => { nodeVisibleRef.current = nodeVisible ?? null }, [nodeVisible])
+
+  const handleNodeClick = useCallback((slug: string, screenX: number, screenY: number) => {
+    if (onNodeClick) {
+      onNodeClick(slug, screenX, screenY)
+    } else {
+      router.push(`/app/${engramSlug}/article/${slug}`)
+    }
+  }, [router, engramSlug, onNodeClick])
+
+  // ── Mount-phase: build the scene once ──
+  useEffect(() => {
+    const container = containerRef.current
+    const tooltip = tooltipRef.current
+    if (!container || !tooltip) return
+
+    const mountScene = buildMountScene(sceneRef, dataRef, nodeVisibleRef, handleNodeClick)
+    let cleanup: (() => void) | undefined
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect
+      if (width > 0 && height > 0 && !cleanup) {
+        cleanup = mountScene(container, tooltip, width, height)
+        setSceneReady(true)
+        observer.disconnect()
+      }
+    })
+    observer.observe(container)
+
+    return () => {
+      observer.disconnect()
+      cleanup?.()
+      setSceneReady(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engramSlug])
+
+  // ── Reconcile-phase: update buffers in place when data/positions change ──
+  useEffect(() => {
+    const state = sceneRef.current
+    if (!sceneReady || !state || data.nodes.length === 0) return
+    applyReconcile(state, data, positions)
+  }, [sceneReady, data, positions])
 
   return (
     <div className="relative w-full h-full">
