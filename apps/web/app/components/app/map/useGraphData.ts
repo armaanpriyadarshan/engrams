@@ -37,7 +37,8 @@ export function useGraphData(engramId: string | null) {
     if (!engramId) return
 
     const fetch = async () => {
-      setLoading(true)
+      // Only show loading on the very first load. Realtime refetches are
+      // silent so the map can reconcile without unmounting the scene.
       setError(null)
       const supabase = createClient()
 
