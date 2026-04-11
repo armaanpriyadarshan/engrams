@@ -99,7 +99,7 @@ export default function HealthCheckPanel({ engramId }: HealthCheckPanelProps) {
   return (
     <section className="mt-16">
       <div className="flex items-baseline justify-between gap-4 mb-2">
-        <h2 className="font-heading text-base text-text-emphasis">Health</h2>
+        <h2 className="font-heading text-base text-text-emphasis">Diagnostics</h2>
         <button
           onClick={run}
           disabled={running}
@@ -109,8 +109,9 @@ export default function HealthCheckPanel({ engramId }: HealthCheckPanelProps) {
         </button>
       </div>
       <p className="text-[13px] text-text-tertiary leading-[1.6] max-w-lg mb-6">
-        Doctor for this engram. Verifies provider connectivity, schema,
-        coverage, and queue liveness. Runs on every page load.
+        Infra-level checks for this engram. Verifies provider connectivity,
+        schema, coverage, and queue liveness. The aggregate Health score
+        at the top of the page is the content-level view; this is the plumbing.
       </p>
 
       {summaryLine && (

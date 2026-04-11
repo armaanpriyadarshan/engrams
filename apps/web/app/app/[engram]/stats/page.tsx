@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import VoronoiHeatmap from "@/app/components/app/VoronoiHeatmap"
 import LintFindingsPanel from "@/app/components/app/LintFindingsPanel"
 import HealthCheckPanel from "@/app/components/app/HealthCheckPanel"
+import { computeEngramHealth } from "@/lib/engram-health"
 
 export default async function StatsPage({ params }: { params: Promise<{ engram: string }> }) {
   const { engram: engramSlug } = await params
@@ -16,26 +17,38 @@ export default async function StatsPage({ params }: { params: Promise<{ engram: 
 
   if (!engram) notFound()
 
-  const [articlesResult, sourcesResult, edgesResult] = await Promise.all([
+  // Fetch everything the page needs in parallel. The articles query
+  // returns embedding presence via a non-null check so we don't have to
+  // load thousands of 1536-dim vectors into the Next.js server runtime —
+  // we only need to know IF each article has one.
+  const [articlesResult, sourcesResult, edgesResult, unembeddedResult, openGapsResult, lintErrorsResult] = await Promise.all([
     supabase.from("articles").select("slug, title, confidence, tags, article_type, updated_at, content_md, source_ids").eq("engram_id", engram.id),
     supabase.from("sources").select("id", { count: "exact", head: true }).eq("engram_id", engram.id),
     supabase.from("edges").select("id", { count: "exact", head: true }).eq("engram_id", engram.id),
+    supabase.from("articles").select("slug", { count: "exact", head: true }).eq("engram_id", engram.id).is("embedding", null),
+    supabase.from("knowledge_gaps").select("id", { count: "exact", head: true }).eq("engram_id", engram.id).eq("status", "open"),
+    supabase.from("lint_findings").select("id", { count: "exact", head: true }).eq("engram_id", engram.id).eq("status", "open").eq("severity", "error"),
   ])
 
   const articles = articlesResult.data ?? []
   const sourceCount = sourcesResult.count ?? 0
   const edgeCount = edgesResult.count ?? 0
+  const unembeddedCount = unembeddedResult.count ?? 0
+  const openGaps = openGapsResult.count ?? 0
+  const openLintErrors = lintErrorsResult.count ?? 0
   const articleCount = articles.length
 
-  // Stats
-  const avgConfidence = articleCount > 0
-    ? articles.reduce((sum, a) => sum + (a.confidence ?? 0), 0) / articleCount
-    : 0
-
-  const now = new Date()
-  const staleThreshold = 30 * 24 * 60 * 60 * 1000 // 30 days
-  const staleCount = articles.filter((a) => now.getTime() - new Date(a.updated_at).getTime() > staleThreshold).length
-  const stalenessPercent = articleCount > 0 ? (staleCount / articleCount) * 100 : 0
+  const health = computeEngramHealth({
+    articles: articles.map((a) => ({
+      content_md: a.content_md ?? null,
+      updated_at: a.updated_at,
+      source_ids: (a.source_ids as string[] | null) ?? null,
+    })),
+    edges_count: edgeCount,
+    unembedded_count: unembeddedCount,
+    open_gaps: openGaps,
+    open_lint_errors: openLintErrors,
+  })
 
   // Tag distribution
   const tagCounts = new Map<string, number>()
@@ -55,11 +68,21 @@ export default async function StatsPage({ params }: { params: Promise<{ engram: 
   }
 
   const stats = [
-    { label: "Articles", value: articleCount },
-    { label: "Sources", value: sourceCount },
-    { label: "Confidence", value: `${(avgConfidence * 100).toFixed(0)}%` },
-    { label: "Connections", value: edgeCount },
+    { label: "Articles", value: String(articleCount) },
+    { label: "Sources", value: String(sourceCount) },
+    { label: "Health", value: String(health.score) },
+    { label: "Connections", value: String(edgeCount) },
   ]
+
+  // Grade color token — the Health stat gets a per-grade tint so the
+  // number also reads at a glance from across the room.
+  const gradeColor: Record<typeof health.grade, string> = {
+    excellent: "var(--color-confidence-high)",
+    good: "var(--color-confidence-high)",
+    fair: "var(--color-confidence-mid)",
+    poor: "var(--color-confidence-mid)",
+    critical: "var(--color-danger)",
+  }
 
   return (
     <div className="h-full overflow-y-auto scrollbar-hidden">
@@ -67,14 +90,52 @@ export default async function StatsPage({ params }: { params: Promise<{ engram: 
       <h1 className="font-heading text-lg text-text-emphasis mb-8">Stats</h1>
 
       {/* Stat boxes */}
-      <div className="grid grid-cols-4 gap-4 mb-10">
-        {stats.map((s) => (
-          <div key={s.label} className="border border-border p-4">
-            <div className="font-mono text-2xl text-text-emphasis">{s.value}</div>
-            <div className="mt-1 text-[10px] font-mono text-text-tertiary uppercase tracking-widest">{s.label}</div>
-          </div>
-        ))}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        {stats.map((s) => {
+          const isHealth = s.label === "Health"
+          return (
+            <div key={s.label} className="border border-border p-4">
+              <div
+                className="font-mono text-2xl text-text-emphasis"
+                style={isHealth ? { color: gradeColor[health.grade] } : undefined}
+              >
+                {s.value}
+              </div>
+              <div className="mt-1 text-[10px] font-mono text-text-tertiary uppercase tracking-widest">{s.label}</div>
+            </div>
+          )
+        })}
       </div>
+
+      {/* Health breakdown — only shown when there are penalties to explain */}
+      {articleCount > 0 && (
+        <div className="mb-10 border-l border-border pl-4">
+          <div className="flex items-baseline gap-3 mb-2">
+            <span
+              className="text-[10px] font-mono uppercase tracking-widest"
+              style={{ color: gradeColor[health.grade] }}
+            >
+              {health.grade}
+            </span>
+            <span className="text-[10px] font-mono text-text-ghost">
+              {health.breakdown.length === 0
+                ? "No issues detected."
+                : `${health.breakdown.length} deduction${health.breakdown.length === 1 ? "" : "s"} from 100`}
+            </span>
+          </div>
+          {health.breakdown.length > 0 && (
+            <ul className="space-y-1.5">
+              {health.breakdown.map((p) => (
+                <li key={p.id} className="flex items-baseline gap-3 text-[11px]">
+                  <span className="font-mono text-text-ghost tabular-nums w-8 shrink-0 text-right">{p.penalty}</span>
+                  <span className="font-mono text-text-secondary w-40 shrink-0">{p.label}</span>
+                  <span className="text-text-tertiary leading-relaxed">{p.detail}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Confidence map */}
       {articleCount > 0 && (
