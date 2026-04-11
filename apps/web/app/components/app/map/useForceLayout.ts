@@ -146,7 +146,7 @@ export function useForceLayout(
     //              actually place the new node). If a new node has no
     //              edges, it spawns at origin and there's no meaningful
     //              "vicinity" — skip it.
-    const SPATIAL_RIPPLE_RADIUS = 70
+    const SPATIAL_RIPPLE_RADIUS = 110
     const SPATIAL_RIPPLE_RADIUS_SQ = SPATIAL_RIPPLE_RADIUS * SPATIAL_RIPPLE_RADIUS
     const rippleCenters: Array<{ x: number; y: number }> = []
 
