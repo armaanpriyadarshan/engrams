@@ -83,6 +83,7 @@ interface SceneState {
   isPanning: boolean
   isOrbiting: boolean
   orbitStart: { x: number; y: number }
+  hasFramed: boolean
 
   // Attention pan — when a new node lands outside the safe viewport, the
   // camera gently drifts to bring it in, holds for a beat, and drifts
@@ -286,6 +287,7 @@ function buildMountScene(
       isPanning: false,
       isOrbiting: false,
       orbitStart: { x: 0, y: 0 },
+      hasFramed: false,
       attentionPan: null,
       frameHandle: 0,
       disposed: false,
@@ -342,11 +344,28 @@ function buildMountScene(
     const onMouseUp = () => { state.isPanning = false; state.isOrbiting = false }
     const onPanMove = (e: MouseEvent) => {
       if (state.isPanning) {
+        // Decompose the screen drag onto the camera's right/up vectors,
+        // projected onto the z=0 plane (since panOffset lives in XY).
+        // Without this, dragging after an orbit moves the world along the
+        // default camera's axes rather than the current view's.
         const scale = state.currentZoom * 0.002
-        const dx = -(e.clientX - state.panStart.x) * scale
-        const dy = (e.clientY - state.panStart.y) * scale
+        const screenDx = (e.clientX - state.panStart.x) * scale
+        const screenDy = (e.clientY - state.panStart.y) * scale
         const cosT = Math.cos(state.orbitTheta)
-        state.panOffset.x = Math.max(-state.panLimit, Math.min(state.panLimit, state.panOffset.x + dx * cosT))
+        const sinT = Math.sin(state.orbitTheta)
+        const cosP = Math.cos(state.orbitPhi)
+        const sinP = Math.sin(state.orbitPhi)
+        // Camera right in world: (cos θ, 0, -sin θ)
+        // Camera up in world:    (-sin θ sin φ, cos φ, -cos θ sin φ)
+        const rightX = cosT
+        const rightY = 0
+        const upX = -sinT * sinP
+        const upY = cosP
+        // Drag right → content moves right → target slides left:  -screenDx * right
+        // Drag down  → content moves down  → target slides up (screen) = +up in world: +screenDy * up
+        const dx = -screenDx * rightX + screenDy * upX
+        const dy = -screenDx * rightY + screenDy * upY
+        state.panOffset.x = Math.max(-state.panLimit, Math.min(state.panLimit, state.panOffset.x + dx))
         state.panOffset.y = Math.max(-state.panLimit, Math.min(state.panLimit, state.panOffset.y + dy))
         state.panStart = { x: e.clientX, y: e.clientY }
       }
@@ -714,10 +733,24 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
     if (r > graphRadius) graphRadius = r
   }
   state.panLimit = graphRadius * 1.2
-  const camZ = 300 + Math.min(next.count * 5, 600)
-  state.maxZoom = camZ * 1.5
+  // Distance needed to fit the graph radius in the 55° fov frustum with
+  // padding, so the bounding sphere is always visible on first frame.
+  // tan(55°/2) ≈ 0.521 → distance ≈ radius / 0.521 ≈ radius * 1.92.
+  const fitZ = graphRadius * 2.2
+  const camZ = Math.max(300 + Math.min(next.count * 5, 600), fitZ)
+  state.maxZoom = camZ * 1.8
   state.minZoom = Math.max(camZ * 0.15, 80)
-  state.targetZ = Math.max(state.minZoom, Math.min(state.maxZoom, state.targetZ))
+  // On the first reconcile that brings nodes in, auto-frame the whole
+  // graph — otherwise large graphs load too zoomed-in because targetZ is
+  // still pinned to the empty-scene default. After that, the user's zoom
+  // is preserved (we only clamp, never reset).
+  if (!state.hasFramed && next.count > 0) {
+    state.targetZ = camZ
+    state.currentZoom = camZ
+    state.hasFramed = true
+  } else {
+    state.targetZ = Math.max(state.minZoom, Math.min(state.maxZoom, state.targetZ))
+  }
 
   // ── Start an attention pan if any new node would land outside the
   // safe viewport. Only REPLACE an in-flight pan if there's a new target

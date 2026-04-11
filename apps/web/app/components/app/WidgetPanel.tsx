@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode, type RefObject } from "react"
+import { createPortal } from "react-dom"
 
 interface PanelContextType {
   openId: string | null
@@ -143,9 +144,86 @@ export function WidgetPanel({ id, preview, children, className }: WidgetPanelPro
   const previewVisible = phase === null || phase === "opening" || phase === "closing"
   const contentVisible = phase === "open"
 
+  // Portal the overlay out of the local stacking context. Both SourceTree
+  // and AgentTimeline sit in top-row `z-30` wrappers, so a `fixed z-50`
+  // modal rendered inline gets trapped beneath the sibling wrapper and its
+  // close button is unreachable. Rendering at document.body escapes both.
+  const overlay = isVisible && typeof document !== "undefined"
+    ? createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={handleClose}
+            style={{
+              backgroundColor: "rgba(5,5,5,0.6)",
+              opacity: phase === "closing" || phase === "opening" ? 0 : 1,
+              transition: phase === "closing" ? "opacity 200ms ease-out" : "opacity 250ms ease-out",
+            }}
+          />
+          <div
+            className="fixed z-50 bg-surface border border-border overflow-hidden"
+            style={{
+              top: displayBox.top,
+              left: displayBox.left,
+              width: displayBox.width,
+              height: displayBox.height,
+              transition,
+              borderRadius: "1px",
+            }}
+          >
+            {/* Preview fades out 0-100ms */}
+            <div
+              style={{
+                opacity: previewVisible ? 1 : 0,
+                transition: "opacity 100ms ease-out",
+                position: "absolute",
+                top: 0, left: 0, right: 0,
+                pointerEvents: "none",
+              }}
+            >
+              {preview}
+            </div>
+
+            {/* Full content fades in 100-250ms */}
+            <div
+              className="overflow-y-auto scrollbar-hidden absolute inset-0"
+              style={{
+                opacity: contentVisible ? 1 : 0,
+                transition: contentVisible ? "opacity 150ms ease-out 100ms" : "opacity 80ms ease-out",
+                pointerEvents: contentVisible ? "auto" : "none",
+              }}
+            >
+              <div className="px-6 pt-5 pr-14 pb-10">
+                {children}
+              </div>
+            </div>
+
+            {/* Close button — after content in DOM order and inside the portal */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleClose() }}
+              aria-label="Close"
+              className="absolute top-2 right-2 flex items-center justify-center w-8 h-8 text-text-ghost hover:text-text-emphasis transition-colors duration-120 cursor-pointer"
+              style={{
+                zIndex: 100,
+                opacity: contentVisible ? 1 : 0,
+                transition: "opacity 150ms ease-out 150ms",
+                pointerEvents: contentVisible ? "auto" : "none",
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        </>,
+        document.body,
+      )
+    : null
+
   return (
     <>
-      {/* Card in flow */}
       <div
         ref={cardRef}
         className={`bg-surface border border-border rounded-sm ${className ?? ""}`}
@@ -160,77 +238,7 @@ export function WidgetPanel({ id, preview, children, className }: WidgetPanelPro
       >
         {preview}
       </div>
-
-      {/* Backdrop */}
-      {isVisible && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={handleClose}
-          style={{
-            backgroundColor: "rgba(5,5,5,0.6)",
-            opacity: phase === "closing" || phase === "opening" ? 0 : 1,
-            transition: phase === "closing" ? "opacity 200ms ease-out" : "opacity 250ms ease-out",
-          }}
-        />
-      )}
-
-      {/* Modal — morphs from card rect to target rect */}
-      {isVisible && (
-        <div
-          className="fixed z-50 bg-surface border border-border overflow-hidden"
-          style={{
-            top: displayBox.top,
-            left: displayBox.left,
-            width: displayBox.width,
-            height: displayBox.height,
-            transition,
-            borderRadius: "1px",
-          }}
-        >
-          {/* Preview fades out 0-100ms */}
-          <div
-            style={{
-              opacity: previewVisible ? 1 : 0,
-              transition: "opacity 100ms ease-out",
-              position: "absolute",
-              top: 0, left: 0, right: 0,
-              pointerEvents: "none",
-            }}
-          >
-            {preview}
-          </div>
-
-          {/* Close button */}
-          <button
-            onClick={handleClose}
-            className="absolute top-3 right-3 z-10 text-text-ghost hover:text-text-tertiary transition-colors duration-120 cursor-pointer"
-            style={{
-              opacity: contentVisible ? 1 : 0,
-              transition: "opacity 150ms ease-out 150ms",
-              pointerEvents: contentVisible ? "auto" : "none",
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-
-          {/* Full content fades in 100-250ms */}
-          <div
-            className="overflow-y-auto scrollbar-hidden absolute inset-0"
-            style={{
-              opacity: contentVisible ? 1 : 0,
-              transition: contentVisible ? "opacity 150ms ease-out 100ms" : "opacity 80ms ease-out",
-              pointerEvents: contentVisible ? "auto" : "none",
-            }}
-          >
-            <div className="px-6 pt-5 pb-10">
-              {children}
-            </div>
-          </div>
-        </div>
-      )}
+      {overlay}
     </>
   )
 }

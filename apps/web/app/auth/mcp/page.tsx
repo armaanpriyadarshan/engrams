@@ -46,7 +46,17 @@ export default function McpAuthPage() {
   }
 
   return (
-    <div className="min-h-dvh flex items-center justify-center">
+    <div className="min-h-dvh flex items-center justify-center relative">
+      <Link
+        href="/app"
+        className="absolute top-6 left-6 inline-flex items-center gap-2 text-[11px] font-mono text-text-ghost hover:text-text-tertiary transition-colors duration-120"
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12" />
+          <polyline points="12 19 5 12 12 5" />
+        </svg>
+        dashboard
+      </Link>
       <div className="max-w-lg w-full px-6">
         <h1 className="font-heading text-xl text-text-emphasis mb-4">Engrams MCP</h1>
         <p className="text-sm text-text-secondary mb-8">
