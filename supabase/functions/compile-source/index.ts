@@ -931,6 +931,7 @@ Your job:
 - Produce a clear, encyclopedic article that explains the topic in its own right, drawing on the new summary and the existing article.
 - When an existing article is provided, treat it as the working draft and update it with any new information from the summary. Preserve its voice and any still-accurate claims.
 - Use [[slug]] syntax to link to related articles from the wiki index. Only reference slugs that actually appear in the index or in this concept's new slug.
+- For every [[slug]] you cite, add an entry to \`link_weights\` with a number from 0.1 to 1.0 indicating how essential that connection is. 1.0 = the article cannot be understood without the linked concept (parent topic, hard prerequisite, central counterpoint). 0.6 = supporting context worth knowing. 0.2 = a passing reference. The driver of the layout is this number, so be honest — don't grade everything 1.0.
 - Third person, encyclopedic. No first person. No hedging. No filler.
 - Assign confidence 0.0–1.0 based on how well the sources support the claims.
 - Tags are lowercase, 1–2 words each, 2–5 total.
@@ -1202,6 +1203,12 @@ interface PassBResult {
   tags: string[]
   confidence: number
   article_type: string
+  // LLM-assigned strength for each [[slug]] cited in content_md.
+  // 0.1 = passing mention, 1.0 = essential connection. Drives the
+  // force-layout's per-edge distance/strength on the frontend so the
+  // map's visual clustering reflects semantic importance, not just
+  // "is there an edge at all". Falls back to 0.5 if the LLM omits.
+  link_weights: Record<string, number>
 }
 
 async function runPassB(opts: {
@@ -1241,7 +1248,8 @@ ${rulesBlock}`
     `  "content_md": "Article body in markdown. Use [[slug]] links.",\n` +
     `  "tags": ["tag1", "tag2"],\n` +
     `  "confidence": 0.85,\n` +
-    `  "article_type": "concept"\n` +
+    `  "article_type": "concept",\n` +
+    `  "link_weights": { "linked-slug-a": 0.9, "linked-slug-b": 0.4 }\n` +
     `}`
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -1285,7 +1293,17 @@ ${rulesBlock}`
     const confidence = typeof parsed.confidence === "number" ? parsed.confidence : 0.7
     const article_type =
       typeof parsed.article_type === "string" ? parsed.article_type : "concept"
-    return { title, summary, content_md, tags, confidence, article_type }
+    // Validate link_weights: object whose values are finite numbers in
+    // [0.1, 1.0]. Anything else gets dropped silently — the edge will
+    // fall back to the default weight downstream.
+    const link_weights: Record<string, number> = {}
+    if (parsed.link_weights && typeof parsed.link_weights === "object") {
+      for (const [slug, raw] of Object.entries(parsed.link_weights)) {
+        if (typeof raw !== "number" || !Number.isFinite(raw)) continue
+        link_weights[slug] = Math.max(0.1, Math.min(1.0, raw))
+      }
+    }
+    return { title, summary, content_md, tags, confidence, article_type, link_weights }
   } catch (err) {
     return { error: `parse error: ${String(err).slice(0, 200)}` }
   }
@@ -1761,7 +1779,7 @@ Deno.serve(async (req: Request) => {
 
     let articlesCreated = 0
     let articlesUpdated = 0
-    const writtenConcepts: { slug: string; content_md: string }[] = []
+    const writtenConcepts: { slug: string; content_md: string; link_weights: Record<string, number> }[] = []
 
     for (const candidate of conceptCandidates) {
       // Resolve the concept to a slug. If it matches an existing article
@@ -1870,27 +1888,38 @@ Deno.serve(async (req: Request) => {
       }
 
       newSlugSet.add(finalSlug)
-      writtenConcepts.push({ slug: finalSlug, content_md: conceptResult.content_md })
+      writtenConcepts.push({
+        slug: finalSlug,
+        content_md: conceptResult.content_md,
+        link_weights: conceptResult.link_weights ?? {},
+      })
     }
 
     // ── Edges from wiki-links in the Pass B output ───────────────
+    // The relation field is still hardcoded to "related" — the legend
+    // categories (requires/extends/causation/...) aren't surfaced
+    // anywhere on the frontend so there's no point in classifying.
+    // What DOES matter is the per-edge weight: the LLM hands us
+    // link_weights for every wiki-link it cites, and that number
+    // drives the d3-force layout's per-link distance and strength on
+    // the frontend. Strong links pull tighter, weak links pull looser.
     const edgeSet = new Set<string>()
     let edgesCreated = 0
-    const insertEdge = async (from_slug: string, to_slug: string, relation: string) => {
+    const insertEdge = async (from_slug: string, to_slug: string, weight: number) => {
       if (from_slug === to_slug) return
       if (!newSlugSet.has(from_slug) || !newSlugSet.has(to_slug)) return
       // Never create edges to/from the hidden summary article. Summaries
       // are plumbing, not nodes on the knowledge graph.
       if (from_slug === summarySlug || to_slug === summarySlug) return
-      const key = `${from_slug}|${to_slug}|${relation}`
+      const key = `${from_slug}|${to_slug}`
       if (edgeSet.has(key)) return
       edgeSet.add(key)
       const { error: edgeErr } = await supabase.from("edges").insert({
         engram_id: source.engram_id,
         from_slug,
         to_slug,
-        relation,
-        weight: 1.0,
+        relation: "related",
+        weight,
       })
       if (!edgeErr) edgesCreated++
     }
@@ -1900,7 +1929,12 @@ Deno.serve(async (req: Request) => {
       for (const target of linked) {
         if (target === w.slug) continue
         if (!newSlugSet.has(target)) continue
-        await insertEdge(w.slug, target, "related")
+        // Look up the LLM's weight for this link, defaulting to 0.5
+        // (medium) if the LLM didn't provide one. The default lands
+        // mid-range so missing weights don't bias the layout in either
+        // direction.
+        const weight = w.link_weights[target] ?? 0.5
+        await insertEdge(w.slug, target, weight)
       }
     }
 

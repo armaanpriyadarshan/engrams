@@ -152,15 +152,19 @@ export function reconcileGraph(
     const edge = data.edges[ei]
     eSrc[ei] = edge.sourceIdx
     eTgt[ei] = edge.targetIdx
-    const col = RELATION_COLORS[edge.relation] ?? DEFAULT_EDGE_COLOR
-    const w = Math.max(0.3, Math.min(1.0, edge.weight))
+    // Edges are rendered with uniform color regardless of relation type
+    // or weight. Both signals exist in the database but flow into
+    // semantic clustering (forceLink distance/strength in
+    // useForceLayout) instead of visual edge styling — the user wants
+    // the layout to encode meaning, not the wires themselves.
+    const col = DEFAULT_EDGE_COLOR
     const i6 = ei * 6
-    edgeColors[i6] = col[0] * w
-    edgeColors[i6 + 1] = col[1] * w
-    edgeColors[i6 + 2] = col[2] * w
-    edgeColors[i6 + 3] = col[0] * w
-    edgeColors[i6 + 4] = col[1] * w
-    edgeColors[i6 + 5] = col[2] * w
+    edgeColors[i6] = col[0]
+    edgeColors[i6 + 1] = col[1]
+    edgeColors[i6 + 2] = col[2]
+    edgeColors[i6 + 3] = col[0]
+    edgeColors[i6 + 4] = col[1]
+    edgeColors[i6 + 5] = col[2]
   }
 
   // Neighbor adjacency (used by EngineGraph's hover-highlight fade logic)

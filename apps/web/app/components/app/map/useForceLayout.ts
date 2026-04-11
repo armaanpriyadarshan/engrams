@@ -41,11 +41,12 @@ export interface LayoutResult {
   meta: LayoutMeta
 }
 
-// Bumped to v3 because the cluster force tuning changed (link 40→34,
-// collide 22+d*8 → 19+d*7). Keeping the v2 cache would pin existing
-// engrams to the old looser spacing forever; invalidating forces a
-// fresh layout so everyone sees the tighter clustering.
-// v2 was the 2D → 3D migration marker; v1 was 2D-only.
+// v3: 15% tighter spacing tune. v2: 2D → 3D migration. v1: 2D only.
+// Per-edge weight-aware link forces shipped without bumping the key
+// because the formula is anchored at weight=1.0 → current baseline,
+// so legacy edges (all weight=1.0) produce identical layouts to v3.
+// Only future LLM-weighted edges with weight<1.0 will land in new
+// positions, and they ride the existing cache happily.
 const STORAGE_KEY_PREFIX = "engrams-map-layout-v3-"
 
 interface StoredLayout {
@@ -246,9 +247,17 @@ export function useForceLayout(
       }
     })
 
-    const links: SimulationLinkDatum<ForceNode>[] = data.edges.map((e) => ({
+    // Per-edge weight is preserved on the link object so the link
+    // force can read it via `(l) => l.weight`. d3-force passes the
+    // raw object through, so any field on the link is accessible
+    // inside the distance/strength callbacks.
+    interface ForceLink extends SimulationLinkDatum<ForceNode> {
+      weight: number
+    }
+    const links: ForceLink[] = data.edges.map((e) => ({
       source: e.sourceIdx,
       target: e.targetIdx,
+      weight: e.weight,
     }))
 
     const nodeCount = nodes.length
@@ -263,11 +272,25 @@ export function useForceLayout(
     const simulation = forceSimulation<ForceNode>()
       .numDimensions(3)
       .nodes(nodes)
-      // Link distance + collide radius tightened ~15% (40→34, 22→19,
-      // depth slope 8→7) so the constellation reads as a cohesive
-      // cluster instead of a loose scatter. Ripples still have room
-      // to play out because the reductions are modest.
-      .force("link", forceLink<ForceNode, SimulationLinkDatum<ForceNode>>(links).distance(34).strength(0.55))
+      // Link force is now PER-EDGE WEIGHT-AWARE. Each edge carries a
+      // 0.1–1.0 weight from compile-source's LLM Pass B. Anchor:
+      // weight=1.0 maps to the CURRENT baseline (distance 34,
+      // strength 0.55) — that's also the legacy hardcoded value, so
+      // existing engrams whose edges all carry weight=1.0 from before
+      // this system shipped will look IDENTICAL after this change.
+      // Lower weights (LLM-marked weak references) sit looser and get
+      // pushed around more easily, drifting outward from the cluster.
+      // Stronger connections never get tighter than the current
+      // baseline — the LLM only has authority to LOOSEN, not tighten.
+      // The visual edge rendering ignores weight entirely (see
+      // reconcileGraph) — semantic strength flows ONLY into spatial
+      // layout, not edge color or opacity.
+      .force(
+        "link",
+        forceLink<ForceNode, ForceLink>(links)
+          .distance((l) => 46 - 12 * (l.weight ?? 1.0))   // w=1.0 → 34 (current); w=0.0 → 46 (looser)
+          .strength((l) => 0.4 + 0.15 * (l.weight ?? 1.0)) // w=1.0 → 0.55 (current); w=0.0 → 0.4 (weaker)
+      )
       .force("charge", forceManyBody<ForceNode>().strength(repulsion))
       // 3D center force — pulls the whole constellation toward the origin.
       .force("center", forceCenter<ForceNode>(0, 0, 0).strength(0.6))
