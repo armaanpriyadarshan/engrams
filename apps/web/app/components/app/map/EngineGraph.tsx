@@ -237,11 +237,20 @@ function buildMountScene(
           // either mode's failure case.
           float t = smoothstep(4.0, 10.0, vSize);
 
+          // As you zoom in further, suppress the halo's slow-decay
+          // tiers. They're what bleed into surrounding pixels and make
+          // zoomed-in nodes look like blurry clouds. The exp(-d*30)
+          // core stays at full strength — it's already a tight peak
+          // and carries the "point" shape. haloScale drops from 1.0 at
+          // 16px to 0.15 at 40+px, so large sprites become sharp
+          // discrete points instead of soft blobs.
+          float haloScale = 1.0 - smoothstep(16.0, 40.0, vSize) * 0.85;
+
           float peakedCore = exp(-d * 30.0);
-          float peaked = peakedCore
-                       + exp(-d * 12.0) * 0.5
-                       + exp(-d * 5.0)  * 0.18
-                       + exp(-d * 2.5)  * 0.06;
+          float peakedHalo = exp(-d * 12.0) * 0.5
+                           + exp(-d * 5.0)  * 0.18
+                           + exp(-d * 2.5)  * 0.06;
+          float peaked = peakedCore + peakedHalo * haloScale;
 
           float filled = smoothstep(0.5, 0.0, d) * 0.9;
 
