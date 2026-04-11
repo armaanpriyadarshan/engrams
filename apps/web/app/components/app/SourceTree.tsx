@@ -146,12 +146,13 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
     // Delete the source (compilation_runs cascade, knowledge_gaps set null via FK)
     await supabase.from("sources").delete().eq("id", sourceId)
 
-    // Recount sources
+    // Recount sources — all of them, regardless of status. The sidebar
+    // and widgets show the total row count, so the stored column needs
+    // to match so it doesn't drift between "compiled only" and "all".
     const { count } = await supabase
       .from("sources")
       .select("id", { count: "exact", head: true })
       .eq("engram_id", engramId)
-      .eq("status", "compiled")
 
     await supabase.from("engrams").update({ source_count: count ?? 0 }).eq("id", engramId)
 

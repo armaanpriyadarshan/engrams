@@ -2068,6 +2068,8 @@ Deno.serve(async (req: Request) => {
       )
 
     // --- Recount both articles AND sources ---
+    // source_count is the total row count regardless of status so it
+    // matches what the UI widgets (SourceTree, stats page) display.
     const { count: articleCount } = await supabase
       .from("articles")
       .select("id", { count: "exact", head: true })
@@ -2077,7 +2079,6 @@ Deno.serve(async (req: Request) => {
       .from("sources")
       .select("id", { count: "exact", head: true })
       .eq("engram_id", source.engram_id)
-      .eq("status", "compiled")
 
     await supabase
       .from("engrams")

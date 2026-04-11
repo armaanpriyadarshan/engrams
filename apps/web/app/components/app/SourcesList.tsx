@@ -114,12 +114,13 @@ export default function SourcesList({ sources, articles, engramId, engramSlug }:
     // Delete the source (compilation_runs cascade, knowledge_gaps set null via FK)
     await supabase.from("sources").delete().eq("id", sourceId)
 
-    // Recount sources
+    // Recount sources — all of them, regardless of status. Kept in
+    // sync with the delete handler in SourceTree and the compile-source
+    // edge function so source_count always reflects the actual row count.
     const { count } = await supabase
       .from("sources")
       .select("id", { count: "exact", head: true })
       .eq("engram_id", engramId)
-      .eq("status", "compiled")
 
     await supabase.from("engrams").update({ source_count: count ?? 0 }).eq("id", engramId)
 
