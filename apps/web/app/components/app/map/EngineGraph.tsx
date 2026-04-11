@@ -41,25 +41,15 @@ interface SceneState {
   // Materials — stable across data changes
   nodeMat: THREE.ShaderMaterial
   edgeMat: THREE.LineBasicMaterial
-  sigMat: THREE.PointsMaterial
 
   // Meshes + geometries — rebuilt when node/edge count changes
   nodeMesh: THREE.Points
   nodeGeo: THREE.BufferGeometry
   edgeMesh: THREE.LineSegments
   edgeGeo: THREE.BufferGeometry
-  sigMesh: THREE.Points | null
-  sigGeo: THREE.BufferGeometry | null
 
   // Data buffers (produced by reconcileGraph)
   buffers: GraphBuffers
-
-  // Signal particles — count depends on edgeCount, so these live here too
-  sigCount: number
-  sigPos: Float32Array
-  sigEdge: Uint16Array
-  sigPhase: Float32Array
-  sigSpeed: Float32Array
 
   // Hover / interaction state
   currentHovered: number
@@ -205,12 +195,12 @@ function buildMountScene(
           // size the filled profile is the only thing that stays
           // visible.
           //
-          // The 650 constant is a global screen-size knob: raising it
+          // The 800 constant is a global screen-size knob: raising it
           // makes every node bigger at every zoom; lowering it shrinks
           // them all. It's the primary dial for "nodes feel the right
           // size" — the halo suppression + floor + fragment profile
           // are tuned to look correct across a wide range of sizes.
-          float perspScale = 650.0 / max(-mv.z, 1.0);
+          float perspScale = 800.0 / max(-mv.z, 1.0);
           float rawSize = aSize * (0.85 + vPulse * 0.3 + vAttention * 0.25) * perspScale;
           gl_PointSize = max(rawSize, 4.0);
           vSize = gl_PointSize;
@@ -279,15 +269,6 @@ function buildMountScene(
     })
 
     const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.18 })
-    // Signal particles travel along edges. Size is pinned to screen
-    // space and set to 1px — same width as WebGL's default line
-    // thickness — so they can never render wider than the wire they're
-    // riding. Opacity is also low; the particles should read as
-    // subtle traffic on the wires, not bright moving dots.
-    const sigMat = new THREE.PointsMaterial({
-      color: 0x999999, size: 1, transparent: true, opacity: 0.25,
-      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: false,
-    })
 
     // ── Empty geometries (populated by applyReconcile) ──
     const nodeGeo = new THREE.BufferGeometry()
@@ -306,13 +287,10 @@ function buildMountScene(
       renderer,
       nodeMat,
       edgeMat,
-      sigMat,
       nodeMesh,
       nodeGeo,
       edgeMesh,
       edgeGeo,
-      sigMesh: null,
-      sigGeo: null,
       buffers: {
         count: 0,
         edgeCount: 0,
@@ -333,11 +311,6 @@ function buildMountScene(
         slugToIndex: new Map(),
         neighbors: new Map(),
       },
-      sigCount: 0,
-      sigPos: new Float32Array(0),
-      sigEdge: new Uint16Array(0),
-      sigPhase: new Float32Array(0),
-      sigSpeed: new Float32Array(0),
       currentHovered: -1,
       currentHoveredEdge: -1,
       mouse: { x: 0, y: 0, screenX: 0, screenY: 0 },
@@ -519,14 +492,6 @@ function buildMountScene(
       state.orbitTheta += (state.targetTheta - state.orbitTheta) * 0.08
       state.orbitPhi += (state.targetPhi - state.orbitPhi) * 0.08
 
-      // Signal particles fade out as the camera pulls away. At close
-      // zoom they read as subtle traffic along the wires, but from far
-      // back even 1px dots pile up into blobs with no information
-      // value — you can't tell what edge they're on. Hide past ~900
-      // world units to keep the wide view clean.
-      const sigFade = Math.max(0, Math.min(1, (900 - state.currentZoom) / 400))
-      state.sigMat.opacity = 0.25 * sigFade
-
       const driftX = Math.sin(elapsed * 0.015) * 20 * driftScale
       const driftY = Math.cos(elapsed * 0.01) * 15 * driftScale
       state.camera.position.x = state.panOffset.x + driftX + state.currentZoom * Math.sin(state.orbitTheta) * Math.cos(state.orbitPhi)
@@ -681,23 +646,6 @@ function buildMountScene(
         state.edgeGeo.attributes.position.needsUpdate = true
       }
 
-      // Signal particles
-      if (state.sigGeo && state.sigCount > 0 && edgeCount > 0) {
-        for (let i = 0; i < state.sigCount; i++) {
-          state.sigPhase[i] += delta * state.sigSpeed[i]
-          if (state.sigPhase[i] > 1) {
-            state.sigPhase[i] = 0
-            state.sigEdge[i] = Math.floor(Math.random() * edgeCount)
-          }
-          const s3 = buffers.eSrc[state.sigEdge[i]] * 3, t3 = buffers.eTgt[state.sigEdge[i]] * 3
-          const p = state.sigPhase[i], i3 = i * 3
-          state.sigPos[i3] = cp[s3] + (cp[t3] - cp[s3]) * p
-          state.sigPos[i3 + 1] = cp[s3 + 1] + (cp[t3 + 1] - cp[s3 + 1]) * p
-          state.sigPos[i3 + 2] = cp[s3 + 2] + (cp[t3 + 2] - cp[s3 + 2]) * p
-        }
-        state.sigGeo.attributes.position.needsUpdate = true
-      }
-
       state.edgeMat.opacity = 0.14 + Math.sin(elapsed * 0.5) * 0.06
       state.renderer.render(state.scene, state.camera)
     }
@@ -726,7 +674,6 @@ function buildMountScene(
       container.removeEventListener("contextmenu", onContextMenu)
       state.edgeGeo.dispose(); state.edgeMat.dispose()
       state.nodeGeo.dispose(); state.nodeMat.dispose()
-      state.sigGeo?.dispose(); state.sigMat.dispose()
       state.renderer.dispose()
       if (container.contains(state.renderer.domElement)) container.removeChild(state.renderer.domElement)
       sceneRef.current = null
@@ -763,48 +710,6 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   state.scene.add(edgeMesh)
   state.edgeGeo = edgeGeo
   state.edgeMesh = edgeMesh
-
-  // ── Signal particles — allocate once, resize when edge count grows ──
-  const desiredSigCount = Math.min(next.edgeCount * 2, 60)
-  if (desiredSigCount !== state.sigCount) {
-    if (state.sigMesh) {
-      state.scene.remove(state.sigMesh)
-      state.sigGeo?.dispose()
-      state.sigMesh = null
-      state.sigGeo = null
-    }
-    state.sigCount = desiredSigCount
-    state.sigPos = new Float32Array(desiredSigCount * 3)
-    state.sigEdge = new Uint16Array(desiredSigCount)
-    state.sigPhase = new Float32Array(desiredSigCount)
-    state.sigSpeed = new Float32Array(desiredSigCount)
-    for (let i = 0; i < desiredSigCount; i++) {
-      state.sigEdge[i] = Math.floor(Math.random() * Math.max(next.edgeCount, 1))
-      state.sigPhase[i] = Math.random()
-      // Slower traversal (was 0.15–0.4). Feels less frantic and gives
-      // the eye time to actually follow individual particles.
-      state.sigSpeed[i] = 0.06 + Math.random() * 0.1
-    }
-    if (desiredSigCount > 0 && next.edgeCount > 0) {
-      const sigGeo = new THREE.BufferGeometry()
-      sigGeo.setAttribute("position", new THREE.BufferAttribute(state.sigPos, 3))
-      const sigMesh = new THREE.Points(sigGeo, state.sigMat)
-      state.scene.add(sigMesh)
-      state.sigGeo = sigGeo
-      state.sigMesh = sigMesh
-    }
-  }
-
-  // Clamp any stale sigEdge indices that may exceed the new edge count
-  // (happens when edgeCount decreases but desiredSigCount caps at 60).
-  if (next.edgeCount > 0) {
-    for (let i = 0; i < state.sigCount; i++) {
-      if (state.sigEdge[i] >= next.edgeCount) {
-        state.sigEdge[i] = Math.floor(Math.random() * next.edgeCount)
-        state.sigPhase[i] = Math.random()
-      }
-    }
-  }
 
   // ── Recompute pan limit + zoom extents based on new graph radius ──
   // Now 3D — the constellation has real z extent, so the bounding
