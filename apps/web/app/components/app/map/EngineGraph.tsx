@@ -513,6 +513,14 @@ function buildMountScene(
       state.orbitTheta += (state.targetTheta - state.orbitTheta) * 0.08
       state.orbitPhi += (state.targetPhi - state.orbitPhi) * 0.08
 
+      // Signal particles fade out as the camera pulls away. At close
+      // zoom they read as moving dots along the wires, but from far
+      // back the 2px sprites pile up into blobs that have no
+      // information value — you can't tell what edge they're on. Hide
+      // them past ~600 world units to keep the wide view clean.
+      const sigFade = Math.max(0, Math.min(1, (900 - state.currentZoom) / 400))
+      state.sigMat.opacity = 0.6 * sigFade
+
       const driftX = Math.sin(elapsed * 0.015) * 20 * driftScale
       const driftY = Math.cos(elapsed * 0.01) * 15 * driftScale
       state.camera.position.x = state.panOffset.x + driftX + state.currentZoom * Math.sin(state.orbitTheta) * Math.cos(state.orbitPhi)
