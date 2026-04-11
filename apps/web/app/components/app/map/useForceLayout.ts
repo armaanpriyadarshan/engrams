@@ -135,61 +135,68 @@ export function useForceLayout(
       }
     }
 
-    // rippleSlugs = direct neighbors PLUS second-hop neighbors of anything
-    // that was just added or removed. The 2-hop expansion makes ripples
-    // travel further so the motion reads as "a wave through the cluster"
-    // instead of "the one touching node nudged". For new nodes we look at
-    // the NEW edges; for removed nodes we look at the cached adjacency
-    // (their edges are gone from data).
-    const rippleSlugs = new Set<string>()
+    // rippleSlugs = nodes within SPATIAL_RIPPLE_RADIUS of any added or
+    // removed node. This models "physical proximity" rather than graph
+    // adjacency: a deleted node affects the nodes that were sitting
+    // close to it on screen, regardless of whether they were linked.
+    //
+    // For REMOVES: center = cached position of the removed node.
+    // For ADDS:    center = centroid of the new node's edge-connected
+    //              nodes (an estimate of where the force sim will
+    //              actually place the new node). If a new node has no
+    //              edges, it spawns at origin and there's no meaningful
+    //              "vicinity" — skip it.
+    const SPATIAL_RIPPLE_RADIUS = 70
+    const SPATIAL_RIPPLE_RADIUS_SQ = SPATIAL_RIPPLE_RADIUS * SPATIAL_RIPPLE_RADIUS
+    const rippleCenters: Array<{ x: number; y: number }> = []
+
     if (newSlugs.size > 0) {
-      // First hop: direct neighbors of new nodes
-      const firstHop = new Set<string>()
-      for (const e of data.edges) {
-        const fromSlug = data.nodes[e.sourceIdx]?.slug
-        const toSlug = data.nodes[e.targetIdx]?.slug
-        if (!fromSlug || !toSlug) continue
-        if (newSlugs.has(fromSlug) && !newSlugs.has(toSlug)) firstHop.add(toSlug)
-        if (newSlugs.has(toSlug) && !newSlugs.has(fromSlug)) firstHop.add(fromSlug)
-      }
-      for (const slug of firstHop) rippleSlugs.add(slug)
-      // Second hop: neighbors of firstHop that aren't new and aren't
-      // themselves in firstHop
-      for (const e of data.edges) {
-        const fromSlug = data.nodes[e.sourceIdx]?.slug
-        const toSlug = data.nodes[e.targetIdx]?.slug
-        if (!fromSlug || !toSlug) continue
-        if (firstHop.has(fromSlug) && !firstHop.has(toSlug) && !newSlugs.has(toSlug)) {
-          rippleSlugs.add(toSlug)
+      for (const newSlug of newSlugs) {
+        let sumX = 0
+        let sumY = 0
+        let count = 0
+        for (const e of data.edges) {
+          const fromSlug = data.nodes[e.sourceIdx]?.slug
+          const toSlug = data.nodes[e.targetIdx]?.slug
+          if (!fromSlug || !toSlug) continue
+          let neighborSlug: string | null = null
+          if (fromSlug === newSlug) neighborSlug = toSlug
+          else if (toSlug === newSlug) neighborSlug = fromSlug
+          if (!neighborSlug) continue
+          const pos = prev.get(neighborSlug)
+          if (!pos) continue
+          sumX += pos.x
+          sumY += pos.y
+          count += 1
         }
-        if (firstHop.has(toSlug) && !firstHop.has(fromSlug) && !newSlugs.has(fromSlug)) {
-          rippleSlugs.add(fromSlug)
+        if (count > 0) {
+          rippleCenters.push({ x: sumX / count, y: sumY / count })
         }
       }
     }
+
     // removedSlugs is only ever non-empty when isRefresh is true — see
     // the population guard above. This block is safe on the first render
     // because removedSlugs stays empty; future edits should preserve
     // that invariant.
     if (removedSlugs.size > 0) {
-      // First hop: neighbors of removed nodes (via cached adjacency)
-      const firstHop = new Set<string>()
       for (const slug of removedSlugs) {
-        const neighbors = prevAdj.get(slug)
-        if (!neighbors) continue
-        for (const neighbor of neighbors) {
-          if (currentSlugs.has(neighbor)) firstHop.add(neighbor)
-        }
+        const pos = prev.get(slug)
+        if (pos) rippleCenters.push({ x: pos.x, y: pos.y })
       }
-      for (const slug of firstHop) rippleSlugs.add(slug)
-      // Second hop: neighbors of firstHop (also via cached adjacency)
-      // that still exist and aren't in firstHop
-      for (const slug of firstHop) {
-        const neighbors = prevAdj.get(slug)
-        if (!neighbors) continue
-        for (const neighbor of neighbors) {
-          if (currentSlugs.has(neighbor) && !firstHop.has(neighbor)) {
-            rippleSlugs.add(neighbor)
+    }
+
+    const rippleSlugs = new Set<string>()
+    if (rippleCenters.length > 0) {
+      for (const [slug, pos] of prev) {
+        if (newSlugs.has(slug) || removedSlugs.has(slug)) continue
+        if (!currentSlugs.has(slug)) continue
+        for (const center of rippleCenters) {
+          const dx = pos.x - center.x
+          const dy = pos.y - center.y
+          if (dx * dx + dy * dy < SPATIAL_RIPPLE_RADIUS_SQ) {
+            rippleSlugs.add(slug)
+            break
           }
         }
       }
@@ -231,12 +238,10 @@ export function useForceLayout(
     const repulsion = -30 - Math.min(nodeCount, 40)
 
     const simulation = forceSimulation(nodes)
-      // Looser link distance (was 25) makes linked clusters more readable
-      // without making them fly apart. Link strength weakened further to
-      // 0.35 so ripples carry through 2-hop neighbors — the chain from
-      // new node → direct neighbor → second-hop neighbor needs slack in
-      // each link to propagate meaningful displacement.
-      .force("link", forceLink(links).distance(40).strength(0.35))
+      // Looser link distance (was 25) makes linked clusters more readable.
+      // Link strength is moderate — loose enough to let ripples happen,
+      // firm enough that mobile nodes don't drift across the graph.
+      .force("link", forceLink(links).distance(40).strength(0.55))
       .force("charge", forceManyBody().strength(repulsion))
       // Stronger center force (was 0.4) pulls distant outliers back in.
       .force("center", forceCenter(0, 0).strength(0.6))
@@ -245,10 +250,10 @@ export function useForceLayout(
       .force("collide", forceCollide().radius((_, i) => 22 + data.nodes[i].depth * 8).strength(1))
       .stop()
 
-    // On refresh, only new nodes + ripple neighbors (1-hop + 2-hop) move.
-    // Bumped from 60 to 90 ticks so the wider ripple accumulates visible
-    // displacement — 2-hop neighbors take longer to feel the wave.
-    const ticks = isRefresh ? 90 : Math.min(300, 100 + nodeCount * 2)
+    // On refresh, only new nodes + spatial ripple neighbors move. 50
+    // ticks is enough for them to settle into their new equilibrium
+    // without over-displacing.
+    const ticks = isRefresh ? 50 : Math.min(300, 100 + nodeCount * 2)
     for (let i = 0; i < ticks; i++) {
       simulation.tick()
     }
