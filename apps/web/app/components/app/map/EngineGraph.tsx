@@ -164,7 +164,7 @@ function buildMountScene(
         uniform float uTime;
         uniform vec2 uMouse, uRippleOrigin;
         uniform float uRippleTime;
-        varying float vPulse, vMouseProx, vDepth, vFade, vAttention;
+        varying float vPulse, vMouseProx, vDepth, vFade, vAttention, vSize;
         varying vec3 vColor;
 
         void main() {
@@ -199,35 +199,60 @@ function buildMountScene(
           // Perspective-correct point size with a 4px floor. Without the
           // floor, sprites disappear at far zoom levels because
           // 500/|mv.z| → sub-pixel, and additive blending can't show
-          // half-pixel points. 4px is the smallest size at which the
-          // fragment shader's coreMask + halo profile still has enough
-          // pixels to read as a solid dot instead of a single dim pixel.
+          // half-pixel points. The fragment shader also reads this size
+          // to decide whether to render the sharp starry profile or a
+          // filled-disk profile — at the floor size the filled profile
+          // is the only thing that stays visible.
           float perspScale = 500.0 / max(-mv.z, 1.0);
           float rawSize = aSize * (0.85 + vPulse * 0.3 + vAttention * 0.25) * perspScale;
           gl_PointSize = max(rawSize, 4.0);
+          vSize = gl_PointSize;
           gl_Position = projectionMatrix * mv;
         }
       `,
       fragmentShader: `
-        varying float vPulse, vMouseProx, vDepth, vFade, vAttention;
+        varying float vPulse, vMouseProx, vDepth, vFade, vAttention, vSize;
         varying vec3 vColor;
 
         void main() {
           float d = length(gl_PointCoord - 0.5);
           if (d > 0.5) discard;
-          // Two-layer profile designed to stay bright at ANY sprite size:
-          //   coreMask — filled circle via smoothstep. Every pixel inside
-          //              the sprite gets a near-bright alpha, so even a
-          //              4-pixel sprite reads as a solid dot instead of a
-          //              one-pixel center that the old exp(-d*30) gave.
-          //   halo     — soft exponential falloff that adds the glow/star
-          //              look on top, but only contributes meaningfully
-          //              at larger sprite sizes (d is close to center for
-          //              many pixels).
-          float coreMask = smoothstep(0.5, 0.0, d);
-          float halo = exp(-d * 3.0) * 0.15 + exp(-d * 6.0) * 0.20;
-          float a = (coreMask * 0.9 + halo) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6);
-          vec3 col = mix(vColor * 0.75, vColor, coreMask);
+
+          // Two alpha profiles, blended by sprite size:
+          //
+          //   peaked — the original look. Sharp exp(-d*30) core plus
+          //            thin halo tiers. Looks like a star — bright,
+          //            crisp, small glow. Needs ~10+ pixels to render
+          //            its gradient correctly; at 4-6px the peak only
+          //            lands on one center pixel and the sprite vanishes.
+          //
+          //   filled — a smoothstep-filled disk. Every pixel in the
+          //            sprite reads near-full alpha, so even a 4px
+          //            sprite is a solid bright dot. At large sizes
+          //            though, this looks blurry and washed out.
+          //
+          // Cross-fade via smoothstep on vSize: pure filled at 4px,
+          // half-half at 7px, pure peaked at 10px+. Gives sharp stars
+          // when zoomed in AND visible dots when zoomed out, without
+          // either mode's failure case.
+          float t = smoothstep(4.0, 10.0, vSize);
+
+          float peakedCore = exp(-d * 30.0);
+          float peaked = peakedCore
+                       + exp(-d * 12.0) * 0.5
+                       + exp(-d * 5.0)  * 0.18
+                       + exp(-d * 2.5)  * 0.06;
+
+          float filled = smoothstep(0.5, 0.0, d) * 0.9;
+
+          float a = mix(filled, peaked, t) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6);
+
+          // Color mix: use the peaked core to whiten the center at
+          // large sizes, falling back to a smoothstep at small sizes so
+          // the whole filled disk gets the node's base color instead of
+          // a one-pixel highlight.
+          float colorBlend = mix(smoothstep(0.5, 0.0, d), peakedCore, t);
+          vec3 col = mix(vColor * 0.7, vColor, colorBlend);
           col = mix(col, vec3(1.0, 0.98, 0.96), vMouseProx * 0.4);
           gl_FragColor = vec4(col, a);
         }
