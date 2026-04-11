@@ -251,7 +251,12 @@ function buildMountScene(
 
           float filled = smoothstep(0.5, 0.0, d) * 0.9;
 
-          float a = mix(filled, peaked, t) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6);
+          // Global 1.15x brightness. With additive blending the peak
+          // alpha clamps at 1 so the very center pixels don't get any
+          // brighter, but mid-alpha pixels (halo ring, filled-disk
+          // edge) lift proportionally — which is where "slightly
+          // brighter without looking blurry" actually lives.
+          float a = mix(filled, peaked, t) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6) * 1.15;
 
           // Color mix: use the peaked core to whiten the center at
           // large sizes, falling back to a smoothstep at small sizes so

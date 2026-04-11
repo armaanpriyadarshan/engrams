@@ -41,10 +41,12 @@ export interface LayoutResult {
   meta: LayoutMeta
 }
 
-// Bumped to v2 because stored positions now carry a z coordinate. v1
-// layouts were 2D and would re-seed the simulation at z=0 for every
-// node, reproducing the old flatness on refresh.
-const STORAGE_KEY_PREFIX = "engrams-map-layout-v2-"
+// Bumped to v3 because the cluster force tuning changed (link 40→34,
+// collide 22+d*8 → 19+d*7). Keeping the v2 cache would pin existing
+// engrams to the old looser spacing forever; invalidating forces a
+// fresh layout so everyone sees the tighter clustering.
+// v2 was the 2D → 3D migration marker; v1 was 2D-only.
+const STORAGE_KEY_PREFIX = "engrams-map-layout-v3-"
 
 interface StoredLayout {
   positions: Array<[string, { x: number; y: number; z: number }]>
@@ -261,17 +263,18 @@ export function useForceLayout(
     const simulation = forceSimulation<ForceNode>()
       .numDimensions(3)
       .nodes(nodes)
-      // Looser link distance (was 25) makes linked clusters more readable.
-      // Link strength is moderate — loose enough to let ripples happen,
-      // firm enough that mobile nodes don't drift across the graph.
-      .force("link", forceLink<ForceNode, SimulationLinkDatum<ForceNode>>(links).distance(40).strength(0.55))
+      // Link distance + collide radius tightened ~15% (40→34, 22→19,
+      // depth slope 8→7) so the constellation reads as a cohesive
+      // cluster instead of a loose scatter. Ripples still have room
+      // to play out because the reductions are modest.
+      .force("link", forceLink<ForceNode, SimulationLinkDatum<ForceNode>>(links).distance(34).strength(0.55))
       .force("charge", forceManyBody<ForceNode>().strength(repulsion))
       // 3D center force — pulls the whole constellation toward the origin.
       .force("center", forceCenter<ForceNode>(0, 0, 0).strength(0.6))
       // Collide radius per-node based on wiki depth. In 3D it enforces a
       // minimum spherical spacing so nodes never visually overlap on any
       // viewing angle.
-      .force("collide", forceCollide<ForceNode>().radius((_, i) => 22 + data.nodes[i].depth * 8).strength(1))
+      .force("collide", forceCollide<ForceNode>().radius((_, i) => 19 + data.nodes[i].depth * 7).strength(1))
       .stop()
 
     // On refresh, only new nodes + spatial ripple neighbors move. 50
