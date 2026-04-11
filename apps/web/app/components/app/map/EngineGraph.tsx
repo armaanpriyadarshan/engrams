@@ -196,14 +196,15 @@ function buildMountScene(
           // naturally bigger than back nodes without any being dimmed
           // into the background.
           vDepth = 1.0;
-          // Perspective-correct point size with a 3.5px floor. Without
-          // the floor, sprites disappear at far zoom levels because
+          // Perspective-correct point size with a 4px floor. Without the
+          // floor, sprites disappear at far zoom levels because
           // 500/|mv.z| → sub-pixel, and additive blending can't show
-          // half-pixel points. Raised from 2.5 → 3.5 so every node stays
-          // clearly visible at the farthest auto-framed distance.
+          // half-pixel points. 4px is the smallest size at which the
+          // fragment shader's coreMask + halo profile still has enough
+          // pixels to read as a solid dot instead of a single dim pixel.
           float perspScale = 500.0 / max(-mv.z, 1.0);
           float rawSize = aSize * (0.85 + vPulse * 0.3 + vAttention * 0.25) * perspScale;
-          gl_PointSize = max(rawSize, 3.5);
+          gl_PointSize = max(rawSize, 4.0);
           gl_Position = projectionMatrix * mv;
         }
       `,
@@ -214,9 +215,19 @@ function buildMountScene(
         void main() {
           float d = length(gl_PointCoord - 0.5);
           if (d > 0.5) discard;
-          float core = exp(-d * 30.0);
-          float a = (exp(-d * 2.5) * 0.06 + exp(-d * 5.0) * 0.18 + exp(-d * 12.0) * 0.5 + core) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6);
-          vec3 col = mix(vColor * 0.7, vColor, core);
+          // Two-layer profile designed to stay bright at ANY sprite size:
+          //   coreMask — filled circle via smoothstep. Every pixel inside
+          //              the sprite gets a near-bright alpha, so even a
+          //              4-pixel sprite reads as a solid dot instead of a
+          //              one-pixel center that the old exp(-d*30) gave.
+          //   halo     — soft exponential falloff that adds the glow/star
+          //              look on top, but only contributes meaningfully
+          //              at larger sprite sizes (d is close to center for
+          //              many pixels).
+          float coreMask = smoothstep(0.5, 0.0, d);
+          float halo = exp(-d * 3.0) * 0.15 + exp(-d * 6.0) * 0.20;
+          float a = (coreMask * 0.9 + halo) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6);
+          vec3 col = mix(vColor * 0.75, vColor, coreMask);
           col = mix(col, vec3(1.0, 0.98, 0.96), vMouseProx * 0.4);
           gl_FragColor = vec4(col, a);
         }
