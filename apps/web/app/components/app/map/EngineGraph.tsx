@@ -272,14 +272,13 @@ function buildMountScene(
     })
 
     const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.18 })
-    // Signal particles travel along edges. Their size must stay close
-    // to the edge-line width at every zoom level — with sizeAttenuation
-    // on, they ballooned into visible blobs when zoomed in because the
-    // base size of 2 gets perspective-scaled up to dozens of pixels.
-    // Fixed screen-space size (sizeAttenuation: false) keeps them the
-    // same 2px thick as the WebGL lines they ride on.
+    // Signal particles travel along edges. Size is pinned to screen
+    // space and set to 1px — same width as WebGL's default line
+    // thickness — so they can never render wider than the wire they're
+    // riding. Opacity is also low; the particles should read as
+    // subtle traffic on the wires, not bright moving dots.
     const sigMat = new THREE.PointsMaterial({
-      color: 0x999999, size: 2, transparent: true, opacity: 0.6,
+      color: 0x999999, size: 1, transparent: true, opacity: 0.25,
       blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: false,
     })
 
@@ -514,12 +513,12 @@ function buildMountScene(
       state.orbitPhi += (state.targetPhi - state.orbitPhi) * 0.08
 
       // Signal particles fade out as the camera pulls away. At close
-      // zoom they read as moving dots along the wires, but from far
-      // back the 2px sprites pile up into blobs that have no
-      // information value — you can't tell what edge they're on. Hide
-      // them past ~600 world units to keep the wide view clean.
+      // zoom they read as subtle traffic along the wires, but from far
+      // back even 1px dots pile up into blobs with no information
+      // value — you can't tell what edge they're on. Hide past ~900
+      // world units to keep the wide view clean.
       const sigFade = Math.max(0, Math.min(1, (900 - state.currentZoom) / 400))
-      state.sigMat.opacity = 0.6 * sigFade
+      state.sigMat.opacity = 0.25 * sigFade
 
       const driftX = Math.sin(elapsed * 0.015) * 20 * driftScale
       const driftY = Math.cos(elapsed * 0.01) * 15 * driftScale
@@ -775,7 +774,9 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
     for (let i = 0; i < desiredSigCount; i++) {
       state.sigEdge[i] = Math.floor(Math.random() * Math.max(next.edgeCount, 1))
       state.sigPhase[i] = Math.random()
-      state.sigSpeed[i] = 0.15 + Math.random() * 0.25
+      // Slower traversal (was 0.15–0.4). Feels less frantic and gives
+      // the eye time to actually follow individual particles.
+      state.sigSpeed[i] = 0.06 + Math.random() * 0.1
     }
     if (desiredSigCount > 0 && next.edgeCount > 0) {
       const sigGeo = new THREE.BufferGeometry()
