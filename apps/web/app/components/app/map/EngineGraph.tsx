@@ -157,11 +157,6 @@ function buildMountScene(
         uMouse: { value: new THREE.Vector2(0, 0) },
         uRippleOrigin: { value: new THREE.Vector2(0, 0) },
         uRippleTime: { value: -100.0 },
-        // Current camera distance from the look-at pivot. Used by the
-        // vertex shader to compute depth cues and point size in a way
-        // that scales with the zoom level — without it, nodes vanish
-        // when the camera backs off to frame a large graph.
-        uCamDist: { value: 400.0 },
       },
       vertexShader: `
         attribute float aSize, aPhase, aFade, aAttention;
@@ -169,7 +164,6 @@ function buildMountScene(
         uniform float uTime;
         uniform vec2 uMouse, uRippleOrigin;
         uniform float uRippleTime;
-        uniform float uCamDist;
         varying float vPulse, vMouseProx, vDepth, vFade, vAttention;
         varying vec3 vColor;
 
@@ -195,28 +189,21 @@ function buildMountScene(
           vAttention = aAttention;
           vColor = aColor;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          // Depth fade is now RELATIVE to the camera distance, not a
-          // hardcoded -1400/-700 band. That band only worked when the
-          // camera was roughly ~400 units away; once the auto-fit zooms
-          // out to frame a 150-node constellation, mv.z blows past -1400
-          // and every node's alpha multiplies by 0.
-          //
-          // relDist = 1.0 when the node sits exactly on the focal plane,
-          //           0.5 when it's halfway between camera and pivot,
-          //           1.5 when it's one camera-distance behind the pivot.
-          // We fade from full brightness at relDist <= 0.75 down to 0.4
-          // at relDist = 1.7 — so front-of-graph nodes stay bright and
-          // back-of-graph nodes get a subtle depth dim, regardless of
-          // absolute camera distance.
-          float relDist = -mv.z / max(uCamDist, 1.0);
-          vDepth = mix(0.4, 1.0, smoothstep(1.7, 0.75, relDist));
-          // Perspective-correct point size with a 2.5px floor. Without
+          // No depth-driven alpha fade. The old version multiplied alpha
+          // by a smoothstep on mv.z which killed visibility entirely at
+          // the far edge of large graphs. Depth is now conveyed by the
+          // perspective point-size falloff alone — front nodes are
+          // naturally bigger than back nodes without any being dimmed
+          // into the background.
+          vDepth = 1.0;
+          // Perspective-correct point size with a 3.5px floor. Without
           // the floor, sprites disappear at far zoom levels because
           // 500/|mv.z| → sub-pixel, and additive blending can't show
-          // half-pixel points.
+          // half-pixel points. Raised from 2.5 → 3.5 so every node stays
+          // clearly visible at the farthest auto-framed distance.
           float perspScale = 500.0 / max(-mv.z, 1.0);
           float rawSize = aSize * (0.85 + vPulse * 0.3 + vAttention * 0.25) * perspScale;
-          gl_PointSize = max(rawSize, 2.5);
+          gl_PointSize = max(rawSize, 3.5);
           gl_Position = projectionMatrix * mv;
         }
       `,
@@ -432,7 +419,6 @@ function buildMountScene(
 
       state.nodeMat.uniforms.uTime.value = elapsed
       state.nodeMat.uniforms.uMouse.value.set(state.smoothMouse.x, state.smoothMouse.y)
-      state.nodeMat.uniforms.uCamDist.value = state.currentZoom
 
       if (state.ripple.time >= 0) {
         state.ripple.time += delta
