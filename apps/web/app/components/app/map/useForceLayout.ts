@@ -33,29 +33,40 @@ export interface LayoutResult {
   meta: LayoutMeta
 }
 
-const STORAGE_KEY_PREFIX = "engrams-map-positions-"
+const STORAGE_KEY_PREFIX = "engrams-map-layout-"
 
-function readStoredPositions(engramId: string | null): Map<string, { x: number; y: number }> {
-  if (!engramId || typeof window === "undefined") return new Map()
+interface StoredLayout {
+  positions: Array<[string, { x: number; y: number }]>
+  maxR: number
+}
+
+function readStoredLayout(engramId: string | null): StoredLayout | null {
+  if (!engramId || typeof window === "undefined") return null
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY_PREFIX + engramId)
-    if (!raw) return new Map()
-    const parsed = JSON.parse(raw) as [string, { x: number; y: number }][]
-    if (!Array.isArray(parsed)) return new Map()
-    return new Map(parsed)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoredLayout
+    if (!parsed || !Array.isArray(parsed.positions) || typeof parsed.maxR !== "number") {
+      return null
+    }
+    return parsed
   } catch {
-    return new Map()
+    return null
   }
 }
 
-function writeStoredPositions(
+function writeStoredLayout(
   engramId: string | null,
   positions: Map<string, { x: number; y: number }>,
+  maxR: number,
 ) {
   if (!engramId || typeof window === "undefined") return
   try {
-    const entries = Array.from(positions.entries())
-    window.localStorage.setItem(STORAGE_KEY_PREFIX + engramId, JSON.stringify(entries))
+    const payload: StoredLayout = {
+      positions: Array.from(positions.entries()),
+      maxR,
+    }
+    window.localStorage.setItem(STORAGE_KEY_PREFIX + engramId, JSON.stringify(payload))
   } catch {
     // Quota exceeded or other storage failure — silently drop. Layout
     // still works in memory; only the cross-refresh continuity is lost.
@@ -69,13 +80,11 @@ export function useForceLayout(
   engramId: string | null = null,
 ): LayoutResult | null {
   // Cache previous positions (in normalized simulation space, pre-scale)
-  // by slug so existing nodes don't jump on refresh. Seeded from
-  // localStorage on first use so that a page refresh produces the same
-  // constellation the user was looking at — incremental updates and
+  // by slug so existing nodes don't jump on refresh. Seeded lazily from
+  // localStorage inside the useMemo so that a page refresh produces the
+  // same constellation the user was looking at — incremental updates and
   // fresh loads stay visually consistent.
-  const prevPositions = useRef<Map<string, { x: number; y: number }>>(
-    readStoredPositions(engramId),
-  )
+  const prevPositions = useRef<Map<string, { x: number; y: number }>>(new Map())
   // Cache the adjacency of the PREVIOUS layout so we can compute the
   // direct neighbors of nodes that were just removed — those are gone
   // from the new data.edges by the time we run this diff.
@@ -84,9 +93,29 @@ export function useForceLayout(
   // never rescales the whole graph — existing nodes stay exactly where they
   // were, and new nodes slot in at the same world-space density.
   const scaleRef = useRef<LayoutScale | null>(null)
+  // Track which engram we last seeded from storage so we re-seed when the
+  // user switches engrams within the same browser session.
+  const seededEngramId = useRef<string | null>(null)
 
   return useMemo(() => {
     if (!data || data.nodes.length === 0) return null
+
+    // Seed caches from localStorage on first useMemo call per engram, or
+    // whenever the engram changes. Can't do this in the useRef initializer
+    // because engramId is loaded asynchronously and is null on first
+    // render — the initializer runs before the id is known.
+    if (engramId !== seededEngramId.current) {
+      seededEngramId.current = engramId
+      const stored = readStoredLayout(engramId)
+      if (stored) {
+        prevPositions.current = new Map(stored.positions)
+        scaleRef.current = null // will be re-initialized below using stored maxR
+      } else {
+        prevPositions.current = new Map()
+        scaleRef.current = null
+      }
+      prevAdjacency.current = new Map()
+    }
 
     const prev = prevPositions.current
     const prevAdj = prevAdjacency.current
@@ -195,10 +224,21 @@ export function useForceLayout(
     // rectangle not covered by widgets) so the constellation naturally
     // fits what the user can actually see.
     if (!scaleRef.current) {
+      // Prefer the stored maxR from localStorage when available — that
+      // way the rendered coordinates match exactly across refresh, not
+      // just the raw simulation coordinates. Without this, a fresh
+      // recompute from the loaded positions could produce a slightly
+      // different maxR (e.g. if a node had drifted to a new radius
+      // between sessions) and the whole graph would look rescaled.
+      const stored = readStoredLayout(engramId)
       let maxR = 1
-      for (const node of nodes) {
-        const r = Math.sqrt((node.x ?? 0) ** 2 + (node.y ?? 0) ** 2)
-        if (r > maxR) maxR = r
+      if (stored && stored.maxR > 0) {
+        maxR = stored.maxR
+      } else {
+        for (const node of nodes) {
+          const r = Math.sqrt((node.x ?? 0) ** 2 + (node.y ?? 0) ** 2)
+          if (r > maxR) maxR = r
+        }
       }
       const safe =
         typeof window !== "undefined"
@@ -238,7 +278,7 @@ export function useForceLayout(
 
     prevPositions.current = newCache
     prevAdjacency.current = newAdjacency
-    writeStoredPositions(engramId, newCache)
+    writeStoredLayout(engramId, newCache, scaleRef.current.maxR)
 
     return {
       positions,
