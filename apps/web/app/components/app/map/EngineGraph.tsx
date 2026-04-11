@@ -171,14 +171,19 @@ function buildMountScene(
           float dm = distance(position.xy, uMouse);
           float mg = smoothstep(300.0, 0.0, dm);
           vMouseProx = mg;
-          pulse += mg * 0.7;
+          // Mouse-proximity boost dialed down from 0.7 to 0.4 — nodes near
+          // the cursor used to get uncomfortably bright when combined with
+          // the attention pulse. Keeps some glow lift, loses the blow-out.
+          pulse += mg * 0.4;
 
           if (uRippleTime >= 0.0 && uRippleTime < 4.0) {
             float dr = distance(position.xy, uRippleOrigin);
             pulse += smoothstep(80.0, 0.0, abs(dr - uRippleTime * 500.0)) * exp(-uRippleTime) * 1.5;
           }
 
-          vPulse = clamp(pulse, 0.0, 1.4);
+          // Pulse clamp tightened from 1.4 to 1.2 so the peak brightness
+          // can't stack too high with the attention boost in the fragment.
+          vPulse = clamp(pulse, 0.0, 1.2);
           vFade = aFade;
           vAttention = aAttention;
           vColor = aColor;
