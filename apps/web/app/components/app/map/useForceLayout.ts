@@ -170,8 +170,10 @@ export function useForceLayout(
 
     const simulation = forceSimulation(nodes)
       // Looser link distance (was 25) makes linked clusters more readable
-      // without making them fly apart.
-      .force("link", forceLink(links).distance(40).strength(0.7))
+      // without making them fly apart. Link strength weakened from 0.7 to
+      // 0.5 so ripple neighbors travel further before the link force pulls
+      // them back — makes the soft ripple on add/delete more visible.
+      .force("link", forceLink(links).distance(40).strength(0.5))
       .force("charge", forceManyBody().strength(repulsion))
       // Stronger center force (was 0.4) pulls distant outliers back in.
       .force("center", forceCenter(0, 0).strength(0.6))
@@ -180,9 +182,10 @@ export function useForceLayout(
       .force("collide", forceCollide().radius((_, i) => 22 + data.nodes[i].depth * 8).strength(1))
       .stop()
 
-    // On refresh, only new nodes can move (existing are pinned), so fewer
-    // ticks are plenty. On initial build, run the full simulation.
-    const ticks = isRefresh ? 40 : Math.min(300, 100 + nodeCount * 2)
+    // On refresh, only new nodes + ripple neighbors move. Bumped from 40
+    // to 60 so neighbors accumulate enough displacement to be visible as
+    // a motion rather than an imperceptible nudge.
+    const ticks = isRefresh ? 60 : Math.min(300, 100 + nodeCount * 2)
     for (let i = 0; i < ticks; i++) {
       simulation.tick()
     }

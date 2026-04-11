@@ -438,8 +438,11 @@ function buildMountScene(
       state.camera.lookAt(state.panOffset.x, state.panOffset.y, 0)
 
       // ── Lerp currentPos → targetPos ──
+      // Rate reduced from 6 to 3 (~330ms settle) so ripple neighbors
+      // read as motion rather than an imperceptible snap. Pinned nodes
+      // are unaffected because their currentPos already matches targetPos.
       if (count > 0) {
-        const step = Math.min(delta * 6, 1)
+        const step = Math.min(delta * 3, 1)
         const cp = buffers.currentPos
         const tp = buffers.targetPos
         for (let i = 0; i < count * 3; i++) {
