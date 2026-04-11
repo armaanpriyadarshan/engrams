@@ -33,14 +33,49 @@ export interface LayoutResult {
   meta: LayoutMeta
 }
 
+const STORAGE_KEY_PREFIX = "engrams-map-positions-"
+
+function readStoredPositions(engramId: string | null): Map<string, { x: number; y: number }> {
+  if (!engramId || typeof window === "undefined") return new Map()
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_PREFIX + engramId)
+    if (!raw) return new Map()
+    const parsed = JSON.parse(raw) as [string, { x: number; y: number }][]
+    if (!Array.isArray(parsed)) return new Map()
+    return new Map(parsed)
+  } catch {
+    return new Map()
+  }
+}
+
+function writeStoredPositions(
+  engramId: string | null,
+  positions: Map<string, { x: number; y: number }>,
+) {
+  if (!engramId || typeof window === "undefined") return
+  try {
+    const entries = Array.from(positions.entries())
+    window.localStorage.setItem(STORAGE_KEY_PREFIX + engramId, JSON.stringify(entries))
+  } catch {
+    // Quota exceeded or other storage failure — silently drop. Layout
+    // still works in memory; only the cross-refresh continuity is lost.
+  }
+}
+
 export function useForceLayout(
   data: GraphData | null,
   width: number,
   height: number,
+  engramId: string | null = null,
 ): LayoutResult | null {
   // Cache previous positions (in normalized simulation space, pre-scale)
-  // by slug so existing nodes don't jump on refresh.
-  const prevPositions = useRef<Map<string, { x: number; y: number }>>(new Map())
+  // by slug so existing nodes don't jump on refresh. Seeded from
+  // localStorage on first use so that a page refresh produces the same
+  // constellation the user was looking at — incremental updates and
+  // fresh loads stay visually consistent.
+  const prevPositions = useRef<Map<string, { x: number; y: number }>>(
+    readStoredPositions(engramId),
+  )
   // Cache the adjacency of the PREVIOUS layout so we can compute the
   // direct neighbors of nodes that were just removed — those are gone
   // from the new data.edges by the time we run this diff.
@@ -200,10 +235,11 @@ export function useForceLayout(
 
     prevPositions.current = newCache
     prevAdjacency.current = newAdjacency
+    writeStoredPositions(engramId, newCache)
 
     return {
       positions,
       meta: { newSlugs, rippleSlugs },
     }
-  }, [data, width, height])
+  }, [data, width, height, engramId])
 }

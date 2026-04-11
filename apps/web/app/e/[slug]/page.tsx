@@ -31,7 +31,7 @@ export default function PublishedMapPage() {
   }, [slug])
 
   const { data: graphData, loading } = useGraphData(engramId)
-  const layoutResult = useForceLayout(graphData, 1200, 800)
+  const layoutResult = useForceLayout(graphData, 1200, 800, engramId)
 
   const handleNodeClick = useCallback((nodeSlug: string) => {
     setSelectedSlug(nodeSlug)

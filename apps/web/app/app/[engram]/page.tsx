@@ -217,7 +217,7 @@ export default function EngramPage() {
   }, [nodeMenu])
 
   const { data: graphData, loading, error: graphError } = useGraphData(engramId)
-  const layoutResult = useForceLayout(graphData, 1200, 800)
+  const layoutResult = useForceLayout(graphData, 1200, 800, engramId)
   const positions = layoutResult?.positions
   const layoutMeta = layoutResult?.meta
 

@@ -25,7 +25,7 @@ export default function MapPage() {
   }, [engramSlug])
 
   const { data, loading } = useGraphData(engramId)
-  const layoutResult = useForceLayout(data, 1200, 800)
+  const layoutResult = useForceLayout(data, 1200, 800, engramId)
 
   if (loading || !data || !layoutResult) {
     return (
