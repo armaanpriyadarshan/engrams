@@ -90,9 +90,13 @@ export function reconcileGraph(
     const node = data.nodes[i]
     const d = node.depth
     const i3 = i * 3
-    const x = positions[i * 2]
-    const y = positions[i * 2 + 1]
-    const z = -300 + d * 500
+    // positions is now stride-3 (x, y, z) — produced by the 3D force
+    // layout in useForceLayout. The old stride-2 path assigned z from
+    // the semantic wiki depth which pinned everything to 3 flat planes;
+    // now z comes from real physics.
+    const x = positions[i3]
+    const y = positions[i3 + 1]
+    const z = positions[i3 + 2]
 
     // Target position — where the force layout wants this node to be
     targetPos[i3] = x

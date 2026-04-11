@@ -157,6 +157,11 @@ function buildMountScene(
         uMouse: { value: new THREE.Vector2(0, 0) },
         uRippleOrigin: { value: new THREE.Vector2(0, 0) },
         uRippleTime: { value: -100.0 },
+        // Current camera distance from the look-at pivot. Used by the
+        // vertex shader to compute depth cues and point size in a way
+        // that scales with the zoom level — without it, nodes vanish
+        // when the camera backs off to frame a large graph.
+        uCamDist: { value: 400.0 },
       },
       vertexShader: `
         attribute float aSize, aPhase, aFade, aAttention;
@@ -164,6 +169,7 @@ function buildMountScene(
         uniform float uTime;
         uniform vec2 uMouse, uRippleOrigin;
         uniform float uRippleTime;
+        uniform float uCamDist;
         varying float vPulse, vMouseProx, vDepth, vFade, vAttention;
         varying vec3 vColor;
 
@@ -189,8 +195,28 @@ function buildMountScene(
           vAttention = aAttention;
           vColor = aColor;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          vDepth = smoothstep(-1400.0, -700.0, mv.z);
-          gl_PointSize = aSize * (0.85 + vPulse * 0.3 + vAttention * 0.25) * (500.0 / -mv.z);
+          // Depth fade is now RELATIVE to the camera distance, not a
+          // hardcoded -1400/-700 band. That band only worked when the
+          // camera was roughly ~400 units away; once the auto-fit zooms
+          // out to frame a 150-node constellation, mv.z blows past -1400
+          // and every node's alpha multiplies by 0.
+          //
+          // relDist = 1.0 when the node sits exactly on the focal plane,
+          //           0.5 when it's halfway between camera and pivot,
+          //           1.5 when it's one camera-distance behind the pivot.
+          // We fade from full brightness at relDist <= 0.75 down to 0.4
+          // at relDist = 1.7 — so front-of-graph nodes stay bright and
+          // back-of-graph nodes get a subtle depth dim, regardless of
+          // absolute camera distance.
+          float relDist = -mv.z / max(uCamDist, 1.0);
+          vDepth = mix(0.4, 1.0, smoothstep(1.7, 0.75, relDist));
+          // Perspective-correct point size with a 2.5px floor. Without
+          // the floor, sprites disappear at far zoom levels because
+          // 500/|mv.z| → sub-pixel, and additive blending can't show
+          // half-pixel points.
+          float perspScale = 500.0 / max(-mv.z, 1.0);
+          float rawSize = aSize * (0.85 + vPulse * 0.3 + vAttention * 0.25) * perspScale;
+          gl_PointSize = max(rawSize, 2.5);
           gl_Position = projectionMatrix * mv;
         }
       `,
@@ -406,6 +432,7 @@ function buildMountScene(
 
       state.nodeMat.uniforms.uTime.value = elapsed
       state.nodeMat.uniforms.uMouse.value.set(state.smoothMouse.x, state.smoothMouse.y)
+      state.nodeMat.uniforms.uCamDist.value = state.currentZoom
 
       if (state.ripple.time >= 0) {
         state.ripple.time += delta
@@ -727,9 +754,17 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   }
 
   // ── Recompute pan limit + zoom extents based on new graph radius ──
+  // Now 3D — the constellation has real z extent, so the bounding
+  // sphere used for auto-frame and pan limit has to include all three
+  // coordinates or the camera will stop partway through the graph when
+  // viewed from the side.
   let graphRadius = 1
   for (let i = 0; i < next.count; i++) {
-    const r = Math.sqrt(next.targetPos[i * 3] ** 2 + next.targetPos[i * 3 + 1] ** 2)
+    const r = Math.sqrt(
+      next.targetPos[i * 3] ** 2 +
+      next.targetPos[i * 3 + 1] ** 2 +
+      next.targetPos[i * 3 + 2] ** 2,
+    )
     if (r > graphRadius) graphRadius = r
   }
   state.panLimit = graphRadius * 1.2
