@@ -332,7 +332,7 @@ function buildMountScene(
       targetZ: camZ,
       currentZoom: camZ,
       minZoom: 80,
-      maxZoom: camZ * 1.5,
+      maxZoom: camZ * 1.3,
       isPanning: false,
       isOrbiting: false,
       orbitStart: { x: 0, y: 0 },
@@ -795,7 +795,12 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   // tan(55°/2) ≈ 0.521 → distance ≈ radius / 0.521 ≈ radius * 1.92.
   const fitZ = graphRadius * 2.2
   const camZ = Math.max(300 + Math.min(next.count * 5, 600), fitZ)
-  state.maxZoom = camZ * 1.8
+  // Tight-ish zoom-out ceiling. The old 1.8x multiplier let you back off
+  // almost 2x past the auto-framed distance which felt disorienting on
+  // large graphs — you'd zoom out until the whole constellation was a
+  // dim speck in the middle of an empty void. 1.3x gives ~30% headroom
+  // beyond the auto-frame, enough to breathe but not enough to get lost.
+  state.maxZoom = camZ * 1.3
   state.minZoom = Math.max(camZ * 0.15, 80)
   // On the first reconcile that brings nodes in, auto-frame the whole
   // graph — otherwise large graphs load too zoomed-in because targetZ is
