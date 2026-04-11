@@ -197,13 +197,20 @@ function buildMountScene(
           // into the background.
           vDepth = 1.0;
           // Perspective-correct point size with a 4px floor. Without the
-          // floor, sprites disappear at far zoom levels because
-          // 500/|mv.z| → sub-pixel, and additive blending can't show
-          // half-pixel points. The fragment shader also reads this size
-          // to decide whether to render the sharp starry profile or a
-          // filled-disk profile — at the floor size the filled profile
-          // is the only thing that stays visible.
-          float perspScale = 500.0 / max(-mv.z, 1.0);
+          // floor, sprites disappear at far zoom levels because the
+          // perspScale / |mv.z| term goes sub-pixel and additive
+          // blending can't show half-pixel points. The fragment shader
+          // also reads this size to decide whether to render the sharp
+          // starry profile or a filled-disk profile — at the floor
+          // size the filled profile is the only thing that stays
+          // visible.
+          //
+          // The 650 constant is a global screen-size knob: raising it
+          // makes every node bigger at every zoom; lowering it shrinks
+          // them all. It's the primary dial for "nodes feel the right
+          // size" — the halo suppression + floor + fragment profile
+          // are tuned to look correct across a wide range of sizes.
+          float perspScale = 650.0 / max(-mv.z, 1.0);
           float rawSize = aSize * (0.85 + vPulse * 0.3 + vAttention * 0.25) * perspScale;
           gl_PointSize = max(rawSize, 4.0);
           vSize = gl_PointSize;
