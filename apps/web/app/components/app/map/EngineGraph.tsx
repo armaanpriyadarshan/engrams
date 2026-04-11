@@ -272,9 +272,15 @@ function buildMountScene(
     })
 
     const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.18 })
+    // Signal particles travel along edges. Their size must stay close
+    // to the edge-line width at every zoom level — with sizeAttenuation
+    // on, they ballooned into visible blobs when zoomed in because the
+    // base size of 2 gets perspective-scaled up to dozens of pixels.
+    // Fixed screen-space size (sizeAttenuation: false) keeps them the
+    // same 2px thick as the WebGL lines they ride on.
     const sigMat = new THREE.PointsMaterial({
-      color: 0x999999, size: 2, transparent: true, opacity: 0.35,
-      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+      color: 0x999999, size: 2, transparent: true, opacity: 0.6,
+      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: false,
     })
 
     // ── Empty geometries (populated by applyReconcile) ──
