@@ -31,13 +31,13 @@ export default function PublishedMapPage() {
   }, [slug])
 
   const { data: graphData, loading } = useGraphData(engramId)
-  const positions = useForceLayout(graphData, 1200, 800)
+  const layoutResult = useForceLayout(graphData, 1200, 800, engramId)
 
   const handleNodeClick = useCallback((nodeSlug: string) => {
     setSelectedSlug(nodeSlug)
   }, [])
 
-  if (loading || !graphData || !positions) {
+  if (loading || !graphData || !layoutResult) {
     return (
       <div className="absolute inset-0 flex items-center justify-center">
         <p className="text-xs font-mono text-text-ghost">
@@ -47,11 +47,14 @@ export default function PublishedMapPage() {
     )
   }
 
+  const { positions, meta: layoutMeta } = layoutResult
+
   return (
     <div className="absolute inset-0">
       <EngineGraph
         data={graphData}
         positions={positions}
+        layoutMeta={layoutMeta}
         engramSlug={slug}
         onNodeClick={handleNodeClick}
       />

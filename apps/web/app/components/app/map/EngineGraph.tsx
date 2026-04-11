@@ -4,6 +4,8 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import * as THREE from "three"
 import type { GraphData } from "./useGraphData"
+import type { LayoutMeta } from "./useForceLayout"
+import { getSafeViewport, isInSafeViewport } from "@/lib/map-viewport-bounds"
 import { ARTICLE_TYPE_META, type ArticleType } from "@/lib/article-types"
 import type { GraphBuffers } from "./reconcileGraph"
 import { reconcileGraph } from "./reconcileGraph"
@@ -11,6 +13,7 @@ import { reconcileGraph } from "./reconcileGraph"
 interface EngineGraphProps {
   data: GraphData
   positions: Float32Array
+  layoutMeta: LayoutMeta
   engramSlug: string
   onNodeClick?: (slug: string, x: number, y: number) => void
   nodeVisible?: Uint8Array | null
@@ -30,6 +33,7 @@ const edgeTypeDisplay: Record<string, { label: string; color: string }> = {
 type RefLike<T> = { current: T }
 
 interface SceneState {
+  container: HTMLDivElement
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   renderer: THREE.WebGLRenderer
@@ -79,6 +83,15 @@ interface SceneState {
   isPanning: boolean
   isOrbiting: boolean
   orbitStart: { x: number; y: number }
+
+  // Attention pan — when a new node lands outside the safe viewport, the
+  // camera gently drifts to bring it in, holds for a beat, and drifts
+  // back. Manual panning cancels this.
+  attentionPan: {
+    target: { x: number; y: number }
+    returnTo: { x: number; y: number }
+    startMs: number
+  } | null
 
   // Lifecycle
   frameHandle: number
@@ -145,12 +158,12 @@ function buildMountScene(
         uRippleTime: { value: -100.0 },
       },
       vertexShader: `
-        attribute float aSize, aPhase, aFade;
+        attribute float aSize, aPhase, aFade, aAttention;
         attribute vec3 aColor;
         uniform float uTime;
         uniform vec2 uMouse, uRippleOrigin;
         uniform float uRippleTime;
-        varying float vPulse, vMouseProx, vDepth, vFade;
+        varying float vPulse, vMouseProx, vDepth, vFade, vAttention;
         varying vec3 vColor;
 
         void main() {
@@ -158,31 +171,37 @@ function buildMountScene(
           float dm = distance(position.xy, uMouse);
           float mg = smoothstep(300.0, 0.0, dm);
           vMouseProx = mg;
-          pulse += mg * 0.7;
+          // Mouse-proximity boost dialed down from 0.7 to 0.4 — nodes near
+          // the cursor used to get uncomfortably bright when combined with
+          // the attention pulse. Keeps some glow lift, loses the blow-out.
+          pulse += mg * 0.4;
 
           if (uRippleTime >= 0.0 && uRippleTime < 4.0) {
             float dr = distance(position.xy, uRippleOrigin);
             pulse += smoothstep(80.0, 0.0, abs(dr - uRippleTime * 500.0)) * exp(-uRippleTime) * 1.5;
           }
 
-          vPulse = clamp(pulse, 0.0, 1.4);
+          // Pulse clamp tightened from 1.4 to 1.2 so the peak brightness
+          // can't stack too high with the attention boost in the fragment.
+          vPulse = clamp(pulse, 0.0, 1.2);
           vFade = aFade;
+          vAttention = aAttention;
           vColor = aColor;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           vDepth = smoothstep(-1400.0, -700.0, mv.z);
-          gl_PointSize = aSize * (0.85 + vPulse * 0.3) * (500.0 / -mv.z);
+          gl_PointSize = aSize * (0.85 + vPulse * 0.3 + vAttention * 0.25) * (500.0 / -mv.z);
           gl_Position = projectionMatrix * mv;
         }
       `,
       fragmentShader: `
-        varying float vPulse, vMouseProx, vDepth, vFade;
+        varying float vPulse, vMouseProx, vDepth, vFade, vAttention;
         varying vec3 vColor;
 
         void main() {
           float d = length(gl_PointCoord - 0.5);
           if (d > 0.5) discard;
           float core = exp(-d * 30.0);
-          float a = (exp(-d * 2.5) * 0.06 + exp(-d * 5.0) * 0.18 + exp(-d * 12.0) * 0.5 + core) * vPulse * vDepth * vFade;
+          float a = (exp(-d * 2.5) * 0.06 + exp(-d * 5.0) * 0.18 + exp(-d * 12.0) * 0.5 + core) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6);
           vec3 col = mix(vColor * 0.7, vColor, core);
           col = mix(col, vec3(1.0, 0.98, 0.96), vMouseProx * 0.4);
           gl_FragColor = vec4(col, a);
@@ -210,6 +229,7 @@ function buildMountScene(
 
     // ── Initial SceneState ──
     const state: SceneState = {
+      container,
       scene,
       camera,
       renderer,
@@ -233,6 +253,7 @@ function buildMountScene(
         targetPos: new Float32Array(0),
         fadeCurrent: new Float32Array(0),
         fadeTarget: new Float32Array(0),
+        attention: new Float32Array(0),
         eSrc: new Uint16Array(0),
         eTgt: new Uint16Array(0),
         edgeColors: new Float32Array(0),
@@ -265,6 +286,7 @@ function buildMountScene(
       isPanning: false,
       isOrbiting: false,
       orbitStart: { x: 0, y: 0 },
+      attentionPan: null,
       frameHandle: 0,
       disposed: false,
     }
@@ -307,9 +329,12 @@ function buildMountScene(
     }
     const onMouseDown = (e: MouseEvent) => {
       if (e.button === 0 && state.currentHovered < 0) {
+        // Manual pan cancels any in-flight attention drift — user input wins.
+        state.attentionPan = null
         state.isPanning = true
         state.panStart = { x: e.clientX, y: e.clientY }
       } else if (e.button === 2) {
+        state.attentionPan = null
         state.isOrbiting = true
         state.orbitStart = { x: e.clientX, y: e.clientY }
       }
@@ -372,6 +397,35 @@ function buildMountScene(
 
       // Camera orbit + drift
       const driftScale = Math.min(Math.max((count - 5) / 10, 0), 1)
+
+      // ── Attention pan state machine ──
+      if (state.attentionPan) {
+        const t = performance.now() - state.attentionPan.startMs
+        const { target, returnTo } = state.attentionPan
+        if (t < 600) {
+          // Phase 1: ease-out toward target (600ms)
+          const p = t / 600
+          const k = 1 - Math.pow(1 - p, 3) // ease-out cubic
+          state.panOffset.x = returnTo.x + (target.x - returnTo.x) * k
+          state.panOffset.y = returnTo.y + (target.y - returnTo.y) * k
+        } else if (t < 1600) {
+          // Phase 2: hold at target (1000ms)
+          state.panOffset.x = target.x
+          state.panOffset.y = target.y
+        } else if (t < 2400) {
+          // Phase 3: ease-out back to returnTo (800ms)
+          const p = (t - 1600) / 800
+          const k = 1 - Math.pow(1 - p, 3)
+          state.panOffset.x = target.x + (returnTo.x - target.x) * k
+          state.panOffset.y = target.y + (returnTo.y - target.y) * k
+        } else {
+          // Done
+          state.panOffset.x = returnTo.x
+          state.panOffset.y = returnTo.y
+          state.attentionPan = null
+        }
+      }
+
       state.currentZoom += (state.targetZ - state.currentZoom) * 0.1
       state.orbitTheta += (state.targetTheta - state.orbitTheta) * 0.08
       state.orbitPhi += (state.targetPhi - state.orbitPhi) * 0.08
@@ -384,8 +438,11 @@ function buildMountScene(
       state.camera.lookAt(state.panOffset.x, state.panOffset.y, 0)
 
       // ── Lerp currentPos → targetPos ──
+      // Rate reduced from 6 to 3 (~330ms settle) so ripple neighbors
+      // read as motion rather than an imperceptible snap. Pinned nodes
+      // are unaffected because their currentPos already matches targetPos.
       if (count > 0) {
-        const step = Math.min(delta * 6, 1)
+        const step = Math.min(delta * 3, 1)
         const cp = buffers.currentPos
         const tp = buffers.targetPos
         for (let i = 0; i < count * 3; i++) {
@@ -499,6 +556,18 @@ function buildMountScene(
       }
       if (count > 0) state.nodeGeo.attributes.aFade.needsUpdate = true
 
+      // Decay attention toward 0 at ~1/sec. Only mark the attribute as
+      // needing a GPU upload when something actually changed, to avoid
+      // gratuitous buffer transfers on an idle graph.
+      let attentionDirty = false
+      for (let i = 0; i < count; i++) {
+        if (buffers.attention[i] > 0) {
+          buffers.attention[i] = Math.max(0, buffers.attention[i] - delta)
+          attentionDirty = true
+        }
+      }
+      if (attentionDirty && count > 0) state.nodeGeo.attributes.aAttention.needsUpdate = true
+
       // Update edge positions from currentPos (every other frame to save work)
       frameToggle = !frameToggle
       if (frameToggle && edgeCount > 0) {
@@ -568,8 +637,8 @@ function buildMountScene(
   }
 }
 
-function applyReconcile(state: SceneState, data: GraphData, positions: Float32Array) {
-  const next = reconcileGraph(state.buffers, data, positions)
+function applyReconcile(state: SceneState, data: GraphData, positions: Float32Array, meta: LayoutMeta) {
+  const next = reconcileGraph(state.buffers, data, positions, meta)
   state.buffers = next
 
   // ── Rebuild node geometry with the new buffers ──
@@ -580,6 +649,7 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   nodeGeo.setAttribute("aSize", new THREE.BufferAttribute(next.sizes, 1))
   nodeGeo.setAttribute("aPhase", new THREE.BufferAttribute(next.phases, 1))
   nodeGeo.setAttribute("aFade", new THREE.BufferAttribute(next.fadeCurrent, 1))
+  nodeGeo.setAttribute("aAttention", new THREE.BufferAttribute(next.attention, 1))
   nodeGeo.setAttribute("aColor", new THREE.BufferAttribute(next.nodeColors, 3))
   const nodeMesh = new THREE.Points(nodeGeo, state.nodeMat)
   state.scene.add(nodeMesh)
@@ -649,13 +719,61 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   state.minZoom = Math.max(camZ * 0.15, 80)
   state.targetZ = Math.max(state.minZoom, Math.min(state.maxZoom, state.targetZ))
 
+  // ── Start an attention pan if any new node would land outside the
+  // safe viewport. Only REPLACE an in-flight pan if there's a new target
+  // to drive toward — otherwise leave the existing drift alone so it can
+  // finish its phase. ──
+  if (meta.newSlugs.size > 0) {
+    const safe =
+      typeof window !== "undefined"
+        ? getSafeViewport(window.innerWidth, window.innerHeight)
+        : null
+    if (safe) {
+      const rect = state.container.getBoundingClientRect()
+      const projVec = new THREE.Vector3()
+      let offScreenCount = 0
+      let centroidX = 0
+      let centroidY = 0
+      for (let i = 0; i < next.count; i++) {
+        if (!meta.newSlugs.has(next.slugs[i])) continue
+        const i3 = i * 3
+        projVec
+          .set(next.targetPos[i3], next.targetPos[i3 + 1], next.targetPos[i3 + 2])
+          .project(state.camera)
+        const sx = (projVec.x * 0.5 + 0.5) * rect.width + rect.left
+        const sy = (-projVec.y * 0.5 + 0.5) * rect.height + rect.top
+        if (!isInSafeViewport(sx, sy, safe)) {
+          offScreenCount += 1
+          centroidX += next.targetPos[i3]
+          centroidY += next.targetPos[i3 + 1]
+        }
+      }
+      if (offScreenCount > 0) {
+        // Use the CURRENT returnTo if a pan is already in-flight — don't
+        // trap the user at a mid-drift position when a second reconcile
+        // lands. Otherwise capture the current resting panOffset.
+        const returnTo = state.attentionPan
+          ? state.attentionPan.returnTo
+          : { x: state.panOffset.x, y: state.panOffset.y }
+        state.attentionPan = {
+          target: { x: centroidX / offScreenCount, y: centroidY / offScreenCount },
+          returnTo,
+          startMs: performance.now(),
+        }
+      }
+      // If offScreenCount is 0, leave any in-flight attentionPan alone so
+      // it can finish its three-phase drift. A new reconcile without
+      // off-screen nodes doesn't need to steal the camera.
+    }
+  }
+
   // ── Force hover recompute on next frame: surviving slugs may have moved
   // to new indices, so the old index would point at the wrong node. ──
   state.currentHovered = -1
   state.currentHoveredEdge = -1
 }
 
-export default function EngineGraph({ data, positions, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
+export default function EngineGraph({ data, positions, layoutMeta, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const nodeVisibleRef = useRef<Uint8Array | null>(null)
@@ -708,8 +826,8 @@ export default function EngineGraph({ data, positions, engramSlug, onNodeClick, 
   useEffect(() => {
     const state = sceneRef.current
     if (!sceneReady || !state || data.nodes.length === 0) return
-    applyReconcile(state, data, positions)
-  }, [sceneReady, data, positions])
+    applyReconcile(state, data, positions, layoutMeta)
+  }, [sceneReady, data, positions, layoutMeta])
 
   return (
     <div className="relative w-full h-full">

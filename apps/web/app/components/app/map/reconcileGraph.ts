@@ -1,4 +1,5 @@
 import type { GraphData } from "./useGraphData"
+import type { LayoutMeta } from "./useForceLayout"
 import { getArticleTypeMeta } from "@/lib/article-types"
 
 export interface GraphBuffers {
@@ -19,6 +20,10 @@ export interface GraphBuffers {
   // Tweened fade state
   fadeCurrent: Float32Array // count (rendered each frame via aFade attribute)
   fadeTarget: Float32Array // count
+
+  // Attention state for glow pulse on new nodes. Starts at 1.0 when a
+  // node is freshly added, decays linearly toward 0 in the animation loop.
+  attention: Float32Array // count (rendered each frame via aAttention attribute)
 
   // Edge buffers
   eSrc: Uint16Array // edgeCount
@@ -63,6 +68,7 @@ export function reconcileGraph(
   prev: GraphBuffers | null,
   data: GraphData,
   positions: Float32Array,
+  meta: LayoutMeta,
 ): GraphBuffers {
   const count = data.nodes.length
   const edgeCount = data.edges.length
@@ -75,6 +81,7 @@ export function reconcileGraph(
   const targetPos = new Float32Array(count * 3)
   const fadeCurrent = new Float32Array(count)
   const fadeTarget = new Float32Array(count)
+  const attention = new Float32Array(count)
 
   const slugs: string[] = new Array(count)
   const slugToIndex = new Map<string, number>()
@@ -101,11 +108,19 @@ export function reconcileGraph(
       currentPos[i3 + 1] = prev.currentPos[p3 + 1]
       currentPos[i3 + 2] = prev.currentPos[p3 + 2]
       fadeCurrent[i] = prev.fadeCurrent[prevIdx]
+      // Inherit any in-flight attention from the previous reconcile so a
+      // pulse that's still decaying doesn't get clobbered by a second
+      // reconcile (e.g. two source feeds in quick succession).
+      attention[i] = prev.attention[prevIdx]
     } else {
       currentPos[i3] = x
       currentPos[i3 + 1] = y
       currentPos[i3 + 2] = z
       fadeCurrent[i] = 0 // new node: start invisible, fade in
+      // meta.newSlugs is empty on the very first layout pass (useForceLayout
+      // only populates it on refresh), so the initial load gets attention 0
+      // for every node — no spurious pulse.
+      attention[i] = meta.newSlugs.has(node.slug) ? 1.0 : 0
     }
     fadeTarget[i] = 1
 
@@ -163,6 +178,7 @@ export function reconcileGraph(
     targetPos,
     fadeCurrent,
     fadeTarget,
+    attention,
     eSrc,
     eTgt,
     edgeColors,
