@@ -198,6 +198,14 @@ export function useForceLayout(
     const DELETE_SETTLE_RADIUS = 120
     const DELETE_SETTLE_RADIUS_SQ = DELETE_SETTLE_RADIUS * DELETE_SETTLE_RADIUS
     if (removedSlugs.size > 0) {
+      // Compute graph extent for outward dampening — nodes near the
+      // center get a stronger outward nudge than nodes at the edge.
+      let graphExtent = 1
+      for (const [, pos] of prev) {
+        const r = Math.sqrt(pos.x ** 2 + pos.y ** 2 + pos.z ** 2)
+        if (r > graphExtent) graphExtent = r
+      }
+
       for (const slug of removedSlugs) {
         const deletedPos = prev.get(slug)
         if (!deletedPos) continue
@@ -209,21 +217,28 @@ export function useForceLayout(
           const dz = nPos.z - deletedPos.z
           const dist2 = dx * dx + dy * dy + dz * dz
           if (dist2 >= DELETE_SETTLE_RADIUS_SQ || dist2 < 0.01) continue
-          // Strength falls off linearly: 45% at distance 0, 0% at edge
           const t = 1 - Math.sqrt(dist2) / DELETE_SETTLE_RADIUS
-          const strength = t * 0.45
-          const newX = nPos.x + (deletedPos.x - nPos.x) * strength
-          const newY = nPos.y + (deletedPos.y - nPos.y) * strength
-          const newZ = nPos.z + (deletedPos.z - nPos.z) * strength
-          // Only apply if the nudge moves the node INWARD (toward
-          // origin). Peripheral deletes would otherwise pull cluster
-          // nodes outward toward the edge of the graph.
-          const oldR = nPos.x ** 2 + nPos.y ** 2 + nPos.z ** 2
-          const newR = newX ** 2 + newY ** 2 + newZ ** 2
-          if (newR > oldR) continue
-          nPos.x = newX
-          nPos.y = newY
-          nPos.z = newZ
+          let strength = t * 0.45
+
+          // Check if the nudge moves the node outward (away from center).
+          // If so, dampen based on how far from center the node already
+          // is — interior nodes still get a decent outward nudge (they're
+          // settling toward a gap that's inside the cluster), but edge
+          // nodes get almost none (peripheral deletes shouldn't drag the
+          // constellation apart).
+          const oldR2 = nPos.x ** 2 + nPos.y ** 2 + nPos.z ** 2
+          const candX = nPos.x + (deletedPos.x - nPos.x) * strength
+          const candY = nPos.y + (deletedPos.y - nPos.y) * strength
+          const candZ = nPos.z + (deletedPos.z - nPos.z) * strength
+          const newR2 = candX ** 2 + candY ** 2 + candZ ** 2
+          if (newR2 > oldR2) {
+            const edgeness = Math.min(Math.sqrt(oldR2) / graphExtent, 1)
+            strength *= (1 - edgeness) * 0.3
+          }
+
+          nPos.x += (deletedPos.x - nPos.x) * strength
+          nPos.y += (deletedPos.y - nPos.y) * strength
+          nPos.z += (deletedPos.z - nPos.z) * strength
         }
       }
     }
