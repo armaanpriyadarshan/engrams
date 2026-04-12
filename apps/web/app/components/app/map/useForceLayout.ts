@@ -189,26 +189,32 @@ export function useForceLayout(
       }
     }
 
-    // Deletes: instead of unpinning neighbors and running physics
-    // (which caused nodes to fly off), gently nudge each DIRECT
-    // EDGE NEIGHBOR toward the deleted node's old position. This
-    // creates a subtle "filling the gap" drift that looks like
-    // Obsidian's graph settle. The nudge is a one-time 15% pull —
-    // the animation loop lerps currentPos → targetPos so it reads
-    // as smooth motion. No simulation, no unpinning, no chaos.
+    // Deletes: nudge all nodes within a spatial radius toward the
+    // deleted node's old position — "filling the gap." Uses proximity
+    // not edge connectivity, so visually nearby nodes settle inward
+    // regardless of whether they shared an edge. The nudge strength
+    // falls off with distance: nodes right next to the deleted one
+    // move ~15%, nodes at the edge of the radius barely shift.
+    const DELETE_SETTLE_RADIUS = 60
+    const DELETE_SETTLE_RADIUS_SQ = DELETE_SETTLE_RADIUS * DELETE_SETTLE_RADIUS
     if (removedSlugs.size > 0) {
       for (const slug of removedSlugs) {
         const deletedPos = prev.get(slug)
         if (!deletedPos) continue
-        const neighbors = prevAdj.get(slug)
-        if (!neighbors) continue
-        for (const neighborSlug of neighbors) {
+        for (const [neighborSlug, nPos] of prev) {
+          if (removedSlugs.has(neighborSlug)) continue
           if (!currentSlugs.has(neighborSlug)) continue
-          const nPos = prev.get(neighborSlug)
-          if (!nPos) continue
-          nPos.x += (deletedPos.x - nPos.x) * 0.15
-          nPos.y += (deletedPos.y - nPos.y) * 0.15
-          nPos.z += (deletedPos.z - nPos.z) * 0.15
+          const dx = nPos.x - deletedPos.x
+          const dy = nPos.y - deletedPos.y
+          const dz = nPos.z - deletedPos.z
+          const dist2 = dx * dx + dy * dy + dz * dz
+          if (dist2 >= DELETE_SETTLE_RADIUS_SQ || dist2 < 0.01) continue
+          // Strength falls off linearly: 15% at distance 0, 0% at the edge
+          const t = 1 - Math.sqrt(dist2) / DELETE_SETTLE_RADIUS
+          const strength = t * 0.15
+          nPos.x += (deletedPos.x - nPos.x) * strength
+          nPos.y += (deletedPos.y - nPos.y) * strength
+          nPos.z += (deletedPos.z - nPos.z) * strength
         }
       }
     }
