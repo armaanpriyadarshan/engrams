@@ -41,13 +41,11 @@ export interface LayoutResult {
   meta: LayoutMeta
 }
 
-// v3: 15% tighter spacing tune. v2: 2D → 3D migration. v1: 2D only.
-// Per-edge weight-aware link forces shipped without bumping the key
-// because the formula is anchored at weight=1.0 → current baseline,
-// so legacy edges (all weight=1.0) produce identical layouts to v3.
-// Only future LLM-weighted edges with weight<1.0 will land in new
-// positions, and they ride the existing cache happily.
-const STORAGE_KEY_PREFIX = "engrams-map-layout-v3-"
+// v4: stronger link forces (0.85 strength at w=1.0, was 0.55) so
+// connected nodes actually sit close together instead of stretching
+// edges across the graph. Also more ticks (500 cap vs 300) for
+// better convergence on dense graphs.
+const STORAGE_KEY_PREFIX = "engrams-map-layout-v4-"
 
 interface StoredLayout {
   positions: Array<[string, { x: number; y: number; z: number }]>
@@ -331,8 +329,8 @@ export function useForceLayout(
       .force(
         "link",
         forceLink<ForceNode, ForceLink>(links)
-          .distance((l) => 46 - 12 * (l.weight ?? 1.0))   // w=1.0 → 34 (current); w=0.0 → 46 (looser)
-          .strength((l) => 0.4 + 0.15 * (l.weight ?? 1.0)) // w=1.0 → 0.55 (current); w=0.0 → 0.4 (weaker)
+          .distance((l) => 40 - 12 * (l.weight ?? 1.0))   // w=1.0 → 28 (tight); w=0.0 → 40 (loose)
+          .strength((l) => 0.6 + 0.25 * (l.weight ?? 1.0)) // w=1.0 → 0.85 (firm); w=0.0 → 0.6 (moderate)
       )
       .force("charge", forceManyBody<ForceNode>().strength(repulsion))
       // 3D center force — pulls the whole constellation toward the origin.
@@ -346,7 +344,7 @@ export function useForceLayout(
     // On refresh, only new nodes + spatial ripple neighbors move. 50
     // ticks is enough for them to settle into their new equilibrium
     // without over-displacing.
-    const ticks = isRefresh ? 50 : Math.min(300, 100 + nodeCount * 2)
+    const ticks = isRefresh ? 50 : Math.min(500, 150 + nodeCount * 2)
     for (let i = 0; i < ticks; i++) {
       simulation.tick()
     }
