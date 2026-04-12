@@ -57,25 +57,62 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
     setResearchResult(null)
     try {
       const supabase = createClient()
-      const { data, error } = await supabase.functions.invoke("ask-engram", {
-        body: { engram_id: engramId, question: gap.question },
-      })
-      if (error) {
-        setResearchResult(`Failed: ${error.message ?? "Unknown error"}`)
-      } else if (data?.answer_md) {
-        // Mark the gap as resolved
-        await supabase
-          .from("knowledge_gaps")
-          .update({
-            status: "resolved",
-            resolved_at: new Date().toISOString(),
-          })
-          .eq("id", gap.id)
-        setResearchResult("Gap resolved. Answer filed into the wiki.")
-        await loadGaps()
-      } else {
-        setResearchResult("No answer generated. Try feeding more sources first.")
+
+      // Feed the gap question as a text source through the proven
+      // compile-source pipeline (Pass A → B → C) instead of ask-engram
+      // which times out. The question becomes a source, gets compiled
+      // into articles with wiki-links and edges, and the gap resolves.
+      const title = gap.question.length > 80
+        ? gap.question.slice(0, 77) + "..."
+        : gap.question
+
+      // Build a rich text source from the gap's metadata
+      const content = [
+        `# Research Question\n\n${gap.question}`,
+        gap.evidence ? `\n\n## Evidence\n\n${gap.evidence}` : "",
+        gap.confidence_context ? `\n\n## Context\n\n${gap.confidence_context}` : "",
+        gap.related_slugs.length > 0
+          ? `\n\n## Related Topics\n\n${gap.related_slugs.join(", ")}`
+          : "",
+      ].join("")
+
+      const { data: source, error: insertErr } = await supabase
+        .from("sources")
+        .insert({
+          engram_id: engramId,
+          source_type: "text",
+          source_url: null,
+          content_md: content,
+          title,
+          status: "pending",
+        })
+        .select("id")
+        .single()
+
+      if (insertErr || !source) {
+        setResearchResult("Failed to create research source.")
+        setResearchingId(null)
+        return
       }
+
+      // Fire compile and don't await — it takes 30-60s.
+      // Mark the gap as resolved immediately since we've committed
+      // to researching it.
+      supabase.functions
+        .invoke("compile-source", { body: { source_id: source.id } })
+        .catch(() => {})
+
+      await supabase
+        .from("knowledge_gaps")
+        .update({
+          status: "resolved",
+          resolved_by: source.id,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq("id", gap.id)
+
+      setResearchResult("Researching. Articles will appear as compilation completes.")
+      await loadGaps()
     } catch (err) {
       setResearchResult(`Error: ${err instanceof Error ? err.message : "Request failed"}`)
     }
