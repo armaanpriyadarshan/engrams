@@ -195,7 +195,7 @@ export function useForceLayout(
     // regardless of whether they shared an edge. The nudge strength
     // falls off with distance: nodes right next to the deleted one
     // move ~15%, nodes at the edge of the radius barely shift.
-    const DELETE_SETTLE_RADIUS = 60
+    const DELETE_SETTLE_RADIUS = 100
     const DELETE_SETTLE_RADIUS_SQ = DELETE_SETTLE_RADIUS * DELETE_SETTLE_RADIUS
     if (removedSlugs.size > 0) {
       for (const slug of removedSlugs) {
@@ -209,9 +209,9 @@ export function useForceLayout(
           const dz = nPos.z - deletedPos.z
           const dist2 = dx * dx + dy * dy + dz * dz
           if (dist2 >= DELETE_SETTLE_RADIUS_SQ || dist2 < 0.01) continue
-          // Strength falls off linearly: 15% at distance 0, 0% at the edge
+          // Strength falls off linearly: 35% at distance 0, 0% at edge
           const t = 1 - Math.sqrt(dist2) / DELETE_SETTLE_RADIUS
-          const strength = t * 0.15
+          const strength = t * 0.35
           nPos.x += (deletedPos.x - nPos.x) * strength
           nPos.y += (deletedPos.y - nPos.y) * strength
           nPos.z += (deletedPos.z - nPos.z) * strength
