@@ -1944,6 +1944,101 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── Pass C — dedicated edge discovery ──────────────────────────
+    // Pass B embeds wiki-links inline while writing prose, but it's
+    // unreliable (0-3 links per article) and can't see articles written
+    // later in the same compile. Pass C runs AFTER all articles exist,
+    // sees the full picture, and its only job is finding connections —
+    // no prose writing. One LLM call, returns a batch of edges.
+    if (writtenConcepts.length > 0) {
+      // Build a combined index: existing articles + newly written ones.
+      // For new articles, use the summary from Pass B (writtenConcepts
+      // doesn't store it, so pull from the DB or use the slug/title).
+      const { data: freshArticles } = await supabase
+        .from("articles")
+        .select("slug, title, summary, article_type")
+        .eq("engram_id", source.engram_id)
+        .neq("article_type", "summary")
+
+      const fullIndex = (freshArticles ?? [])
+        .map((a: { slug: string; title: string; summary: string | null; article_type: string }) =>
+          `- ${a.slug}: ${a.title}${a.summary ? " — " + a.summary : ""} [${a.article_type}]`,
+        )
+        .join("\n")
+
+      const newSlugsStr = writtenConcepts.map((w) => w.slug).join(", ")
+
+      const passCPrompt = `You are a knowledge graph builder for a wiki about "${source.title ?? "this topic"}".
+
+Below is the full wiki index. The articles marked as NEW were just written and need connections to the rest of the graph.
+
+## Wiki Index
+${fullIndex}
+
+## Newly Written Articles
+${newSlugsStr}
+
+## Task
+For each NEW article, find connections to OTHER articles in the index (both new and existing). Return a JSON array of edges.
+
+Rules:
+- Every new article MUST have at least 2 connections. More is better — aim for 3-5 per article.
+- Connections can go in either direction (from new→existing, existing→new, or new→new).
+- Weight each edge 0.1–1.0:
+  - 0.8–1.0: prerequisite, parent topic, or essential counterpart
+  - 0.5–0.7: closely related, frequently discussed together
+  - 0.2–0.4: tangential reference, shared context
+- Only create meaningful connections. Don't connect everything to everything.
+- Use exact slugs from the index. Never invent slugs.
+
+Return ONLY valid JSON:
+{ "edges": [{ "from": "slug-a", "to": "slug-b", "weight": 0.8 }, ...] }`
+
+      try {
+        const passCRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openaiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: "You are a knowledge graph edge discovery agent. Return only valid JSON." },
+              { role: "user", content: passCPrompt },
+            ],
+            temperature: 0.2,
+            response_format: { type: "json_object" },
+          }),
+        })
+
+        if (passCRes.ok) {
+          const passCData = await passCRes.json()
+          const passCContent = passCData.choices?.[0]?.message?.content
+          if (passCContent) {
+            const parsed = JSON.parse(passCContent)
+            const edges: unknown[] = Array.isArray(parsed.edges) ? parsed.edges : []
+            for (const raw of edges) {
+              if (!raw || typeof raw !== "object") continue
+              const e = raw as Record<string, unknown>
+              const from = typeof e.from === "string" ? e.from : null
+              const to = typeof e.to === "string" ? e.to : null
+              const w = typeof e.weight === "number" && Number.isFinite(e.weight)
+                ? Math.max(0.1, Math.min(1.0, e.weight))
+                : 0.5
+              if (from && to) {
+                await insertEdge(from, to, w)
+              }
+            }
+          }
+        }
+      } catch (err) {
+        // Pass C is best-effort — a failure here shouldn't tank the
+        // whole compile. The wiki-link edges from Pass B still exist.
+        console.error("[compile-source] Pass C edge discovery failed:", err)
+      }
+    }
+
     // Synthesize the `result` object the downstream propagation logic
     // uses so the existing enqueue code keeps working unchanged.
     const result = {
