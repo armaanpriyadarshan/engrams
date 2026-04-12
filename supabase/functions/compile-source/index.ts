@@ -1145,22 +1145,31 @@ ${rulesBlock}`
     `  ]\n` +
     `}`
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${opts.openaiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.3,
-      response_format: { type: "json_object" },
-    }),
-  })
+  // gpt-4.1-mini for Pass A — gpt-4o-mini was flaking ~67% of the time
+  // on Wikipedia sources, returning empty concept lists from perfectly
+  // good 3-16KB articles. 4.1-mini costs ~3x more per call but Pass A
+  // runs once per source so the total impact is ~$0.002.
+  const callPassA = async () => {
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${opts.openaiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+      }),
+    })
+    return r
+  }
+
+  let res = await callPassA()
 
   if (!res.ok) {
     const body = await res.text()
@@ -1192,6 +1201,45 @@ ${rulesBlock}`
 
     if (!summaryMd.trim()) {
       return { error: "Pass A produced no summary_md" }
+    }
+
+    // Retry once if the model returned a valid summary but zero
+    // concepts — this was happening ~67% of the time on gpt-4o-mini
+    // and still happens occasionally on gpt-4.1-mini. The retry uses
+    // a slightly higher temperature (0.5) to jolt the model into a
+    // different output path.
+    if (concepts.length === 0) {
+      console.warn("[compile-source] Pass A returned 0 concepts, retrying once")
+      const retryRes = await callPassA()
+      if (retryRes.ok) {
+        try {
+          const retryData = await retryRes.json()
+          const retryContent = retryData.choices?.[0]?.message?.content
+          if (retryContent) {
+            const retryParsed = JSON.parse(retryContent)
+            const retryConcepts: PassAConceptCandidate[] = (
+              Array.isArray(retryParsed.concepts) ? retryParsed.concepts : []
+            )
+              .map((c: unknown) => {
+                if (!c || typeof c !== "object") return null
+                const obj = c as Record<string, unknown>
+                const name = typeof obj.name === "string" ? obj.name : null
+                if (!name) return null
+                const definition =
+                  typeof obj.definition === "string" ? obj.definition : undefined
+                return { name, definition }
+              })
+              .filter((c: PassAConceptCandidate | null): c is PassAConceptCandidate => c !== null)
+            if (retryConcepts.length > 0) {
+              return {
+                summaryMd: typeof retryParsed.summary_md === "string" ? retryParsed.summary_md : summaryMd,
+                concepts: retryConcepts,
+                unresolvedQuestions,
+              }
+            }
+          }
+        } catch { /* retry parse failed, fall through to original result */ }
+      }
     }
 
     return { summaryMd, concepts, unresolvedQuestions }
