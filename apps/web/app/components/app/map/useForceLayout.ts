@@ -44,7 +44,7 @@ export interface LayoutResult {
 // v5: rebalanced — links slightly looser (0.75 vs 0.85), repulsion
 // softer (-25 to -55 vs -30 to -70). Connected nodes still cluster
 // but with breathing room; disconnected nodes don't scatter as far.
-const STORAGE_KEY_PREFIX = "engrams-map-layout-v7-"
+const STORAGE_KEY_PREFIX = "engrams-map-layout-v9-"
 
 interface StoredLayout {
   positions: Array<[string, { x: number; y: number; z: number }]>
@@ -302,7 +302,11 @@ export function useForceLayout(
 
     const nodeCount = nodes.length
     // Moderated repulsion so outlier nodes don't drift way past the edge.
-    const repulsion = -18 - Math.min(nodeCount, 20)
+    // Sweet spot between the ultra-compact test (-2/-5) and the
+    // previous scattered feel (-18/-38). Compact enough that the
+    // constellation reads as one organism, loose enough that
+    // individual clusters are distinguishable.
+    const repulsion = -12 - Math.min(nodeCount, 15)
 
     // d3-force-3d requires numDimensions(3) to be set BEFORE nodes are
     // attached — otherwise it initializes nodes using its default 2D
