@@ -195,12 +195,7 @@ function buildMountScene(
           // size the filled profile is the only thing that stays
           // visible.
           //
-          // The 800 constant is a global screen-size knob: raising it
-          // makes every node bigger at every zoom; lowering it shrinks
-          // them all. It's the primary dial for "nodes feel the right
-          // size" — the halo suppression + floor + fragment profile
-          // are tuned to look correct across a wide range of sizes.
-          float perspScale = 800.0 / max(-mv.z, 1.0);
+          float perspScale = 950.0 / max(-mv.z, 1.0);
           float rawSize = aSize * (0.85 + vPulse * 0.3 + vAttention * 0.25) * perspScale;
           gl_PointSize = max(rawSize, 4.0);
           vSize = gl_PointSize;
@@ -241,7 +236,11 @@ function buildMountScene(
           // and carries the "point" shape. haloScale drops from 1.0 at
           // 16px to 0.15 at 40+px, so large sprites become sharp
           // discrete points instead of soft blobs.
-          float haloScale = 1.0 - smoothstep(16.0, 40.0, vSize) * 0.85;
+          // Halo suppression starts earlier (12px vs 16px) and finishes
+          // sooner (30px vs 40px) so dense clusters stay sharp when
+          // you zoom in. The 0.9 multiplier kills 90% of the halo
+          // at large sizes, leaving just the core.
+          float haloScale = 1.0 - smoothstep(12.0, 30.0, vSize) * 0.9;
 
           float peakedCore = exp(-d * 30.0);
           float peakedHalo = exp(-d * 12.0) * 0.5
