@@ -251,12 +251,16 @@ function buildMountScene(
 
           float filled = smoothstep(0.5, 0.0, d) * 0.9;
 
-          // Global 1.15x brightness. With additive blending the peak
-          // alpha clamps at 1 so the very center pixels don't get any
-          // brighter, but mid-alpha pixels (halo ring, filled-disk
-          // edge) lift proportionally — which is where "slightly
-          // brighter without looking blurry" actually lives.
-          float a = mix(filled, peaked, t) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6) * 1.15;
+          // Brightness multiplier scales DOWN as sprites grow large.
+          // At default zoom (vSize ~10-20px) we get the full 1.15x
+          // boost; once you zoom in close enough that individual
+          // sprites hit 40-60+ px, the multiplier drops to ~0.75 to
+          // avoid the close-up "blowout" effect on dense graphs where
+          // every node fills a chunk of screen and the additive
+          // blending stacks. Far view stays bright, close view stays
+          // composed.
+          float zoomBrightness = 1.15 - smoothstep(20.0, 60.0, vSize) * 0.4;
+          float a = mix(filled, peaked, t) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6) * zoomBrightness;
 
           // Color mix: use the peaked core to whiten the center at
           // large sizes, falling back to a smoothstep at small sizes so
@@ -731,18 +735,28 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
     if (r > graphRadius) graphRadius = r
   }
   state.panLimit = graphRadius * 1.2
-  // Distance needed to fit the graph radius in the 55° fov frustum with
-  // padding, so the bounding sphere is always visible on first frame.
+  // Distance needed to fit the graph radius in the 55° fov frustum.
   // tan(55°/2) ≈ 0.521 → distance ≈ radius / 0.521 ≈ radius * 1.92.
-  const fitZ = graphRadius * 2.2
-  const camZ = Math.max(300 + Math.min(next.count * 5, 600), fitZ)
-  // Tight-ish zoom-out ceiling. The old 1.8x multiplier let you back off
-  // almost 2x past the auto-framed distance which felt disorienting on
-  // large graphs — you'd zoom out until the whole constellation was a
-  // dim speck in the middle of an empty void. 1.3x gives ~30% headroom
-  // beyond the auto-frame, enough to breathe but not enough to get lost.
+  // Multiplier 2.0 gives ~4% padding past the absolute fit — outer
+  // nodes are at the edge of the frame but visible. The previous 2.2
+  // multiplier left a noticeable margin around the constellation that
+  // felt too far out for dense graphs.
+  const fitZ = graphRadius * 2.0
+  // Count-driven floor (250 + count*4 capped at 400) ensures sparse
+  // graphs still have breathing room to zoom out, but the cap is low
+  // enough that dense graphs are framed by graphRadius instead of by
+  // a count-derived floor. Old formula capped at 600, which made
+  // dense graphs start ~25% farther out than they needed to be.
+  const camZ = Math.max(250 + Math.min(next.count * 4, 400), fitZ)
+  // Tight-ish zoom-out ceiling: 1.3x past the auto-frame. The old
+  // 1.8x multiplier let users back off so far the constellation
+  // shrunk to a speck.
   state.maxZoom = camZ * 1.3
-  state.minZoom = Math.max(camZ * 0.15, 80)
+  // Loosened the close-zoom clamp from 0.15 → 0.07 of camZ (and
+  // floor 80 → 50) so users can fly in close on dense graphs to
+  // inspect individual nodes. Previously dense graphs hit minZoom
+  // ~135 which felt like the camera couldn't get near anything.
+  state.minZoom = Math.max(camZ * 0.07, 50)
   // On the first reconcile that brings nodes in, auto-frame the whole
   // graph — otherwise large graphs load too zoomed-in because targetZ is
   // still pinned to the empty-scene default. After that, the user's zoom
