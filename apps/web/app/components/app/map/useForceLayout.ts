@@ -189,16 +189,13 @@ export function useForceLayout(
       }
     }
 
-    // removedSlugs is only ever non-empty when isRefresh is true — see
-    // the population guard above. This block is safe on the first render
-    // because removedSlugs stays empty; future edits should preserve
-    // that invariant.
-    if (removedSlugs.size > 0) {
-      for (const slug of removedSlugs) {
-        const pos = prev.get(slug)
-        if (pos) rippleCenters.push({ x: pos.x, y: pos.y })
-      }
-    }
+    // Deletes do NOT contribute ripple centers. The old behavior
+    // unpinned neighbors of the removed node and let d3-force
+    // simulate 50 ticks — but with most nodes pinned, the few
+    // mobile ones got pushed by unbalanced repulsion and flew off
+    // the graph. Obsidian's approach is better: the node disappears,
+    // everything else stays put. Over time, new compiles naturally
+    // adjust the layout as fresh data arrives.
 
     const rippleSlugs = new Set<string>()
     if (rippleCenters.length > 0) {
