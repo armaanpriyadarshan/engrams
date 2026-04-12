@@ -930,7 +930,11 @@ const DEFAULT_WRITE_GUIDANCE = `You will write or rewrite a single wiki article.
 Your job:
 - Produce a clear, encyclopedic article that explains the topic in its own right, drawing on the new summary and the existing article.
 - When an existing article is provided, treat it as the working draft and update it with any new information from the summary. Preserve its voice and any still-accurate claims.
-- Use [[slug]] syntax to link to related articles from the wiki index. Only reference slugs that actually appear in the index or in this concept's new slug.
+- **WIKI-LINKS ARE MANDATORY.** Whenever you mention a concept that exists in the wiki index OR in the other articles being written in this same compile run, you MUST replace the inline mention with [[slug]] syntax. This is the most important rule. An article with zero wiki-links is broken and will be rejected.
+  - BAD: "Espresso machines use a portafilter to hold the coffee grounds, and the grouphead delivers hot water."
+  - GOOD: "Espresso machines use a [[portafilter]] to hold the coffee grounds, and the [[grouphead]] delivers hot water."
+  - Scan the wiki index BEFORE writing. For every concept in the index that's plausibly relevant to your topic, find a place to mention it and link it. Aim for at least 3 wiki-links per article when the index is non-empty; more is better.
+  - Only link to slugs that actually appear in the index or in your fellow concepts' slugs from this compile. Never invent a slug.
 - For every [[slug]] you cite, add an entry to \`link_weights\` with a number from 0.1 to 1.0 indicating how essential that connection is. 1.0 = the article cannot be understood without the linked concept (parent topic, hard prerequisite, central counterpoint). 0.6 = supporting context worth knowing. 0.2 = a passing reference. The driver of the layout is this number, so be honest — don't grade everything 1.0.
 - Third person, encyclopedic. No first person. No hedging. No filler.
 - Assign confidence 0.0–1.0 based on how well the sources support the claims.
@@ -1241,11 +1245,13 @@ ${rulesBlock}`
     `## New Source Summary\n${opts.newSummaryMd}\n\n` +
     `${existingBlock}\n\n` +
     `## Wiki Index\n${opts.wikiIndex}\n\n` +
+    `## Reminder\n` +
+    `Before you write content_md, scan the Wiki Index above. For each slug whose topic is plausibly related to "${opts.conceptName}", plan a place to mention it and use [[slug]] syntax inline. Aim for at least 3 wiki-links per article when the index has relevant entries. Then fill link_weights with a 0.1–1.0 strength for each [[]] you used.\n\n` +
     `## Output Format\n` +
     `{\n` +
     `  "title": "Article Title",\n` +
     `  "summary": "One-sentence summary.",\n` +
-    `  "content_md": "Article body in markdown. Use [[slug]] links.",\n` +
+    `  "content_md": "Article body in markdown. Use [[slug]] links inline.",\n` +
     `  "tags": ["tag1", "tag2"],\n` +
     `  "confidence": 0.85,\n` +
     `  "article_type": "concept",\n` +
