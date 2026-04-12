@@ -252,14 +252,13 @@ function buildMountScene(
           float filled = smoothstep(0.5, 0.0, d) * 0.9;
 
           // Brightness multiplier scales DOWN as sprites grow large.
-          // At default zoom (vSize ~10-20px) we get the full 1.15x
-          // boost; once you zoom in close enough that individual
-          // sprites hit 40-60+ px, the multiplier drops to ~0.75 to
-          // avoid the close-up "blowout" effect on dense graphs where
-          // every node fills a chunk of screen and the additive
-          // blending stacks. Far view stays bright, close view stays
-          // composed.
-          float zoomBrightness = 1.15 - smoothstep(20.0, 60.0, vSize) * 0.4;
+          // Small sprites (far zoom, 4-10px) need extra punch because
+          // they're only a few pixels — even at alpha=1.0, a 5px dot
+          // looks dim to the eye. 1.5x lifts them to read clearly on
+          // the dark background. As you zoom in and sprites grow past
+          // 15px, the multiplier rolls off to 0.8 so the close-up
+          // stays composed instead of blown out.
+          float zoomBrightness = 1.5 - smoothstep(15.0, 50.0, vSize) * 0.7;
           float a = mix(filled, peaked, t) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6) * zoomBrightness;
 
           // Color mix: use the peaked core to whiten the center at
