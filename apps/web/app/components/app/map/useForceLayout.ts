@@ -209,12 +209,21 @@ export function useForceLayout(
           const dz = nPos.z - deletedPos.z
           const dist2 = dx * dx + dy * dy + dz * dz
           if (dist2 >= DELETE_SETTLE_RADIUS_SQ || dist2 < 0.01) continue
-          // Strength falls off linearly: 35% at distance 0, 0% at edge
+          // Strength falls off linearly: 45% at distance 0, 0% at edge
           const t = 1 - Math.sqrt(dist2) / DELETE_SETTLE_RADIUS
           const strength = t * 0.45
-          nPos.x += (deletedPos.x - nPos.x) * strength
-          nPos.y += (deletedPos.y - nPos.y) * strength
-          nPos.z += (deletedPos.z - nPos.z) * strength
+          const newX = nPos.x + (deletedPos.x - nPos.x) * strength
+          const newY = nPos.y + (deletedPos.y - nPos.y) * strength
+          const newZ = nPos.z + (deletedPos.z - nPos.z) * strength
+          // Only apply if the nudge moves the node INWARD (toward
+          // origin). Peripheral deletes would otherwise pull cluster
+          // nodes outward toward the edge of the graph.
+          const oldR = nPos.x ** 2 + nPos.y ** 2 + nPos.z ** 2
+          const newR = newX ** 2 + newY ** 2 + newZ ** 2
+          if (newR > oldR) continue
+          nPos.x = newX
+          nPos.y = newY
+          nPos.z = newZ
         }
       }
     }
