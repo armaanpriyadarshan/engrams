@@ -195,7 +195,7 @@ export function useForceLayout(
     // regardless of whether they shared an edge. The nudge strength
     // falls off with distance: nodes right next to the deleted one
     // move ~15%, nodes at the edge of the radius barely shift.
-    const DELETE_SETTLE_RADIUS = 120
+    const DELETE_SETTLE_RADIUS = 160
     const DELETE_SETTLE_RADIUS_SQ = DELETE_SETTLE_RADIUS * DELETE_SETTLE_RADIUS
     if (removedSlugs.size > 0) {
       // Compute graph extent for outward dampening — nodes near the
@@ -218,7 +218,7 @@ export function useForceLayout(
           const dist2 = dx * dx + dy * dy + dz * dz
           if (dist2 >= DELETE_SETTLE_RADIUS_SQ || dist2 < 0.01) continue
           const t = 1 - Math.sqrt(dist2) / DELETE_SETTLE_RADIUS
-          let strength = t * 0.45
+          let strength = t * 0.55
 
           // Check if the nudge moves the node outward (away from center).
           // If so, dampen based on how far from center the node already
@@ -357,7 +357,7 @@ export function useForceLayout(
     // settle. Creates a "making room" effect on insertion. Runs
     // AFTER simulation ticks so the new node's position is final.
     if (isRefresh && newSlugs.size > 0) {
-      const INSERT_PUSH_RADIUS = 120
+      const INSERT_PUSH_RADIUS = 160
       const INSERT_PUSH_RADIUS_SQ = INSERT_PUSH_RADIUS * INSERT_PUSH_RADIUS
       for (let i = 0; i < nodeCount; i++) {
         if (!newSlugs.has(nodes[i].slug)) continue
@@ -378,7 +378,7 @@ export function useForceLayout(
           const dist = Math.sqrt(dist2)
           // Strength falls off linearly, max 10 sim units of push
           const t = 1 - dist / INSERT_PUSH_RADIUS
-          const pushMag = t * 10
+          const pushMag = t * 14
           // Push direction: away from the new node
           nodes[j].x = ex + (dx / dist) * pushMag
           nodes[j].y = ey + (dy / dist) * pushMag
