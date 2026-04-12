@@ -28,6 +28,7 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
   const [articles, setArticles] = useState<RelatedArticle[]>([])
   const [loading, setLoading] = useState(true)
   const [detecting, setDetecting] = useState(false)
+  const [researchingId, setResearchingId] = useState<string | null>(null)
 
   const loadGaps = useCallback(async () => {
     const supabase = createClient()
@@ -48,6 +49,26 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
     await supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId } })
     await loadGaps()
     setDetecting(false)
+  }, [engramId, loadGaps])
+
+  const researchGap = useCallback(async (gap: Gap) => {
+    setResearchingId(gap.id)
+    const supabase = createClient()
+    const { data, error } = await supabase.functions.invoke("ask-engram", {
+      body: { engram_id: engramId, question: gap.question },
+    })
+    if (!error && data) {
+      // Mark the gap as resolved
+      await supabase
+        .from("knowledge_gaps")
+        .update({
+          status: "resolved",
+          resolved_at: new Date().toISOString(),
+        })
+        .eq("id", gap.id)
+      await loadGaps()
+    }
+    setResearchingId(null)
   }, [engramId, loadGaps])
 
   const getArticle = (slug: string) => articles.find(a => a.slug === slug)
@@ -155,6 +176,15 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
                   </div>
                 </div>
               )}
+
+              {/* Research button */}
+              <button
+                onClick={(e) => { e.stopPropagation(); researchGap(gap) }}
+                disabled={researchingId !== null}
+                className="mt-3 text-[10px] font-mono text-text-ghost hover:text-text-secondary border border-border/60 hover:border-border-emphasis px-2 py-1 transition-colors duration-120 cursor-pointer disabled:opacity-30 disabled:cursor-default"
+              >
+                {researchingId === gap.id ? "Researching..." : "Research this gap"}
+              </button>
 
             </div>
           ))}
