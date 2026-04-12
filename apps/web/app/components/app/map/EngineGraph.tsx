@@ -566,7 +566,7 @@ function buildMountScene(
           const vis = nodeVisibleRef.current
           for (let i = 0; i < count; i++) {
             const filterOk = !vis || vis[i] === 1
-            buffers.fadeTarget[i] = (i === closest || nbs.has(i)) ? 1.0 : (filterOk ? 0.35 : 0.08)
+            buffers.fadeTarget[i] = (i === closest || nbs.has(i)) ? 1.0 : (filterOk ? 0.55 : 0.15)
           }
           const i3 = closest * 3
           projVec.set(cp[i3], cp[i3 + 1], cp[i3 + 2]).project(state.camera)
@@ -604,7 +604,7 @@ function buildMountScene(
           const vis = nodeVisibleRef.current
           for (let i = 0; i < count; i++) {
             const filterOk = !vis || vis[i] === 1
-            buffers.fadeTarget[i] = (i === buffers.eSrc[hoveredEdge] || i === buffers.eTgt[hoveredEdge]) ? 1.0 : (filterOk ? 0.35 : 0.08)
+            buffers.fadeTarget[i] = (i === buffers.eSrc[hoveredEdge] || i === buffers.eTgt[hoveredEdge]) ? 1.0 : (filterOk ? 0.55 : 0.15)
           }
         } else {
           const vis = nodeVisibleRef.current
