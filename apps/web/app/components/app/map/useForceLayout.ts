@@ -189,13 +189,29 @@ export function useForceLayout(
       }
     }
 
-    // Deletes do NOT contribute ripple centers. The old behavior
-    // unpinned neighbors of the removed node and let d3-force
-    // simulate 50 ticks — but with most nodes pinned, the few
-    // mobile ones got pushed by unbalanced repulsion and flew off
-    // the graph. Obsidian's approach is better: the node disappears,
-    // everything else stays put. Over time, new compiles naturally
-    // adjust the layout as fresh data arrives.
+    // Deletes: instead of unpinning neighbors and running physics
+    // (which caused nodes to fly off), gently nudge each DIRECT
+    // EDGE NEIGHBOR toward the deleted node's old position. This
+    // creates a subtle "filling the gap" drift that looks like
+    // Obsidian's graph settle. The nudge is a one-time 15% pull —
+    // the animation loop lerps currentPos → targetPos so it reads
+    // as smooth motion. No simulation, no unpinning, no chaos.
+    if (removedSlugs.size > 0) {
+      for (const slug of removedSlugs) {
+        const deletedPos = prev.get(slug)
+        if (!deletedPos) continue
+        const neighbors = prevAdj.get(slug)
+        if (!neighbors) continue
+        for (const neighborSlug of neighbors) {
+          if (!currentSlugs.has(neighborSlug)) continue
+          const nPos = prev.get(neighborSlug)
+          if (!nPos) continue
+          nPos.x += (deletedPos.x - nPos.x) * 0.15
+          nPos.y += (deletedPos.y - nPos.y) * 0.15
+          nPos.z += (deletedPos.z - nPos.z) * 0.15
+        }
+      }
+    }
 
     const rippleSlugs = new Set<string>()
     if (rippleCenters.length > 0) {
