@@ -44,7 +44,7 @@ export interface LayoutResult {
 // v5: rebalanced — links slightly looser (0.75 vs 0.85), repulsion
 // softer (-25 to -55 vs -30 to -70). Connected nodes still cluster
 // but with breathing room; disconnected nodes don't scatter as far.
-const STORAGE_KEY_PREFIX = "engrams-map-layout-v5-"
+const STORAGE_KEY_PREFIX = "engrams-map-layout-v6-"
 
 interface StoredLayout {
   positions: Array<[string, { x: number; y: number; z: number }]>
@@ -302,9 +302,7 @@ export function useForceLayout(
 
     const nodeCount = nodes.length
     // Moderated repulsion so outlier nodes don't drift way past the edge.
-    // Softer repulsion so disconnected nodes don't scatter as far.
-    // Was -30 to -70; now -25 to -55.
-    const repulsion = -25 - Math.min(nodeCount, 30)
+    const repulsion = -22 - Math.min(nodeCount, 25)
 
     // d3-force-3d requires numDimensions(3) to be set BEFORE nodes are
     // attached — otherwise it initializes nodes using its default 2D
@@ -330,8 +328,8 @@ export function useForceLayout(
       .force(
         "link",
         forceLink<ForceNode, ForceLink>(links)
-          .distance((l) => 42 - 10 * (l.weight ?? 1.0))   // w=1.0 → 32; w=0.0 → 42
-          .strength((l) => 0.55 + 0.2 * (l.weight ?? 1.0)) // w=1.0 → 0.75; w=0.0 → 0.55
+          .distance((l) => 46 - 10 * (l.weight ?? 1.0))   // w=1.0 → 36; w=0.0 → 46
+          .strength((l) => 0.5 + 0.18 * (l.weight ?? 1.0)) // w=1.0 → 0.68; w=0.0 → 0.5
       )
       .force("charge", forceManyBody<ForceNode>().strength(repulsion))
       // 3D center force — pulls the whole constellation toward the origin.
