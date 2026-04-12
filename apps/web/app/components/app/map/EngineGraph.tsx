@@ -259,7 +259,12 @@ function buildMountScene(
           // 15px, the multiplier rolls off to 0.8 so the close-up
           // stays composed instead of blown out.
           float zoomBrightness = 1.5 - smoothstep(15.0, 50.0, vSize) * 0.7;
-          float a = mix(filled, peaked, t) * vPulse * vDepth * vFade * (1.0 + vAttention * 0.6) * zoomBrightness;
+          // Clamp to 1.0 BEFORE applying vFade so the fade actually
+          // dims the core. Without this, the peaked center (1.74) ×
+          // brightness (1.5) stays above 1.0 even at 55% fade and the
+          // node doesn't visually dim at all — only the halo fades.
+          float rawA = min(mix(filled, peaked, t) * vPulse * vDepth * (1.0 + vAttention * 0.6) * zoomBrightness, 1.0);
+          float a = rawA * vFade;
 
           // Color mix: use the peaked core to whiten the center at
           // large sizes, falling back to a smoothstep at small sizes so
