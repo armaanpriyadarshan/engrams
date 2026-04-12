@@ -29,6 +29,7 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
   const [loading, setLoading] = useState(true)
   const [detecting, setDetecting] = useState(false)
   const [researchingId, setResearchingId] = useState<string | null>(null)
+  const [researchResult, setResearchResult] = useState<string | null>(null)
 
   const loadGaps = useCallback(async () => {
     const supabase = createClient()
@@ -53,20 +54,30 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
 
   const researchGap = useCallback(async (gap: Gap) => {
     setResearchingId(gap.id)
-    const supabase = createClient()
-    const { data, error } = await supabase.functions.invoke("ask-engram", {
-      body: { engram_id: engramId, question: gap.question },
-    })
-    if (!error && data) {
-      // Mark the gap as resolved
-      await supabase
-        .from("knowledge_gaps")
-        .update({
-          status: "resolved",
-          resolved_at: new Date().toISOString(),
-        })
-        .eq("id", gap.id)
-      await loadGaps()
+    setResearchResult(null)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase.functions.invoke("ask-engram", {
+        body: { engram_id: engramId, question: gap.question },
+      })
+      if (error) {
+        setResearchResult(`Failed: ${error.message ?? "Unknown error"}`)
+      } else if (data?.answer_md) {
+        // Mark the gap as resolved
+        await supabase
+          .from("knowledge_gaps")
+          .update({
+            status: "resolved",
+            resolved_at: new Date().toISOString(),
+          })
+          .eq("id", gap.id)
+        setResearchResult("Gap resolved. Answer filed into the wiki.")
+        await loadGaps()
+      } else {
+        setResearchResult("No answer generated. Try feeding more sources first.")
+      }
+    } catch (err) {
+      setResearchResult(`Error: ${err instanceof Error ? err.message : "Request failed"}`)
     }
     setResearchingId(null)
   }, [engramId, loadGaps])
@@ -113,6 +124,10 @@ export default function KnowledgeGaps({ engramId, engramSlug }: { engramId: stri
           {detecting ? "Analyzing..." : "Detect"}
         </button>
       </div>
+
+      {researchResult && (
+        <p className="text-[10px] font-mono text-text-tertiary mb-3">{researchResult}</p>
+      )}
 
       {loading && <p className="text-xs text-text-ghost">Loading...</p>}
 
