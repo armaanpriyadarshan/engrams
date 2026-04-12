@@ -195,7 +195,7 @@ export function useForceLayout(
     // regardless of whether they shared an edge. The nudge strength
     // falls off with distance: nodes right next to the deleted one
     // move ~15%, nodes at the edge of the radius barely shift.
-    const DELETE_SETTLE_RADIUS = 100
+    const DELETE_SETTLE_RADIUS = 120
     const DELETE_SETTLE_RADIUS_SQ = DELETE_SETTLE_RADIUS * DELETE_SETTLE_RADIUS
     if (removedSlugs.size > 0) {
       for (const slug of removedSlugs) {
@@ -211,7 +211,7 @@ export function useForceLayout(
           if (dist2 >= DELETE_SETTLE_RADIUS_SQ || dist2 < 0.01) continue
           // Strength falls off linearly: 35% at distance 0, 0% at edge
           const t = 1 - Math.sqrt(dist2) / DELETE_SETTLE_RADIUS
-          const strength = t * 0.35
+          const strength = t * 0.45
           nPos.x += (deletedPos.x - nPos.x) * strength
           nPos.y += (deletedPos.y - nPos.y) * strength
           nPos.z += (deletedPos.z - nPos.z) * strength
@@ -325,6 +325,42 @@ export function useForceLayout(
     const ticks = isRefresh ? 50 : Math.min(300, 100 + nodeCount * 2)
     for (let i = 0; i < ticks; i++) {
       simulation.tick()
+    }
+
+    // ── Insert push: new nodes nudge nearby existing nodes outward ──
+    // After the simulation places the new node, push existing nodes
+    // within a radius slightly away — the inverse of the delete
+    // settle. Creates a "making room" effect on insertion. Runs
+    // AFTER simulation ticks so the new node's position is final.
+    if (isRefresh && newSlugs.size > 0) {
+      const INSERT_PUSH_RADIUS = 120
+      const INSERT_PUSH_RADIUS_SQ = INSERT_PUSH_RADIUS * INSERT_PUSH_RADIUS
+      for (let i = 0; i < nodeCount; i++) {
+        if (!newSlugs.has(nodes[i].slug)) continue
+        const nx = nodes[i].x ?? 0
+        const ny = nodes[i].y ?? 0
+        const nz = nodes[i].z ?? 0
+        for (let j = 0; j < nodeCount; j++) {
+          if (i === j) continue
+          if (newSlugs.has(nodes[j].slug)) continue
+          const ex = nodes[j].x ?? 0
+          const ey = nodes[j].y ?? 0
+          const ez = nodes[j].z ?? 0
+          const dx = ex - nx
+          const dy = ey - ny
+          const dz = ez - nz
+          const dist2 = dx * dx + dy * dy + dz * dz
+          if (dist2 >= INSERT_PUSH_RADIUS_SQ || dist2 < 0.01) continue
+          const dist = Math.sqrt(dist2)
+          // Strength falls off linearly, max 10 sim units of push
+          const t = 1 - dist / INSERT_PUSH_RADIUS
+          const pushMag = t * 10
+          // Push direction: away from the new node
+          nodes[j].x = ex + (dx / dist) * pushMag
+          nodes[j].y = ey + (dy / dist) * pushMag
+          nodes[j].z = ez + (dz / dist) * pushMag
+        }
+      }
     }
 
     // Establish the scale on first layout and never change it.
