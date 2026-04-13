@@ -260,17 +260,22 @@ export function useForceLayout(
       const cached = prev.get(n.slug)
       const isRipple = rippleSlugs.has(n.slug)
       if (isRefresh && cached && !isRipple) {
-        // Pin non-ripple existing nodes hard (fx/fy/fz) so the simulation
-        // only moves new ones + direct neighbors of changes.
+        // Existing nodes start at their cached position but are
+        // NOT hard-pinned. They're free to drift as the simulation
+        // resettles the whole graph. This means organic growth
+        // (feeding one source at a time) produces layouts as good
+        // as bulk loading — the entire constellation readjusts
+        // each time a new node arrives, like Obsidian's graph.
+        //
+        // The old approach (fx/fy/fz pinning) froze early nodes in
+        // place forever, so the global structure never optimized as
+        // the graph grew.
         return {
           index: i,
           slug: n.slug,
           x: cached.x,
           y: cached.y,
           z: cached.z,
-          fx: cached.x,
-          fy: cached.y,
-          fz: cached.z,
         }
       }
       // New nodes and ripple neighbors are mobile. Ripple neighbors start
@@ -347,7 +352,11 @@ export function useForceLayout(
     // On refresh, only new nodes + spatial ripple neighbors move. 50
     // ticks is enough for them to settle into their new equilibrium
     // without over-displacing.
-    const ticks = isRefresh ? 50 : Math.min(500, 150 + nodeCount * 2)
+    // With soft-pinning (no fx/fy/fz), the incremental path needs
+    // more ticks so the whole graph can resettle, not just the new
+    // nodes. 120 ticks is enough for a gentle adjustment without
+    // making every source feed feel sluggish.
+    const ticks = isRefresh ? 120 : Math.min(300, 100 + nodeCount)
     for (let i = 0; i < ticks; i++) {
       simulation.tick()
     }
