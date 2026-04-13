@@ -317,7 +317,7 @@ export function useForceLayout(
           .radius((_: SimNode, i: number) => 14 + (data.nodes[i]?.depth ?? 0) * 5)
           .strength(1),
       )
-      .velocityDecay(0.6)
+      .velocityDecay(0.8)
       .alphaDecay(0.015)
       .stop()
 
@@ -329,12 +329,12 @@ export function useForceLayout(
       // First layout — let the simulation run from default alpha (1).
       // No reheat needed.
     } else if (newSlugs.size > 0) {
-      sim.alpha(0.5).alphaTarget(0)
+      sim.alpha(0.12).alphaTarget(0)
     } else if (removedSlugs.size > 0) {
-      sim.alpha(0.3).alphaTarget(0)
+      sim.alpha(0.08).alphaTarget(0)
     } else {
       // Edge-only change (new edges arrived for existing nodes).
-      sim.alpha(0.4).alphaTarget(0)
+      sim.alpha(0.1).alphaTarget(0)
     }
 
     // ── Compute scale on first layout ───────────────────────────────
