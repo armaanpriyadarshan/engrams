@@ -327,12 +327,12 @@ export function useForceLayout(
       // First layout — let the simulation run from default alpha (1).
       // No reheat needed.
     } else if (newSlugs.size > 0) {
-      sim.alpha(0.3).alphaTarget(0)
+      sim.alpha(0.5).alphaTarget(0)
     } else if (removedSlugs.size > 0) {
-      sim.alpha(0.15).alphaTarget(0)
+      sim.alpha(0.3).alphaTarget(0)
     } else {
       // Edge-only change (new edges arrived for existing nodes).
-      sim.alpha(0.2).alphaTarget(0)
+      sim.alpha(0.4).alphaTarget(0)
     }
 
     // ── Compute scale on first layout ───────────────────────────────
