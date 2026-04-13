@@ -284,7 +284,7 @@ export function useForceLayout(
     }))
 
     const nodeCount = nodes.length
-    const repulsion = -6 - Math.min(nodeCount, 8)
+    const repulsion = -4 - Math.min(nodeCount, 6)
 
     // ── Create or reconfigure simulation ────────────────────────────
     // d3-force-3d requires numDimensions(3) to be set BEFORE nodes are
@@ -297,15 +297,15 @@ export function useForceLayout(
       .force(
         "link",
         forceLink<SimNode, SimLink>(links)
-          .distance((l: SimLink) => 52 - 10 * (l.weight ?? 1.0))
-          .strength((l: SimLink) => 0.45 + 0.15 * (l.weight ?? 1.0)),
+          .distance((l: SimLink) => 40 - 10 * (l.weight ?? 1.0))
+          .strength((l: SimLink) => 0.55 + 0.2 * (l.weight ?? 1.0)),
       )
       .force("charge", forceManyBody<SimNode>().strength(repulsion))
-      .force("center", forceCenter<SimNode>(0, 0, 0).strength(0.85))
+      .force("center", forceCenter<SimNode>(0, 0, 0).strength(1.0))
       .force(
         "collide",
         forceCollide<SimNode>()
-          .radius((_: SimNode, i: number) => 19 + (data.nodes[i]?.depth ?? 0) * 7)
+          .radius((_: SimNode, i: number) => 12 + (data.nodes[i]?.depth ?? 0) * 5)
           .strength(1),
       )
       .stop() // We tick manually in the animation loop
