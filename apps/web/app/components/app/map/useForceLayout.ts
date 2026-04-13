@@ -1,25 +1,33 @@
 /* eslint-disable react-hooks/refs -- this hook deliberately uses refs as
-   cross-render caches for force-layout positions, adjacency, and scale
-   so that new data doesn't retrigger the full simulation. The React 19
-   rule is aware that ref access inside useMemo is unusual but here it's
-   the intended behavior. */
-import { useMemo, useRef, useEffect, useState } from "react"
+   cross-render caches for the persistent force simulation, scale, and
+   position data. The simulation lives in a ref so it survives re-renders
+   and can be ticked externally by the animation loop. */
+import { useRef, useEffect, useState, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
-// d3-force-3d is a drop-in superset of d3-force that adds a z axis. Same
-// API — forceSimulation, forceLink, etc. — but nodes carry x/y/z and every
-// force operates in three dimensions when numDimensions(3) is set. The 2D
-// layout stays visually correct at the canonical front-on camera angle and
-// gains real depth variation when the user orbits.
-import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, type SimulationNodeDatum, type SimulationLinkDatum } from "d3-force-3d"
+import {
+  forceSimulation,
+  forceLink,
+  forceManyBody,
+  forceCenter,
+  forceCollide,
+  type SimulationNodeDatum,
+  type SimulationLinkDatum,
+} from "d3-force-3d"
 import type { GraphData } from "./useGraphData"
 import { getSafeViewport } from "@/lib/map-viewport-bounds"
 
-interface ForceNode extends SimulationNodeDatum {
+// ── Public interfaces ──────────────────────────────────────────────
+
+export interface SimNode extends SimulationNodeDatum {
   index: number
   slug: string
   z?: number
   vz?: number
   fz?: number | null
+}
+
+interface SimLink extends SimulationLinkDatum<SimNode> {
+  weight: number
 }
 
 interface LayoutScale {
@@ -28,23 +36,24 @@ interface LayoutScale {
   yOffset: number
 }
 
-// Metadata about what changed from the previous layout pass. The animation
-// layer uses this to drive attention effects (glow on new nodes, pan on
-// off-screen new nodes) and to decide which existing nodes should be
-// temporarily un-pinned so a ripple motion can play out.
 export interface LayoutMeta {
   newSlugs: Set<string>
   rippleSlugs: Set<string>
 }
 
-export interface LayoutResult {
-  positions: Float32Array
+export interface SimulationHandle {
+  /** Tick simulation if warm. Returns true if alpha > 0.001. */
+  tick: () => boolean
+  /** Read scaled world position for node i into `out`. */
+  readPosition: (i: number, out: { x: number; y: number; z: number }) => void
+  /** Current node count. */
+  count: number
+  /** Layout metadata for fade/attention effects. */
   meta: LayoutMeta
 }
 
-// v5: rebalanced — links slightly looser (0.75 vs 0.85), repulsion
-// softer (-25 to -55 vs -30 to -70). Connected nodes still cluster
-// but with breathing room; disconnected nodes don't scatter as far.
+// ── Persistence ────────────────────────────────────────────────────
+
 const STORAGE_KEY_PREFIX = "engrams-map-layout-v10-"
 
 interface StoredLayout {
@@ -96,19 +105,35 @@ function writeStoredLayout(
   }
 }
 
+// ── Debounce timer for persistence on cooldown ─────────────────────
+
+const PERSIST_DELAY_MS = 2000
+
+// ── Hook ───────────────────────────────────────────────────────────
+
 export function useForceLayout(
   data: GraphData | null,
   width: number,
   height: number,
   engramId: string | null = null,
-): LayoutResult | null {
-  const prevPositions = useRef<Map<string, { x: number; y: number; z: number }>>(new Map())
-  const prevAdjacency = useRef<Map<string, Set<string>>>(new Map())
+): SimulationHandle | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const simRef = useRef<ReturnType<typeof forceSimulation<SimNode>> | null>(null)
+  const nodesRef = useRef<SimNode[]>([])
+  const prevSlugsRef = useRef<Set<string>>(new Set())
   const scaleRef = useRef<LayoutScale | null>(null)
   const seededEngramId = useRef<string | null>(null)
+  const prevPositions = useRef<Map<string, { x: number; y: number; z: number }>>(new Map())
+  const metaRef = useRef<LayoutMeta>({ newSlugs: new Set(), rippleSlugs: new Set() })
+  const dataRef = useRef<GraphData | null>(null)
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasCooledRef = useRef(false)
 
-  // Counter that bumps when server-side layout arrives, forcing useMemo
-  // to re-run with the DB-seeded positions.
+  // Stable handle ref — never recreated.
+  const handleRef = useRef<SimulationHandle | null>(null)
+
+  // Counter that bumps when server-side layout arrives, forcing the
+  // effect to re-run with the DB-seeded positions.
   const [dbSyncTick, setDbSyncTick] = useState(0)
 
   // Fetch layout from Supabase when localStorage is empty. This is what
@@ -142,186 +167,100 @@ export function useForceLayout(
       .catch(() => {})
   }, [engramId])
 
-  return useMemo(() => {
-    if (!data || data.nodes.length === 0) return null
+  // ── Schedule persistence on cooldown ──────────────────────────────
 
-    // Seed caches from localStorage on first useMemo call per engram, or
-    // whenever the engram changes. Can't do this in the useRef initializer
-    // because engramId is loaded asynchronously and is null on first
-    // render — the initializer runs before the id is known.
+  const schedulePersist = useCallback(() => {
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
+    persistTimerRef.current = setTimeout(() => {
+      const nodes = nodesRef.current
+      if (nodes.length === 0 || !scaleRef.current) return
+      const posMap = new Map<string, { x: number; y: number; z: number }>()
+      for (const n of nodes) {
+        posMap.set(n.slug, { x: n.x ?? 0, y: n.y ?? 0, z: n.z ?? 0 })
+      }
+      prevPositions.current = posMap
+      writeStoredLayout(engramId, posMap, scaleRef.current.maxR)
+    }, PERSIST_DELAY_MS)
+  }, [engramId])
+
+  // ── Create / patch simulation when data changes ───────────────────
+
+  useEffect(() => {
+    if (!data || data.nodes.length === 0) {
+      // No data — tear down any existing simulation.
+      simRef.current = null
+      nodesRef.current = []
+      prevSlugsRef.current = new Set()
+      metaRef.current = { newSlugs: new Set(), rippleSlugs: new Set() }
+      if (handleRef.current) handleRef.current.count = 0
+      return
+    }
+
+    // Seed caches from localStorage on first call per engram, or
+    // whenever the engram changes.
     if (engramId !== seededEngramId.current) {
       seededEngramId.current = engramId
       const stored = readStoredLayout(engramId)
       if (stored) {
         prevPositions.current = new Map(stored.positions)
-        scaleRef.current = null // will be re-initialized below using stored maxR
+        scaleRef.current = null
       } else {
         prevPositions.current = new Map()
         scaleRef.current = null
       }
-      prevAdjacency.current = new Map()
+      prevSlugsRef.current = new Set()
+      simRef.current = null // force full rebuild for new engram
     }
 
+    dataRef.current = data
     const prev = prevPositions.current
-    const prevAdj = prevAdjacency.current
-    const isRefresh = prev.size > 0
+    const prevSlugs = prevSlugsRef.current
+    const isRefresh = prevSlugs.size > 0
 
-    // ── Diff against the cached layout to identify what changed ──
+    // ── Diff ────────────────────────────────────────────────────────
+    const currentSlugs = new Set(data.nodes.map((n) => n.slug))
     const newSlugs = new Set<string>()
     const removedSlugs = new Set<string>()
-    const currentSlugs = new Set<string>()
-    for (const n of data.nodes) {
-      currentSlugs.add(n.slug)
-      if (isRefresh && !prev.has(n.slug)) newSlugs.add(n.slug)
+
+    for (const slug of currentSlugs) {
+      if (isRefresh && !prevSlugs.has(slug)) newSlugs.add(slug)
     }
     if (isRefresh) {
-      for (const slug of prev.keys()) {
+      for (const slug of prevSlugs) {
         if (!currentSlugs.has(slug)) removedSlugs.add(slug)
       }
     }
 
-    // rippleSlugs = nodes within SPATIAL_RIPPLE_RADIUS of any added or
-    // removed node. This models "physical proximity" rather than graph
-    // adjacency: a deleted node affects the nodes that were sitting
-    // close to it on screen, regardless of whether they were linked.
-    //
-    // For REMOVES: center = cached position of the removed node.
-    // For ADDS:    center = centroid of the new node's edge-connected
-    //              nodes (an estimate of where the force sim will
-    //              actually place the new node). If a new node has no
-    //              edges, it spawns at origin and there's no meaningful
-    //              "vicinity" — skip it.
-    const SPATIAL_RIPPLE_RADIUS = 110
-    const SPATIAL_RIPPLE_RADIUS_SQ = SPATIAL_RIPPLE_RADIUS * SPATIAL_RIPPLE_RADIUS
-    const rippleCenters: Array<{ x: number; y: number }> = []
+    metaRef.current = { newSlugs, rippleSlugs: new Set() }
+    prevSlugsRef.current = currentSlugs
 
-    if (newSlugs.size > 0) {
-      for (const newSlug of newSlugs) {
-        let sumX = 0
-        let sumY = 0
-        let count = 0
-        for (const e of data.edges) {
-          const fromSlug = data.nodes[e.sourceIdx]?.slug
-          const toSlug = data.nodes[e.targetIdx]?.slug
-          if (!fromSlug || !toSlug) continue
-          let neighborSlug: string | null = null
-          if (fromSlug === newSlug) neighborSlug = toSlug
-          else if (toSlug === newSlug) neighborSlug = fromSlug
-          if (!neighborSlug) continue
-          const pos = prev.get(neighborSlug)
-          if (!pos) continue
-          sumX += pos.x
-          sumY += pos.y
-          count += 1
-        }
-        if (count > 0) {
-          rippleCenters.push({ x: sumX / count, y: sumY / count })
-        }
-      }
-    }
-
-    // Deletes: nudge all nodes within a spatial radius toward the
-    // deleted node's old position — "filling the gap." Uses proximity
-    // not edge connectivity, so visually nearby nodes settle inward
-    // regardless of whether they shared an edge. The nudge strength
-    // falls off with distance: nodes right next to the deleted one
-    // move ~15%, nodes at the edge of the radius barely shift.
-    const DELETE_SETTLE_RADIUS = 160
-    const DELETE_SETTLE_RADIUS_SQ = DELETE_SETTLE_RADIUS * DELETE_SETTLE_RADIUS
-    if (removedSlugs.size > 0) {
-      // Compute graph extent for outward dampening — nodes near the
-      // center get a stronger outward nudge than nodes at the edge.
-      let graphExtent = 1
-      for (const [, pos] of prev) {
-        const r = Math.sqrt(pos.x ** 2 + pos.y ** 2 + pos.z ** 2)
-        if (r > graphExtent) graphExtent = r
-      }
-
-      for (const slug of removedSlugs) {
-        const deletedPos = prev.get(slug)
-        if (!deletedPos) continue
-        for (const [neighborSlug, nPos] of prev) {
-          if (removedSlugs.has(neighborSlug)) continue
-          if (!currentSlugs.has(neighborSlug)) continue
-          const dx = nPos.x - deletedPos.x
-          const dy = nPos.y - deletedPos.y
-          const dz = nPos.z - deletedPos.z
-          const dist2 = dx * dx + dy * dy + dz * dz
-          if (dist2 >= DELETE_SETTLE_RADIUS_SQ || dist2 < 0.01) continue
-          const t = 1 - Math.sqrt(dist2) / DELETE_SETTLE_RADIUS
-          let strength = t * 0.55
-
-          // Check if the nudge moves the node outward (away from center).
-          // If so, dampen based on how far from center the node already
-          // is — interior nodes still get a decent outward nudge (they're
-          // settling toward a gap that's inside the cluster), but edge
-          // nodes get almost none (peripheral deletes shouldn't drag the
-          // constellation apart).
-          const oldR2 = nPos.x ** 2 + nPos.y ** 2 + nPos.z ** 2
-          const candX = nPos.x + (deletedPos.x - nPos.x) * strength
-          const candY = nPos.y + (deletedPos.y - nPos.y) * strength
-          const candZ = nPos.z + (deletedPos.z - nPos.z) * strength
-          const newR2 = candX ** 2 + candY ** 2 + candZ ** 2
-          if (newR2 > oldR2) {
-            const edgeness = Math.min(Math.sqrt(oldR2) / graphExtent, 1)
-            strength *= (1 - edgeness) * 0.3
-          }
-
-          nPos.x += (deletedPos.x - nPos.x) * strength
-          nPos.y += (deletedPos.y - nPos.y) * strength
-          nPos.z += (deletedPos.z - nPos.z) * strength
-        }
-      }
-    }
-
-    const rippleSlugs = new Set<string>()
-    if (rippleCenters.length > 0) {
-      for (const [slug, pos] of prev) {
-        if (newSlugs.has(slug) || removedSlugs.has(slug)) continue
-        if (!currentSlugs.has(slug)) continue
-        for (const center of rippleCenters) {
-          const dx = pos.x - center.x
-          const dy = pos.y - center.y
-          if (dx * dx + dy * dy < SPATIAL_RIPPLE_RADIUS_SQ) {
-            rippleSlugs.add(slug)
-            break
-          }
-        }
-      }
-    }
-
-    // Compute centroid of existing nodes so new nodes can be seeded
-    // near the cluster instead of on d3-force's distant phyllotactic
-    // sphere. Small random jitter prevents them stacking at the exact
-    // same point.
+    // ── Centroid of existing nodes for seeding new arrivals ──────────
     let cx = 0, cy = 0, cz = 0, cn = 0
     for (const [, pos] of prev) {
       cx += pos.x; cy += pos.y; cz += pos.z; cn++
     }
     if (cn > 0) { cx /= cn; cy /= cn; cz /= cn }
 
-    const nodes: ForceNode[] = data.nodes.map((n, i) => {
+    // ── Build / patch node array ────────────────────────────────────
+    const nodes: SimNode[] = data.nodes.map((n, i) => {
       const cached = prev.get(n.slug)
-      const isRipple = rippleSlugs.has(n.slug)
-      if (isRefresh && cached && !isRipple) {
-        // Pin existing nodes at their cached position. Soft-pinning
-        // (no fx/fy/fz) caused the graph to spread uncontrollably —
-        // nodes flew far away and disappeared. Hard pinning keeps the
-        // constellation stable while new nodes settle in.
+      // Existing sim node — preserve its live position if the simulation
+      // is already running, otherwise fall back to cached position.
+      const existingSimNode = simRef.current
+        ? nodesRef.current.find((sn) => sn.slug === n.slug)
+        : null
+      if (existingSimNode) {
         return {
           index: i,
           slug: n.slug,
-          x: cached.x,
-          y: cached.y,
-          z: cached.z,
-          fx: cached.x,
-          fy: cached.y,
-          fz: cached.z,
+          x: existingSimNode.x,
+          y: existingSimNode.y,
+          z: existingSimNode.z,
+          vx: existingSimNode.vx,
+          vy: existingSimNode.vy,
+          vz: existingSimNode.vz,
         }
       }
-      // New nodes seed near the graph centroid (not on a distant
-      // phyllotactic sphere). The simulation pulls them to their
-      // natural position via link + charge forces.
       return {
         index: i,
         slug: n.slug,
@@ -331,151 +270,152 @@ export function useForceLayout(
       }
     })
 
-    // Per-edge weight is preserved on the link object so the link
-    // force can read it via `(l) => l.weight`. d3-force passes the
-    // raw object through, so any field on the link is accessible
-    // inside the distance/strength callbacks.
-    interface ForceLink extends SimulationLinkDatum<ForceNode> {
-      weight: number
-    }
-    const links: ForceLink[] = data.edges.map((e) => ({
+    nodesRef.current = nodes
+
+    // ── Build links ─────────────────────────────────────────────────
+    const links: SimLink[] = data.edges.map((e) => ({
       source: e.sourceIdx,
       target: e.targetIdx,
       weight: e.weight,
     }))
 
     const nodeCount = nodes.length
-    // Moderated repulsion so outlier nodes don't drift way past the edge.
-    // Very gentle repulsion — just enough to prevent overlap, not
-    // enough to scatter edgeless nodes far away. The center force
-    // (0.85) does the heavy lifting to keep everything cohesive.
     const repulsion = -6 - Math.min(nodeCount, 8)
 
+    // ── Create or reconfigure simulation ────────────────────────────
     // d3-force-3d requires numDimensions(3) to be set BEFORE nodes are
     // attached — otherwise it initializes nodes using its default 2D
     // phyllotactic seed and z stays undefined, which NaNs the whole
-    // position buffer downstream. Construct empty, switch to 3D, then
-    // attach the nodes.
-    const simulation = forceSimulation<ForceNode>()
+    // position buffer downstream.
+    const sim = forceSimulation<SimNode>()
       .numDimensions(3)
       .nodes(nodes)
-      // Link force is now PER-EDGE WEIGHT-AWARE. Each edge carries a
-      // 0.1–1.0 weight from compile-source's LLM Pass B. Anchor:
-      // weight=1.0 maps to the CURRENT baseline (distance 34,
-      // strength 0.55) — that's also the legacy hardcoded value, so
-      // existing engrams whose edges all carry weight=1.0 from before
-      // this system shipped will look IDENTICAL after this change.
-      // Lower weights (LLM-marked weak references) sit looser and get
-      // pushed around more easily, drifting outward from the cluster.
-      // Stronger connections never get tighter than the current
-      // baseline — the LLM only has authority to LOOSEN, not tighten.
-      // The visual edge rendering ignores weight entirely (see
-      // reconcileGraph) — semantic strength flows ONLY into spatial
-      // layout, not edge color or opacity.
       .force(
         "link",
-        forceLink<ForceNode, ForceLink>(links)
-          .distance((l) => 52 - 10 * (l.weight ?? 1.0))   // w=1.0 → 42; w=0.0 → 52
-          .strength((l) => 0.45 + 0.15 * (l.weight ?? 1.0)) // w=1.0 → 0.6; w=0.0 → 0.45
+        forceLink<SimNode, SimLink>(links)
+          .distance((l: SimLink) => 52 - 10 * (l.weight ?? 1.0))
+          .strength((l: SimLink) => 0.45 + 0.15 * (l.weight ?? 1.0)),
       )
-      .force("charge", forceManyBody<ForceNode>().strength(repulsion))
-      // 3D center force — pulls the whole constellation toward the origin.
-      .force("center", forceCenter<ForceNode>(0, 0, 0).strength(0.85))
-      // Collide radius per-node based on wiki depth. In 3D it enforces a
-      // minimum spherical spacing so nodes never visually overlap on any
-      // viewing angle.
-      .force("collide", forceCollide<ForceNode>().radius((_, i) => 19 + data.nodes[i].depth * 7).strength(1))
-      .stop()
+      .force("charge", forceManyBody<SimNode>().strength(repulsion))
+      .force("center", forceCenter<SimNode>(0, 0, 0).strength(0.85))
+      .force(
+        "collide",
+        forceCollide<SimNode>()
+          .radius((_: SimNode, i: number) => 19 + (data.nodes[i]?.depth ?? 0) * 7)
+          .strength(1),
+      )
+      .stop() // We tick manually in the animation loop
 
-    // On refresh, only new nodes + spatial ripple neighbors move. 50
-    // ticks is enough for them to settle into their new equilibrium
-    // without over-displacing.
-    const ticks = isRefresh ? 50 : Math.min(300, 100 + nodeCount)
-    for (let i = 0; i < ticks; i++) {
-      simulation.tick()
+    simRef.current = sim
+    hasCooledRef.current = false
+
+    // ── Reheat based on what changed ────────────────────────────────
+    if (!isRefresh) {
+      // First layout — let the simulation run from default alpha (1).
+      // No reheat needed.
+    } else if (newSlugs.size > 0) {
+      sim.alpha(0.3).alphaTarget(0)
+    } else if (removedSlugs.size > 0) {
+      sim.alpha(0.15).alphaTarget(0)
+    } else {
+      // Edge-only change (new edges arrived for existing nodes).
+      sim.alpha(0.2).alphaTarget(0)
     }
 
-    // Insert push removed — it was scattering the graph by pushing
-    // existing nodes away from every new arrival. The force simulation's
-    // own repulsion + collide already handles spacing; an extra push
-    // on top made organic growth look chaotic.
-
-    // Establish the scale on first layout and never change it.
-    // targetRadius is derived from the safe viewport (the visible
-    // rectangle not covered by widgets) so the constellation naturally
-    // fits what the user can actually see.
+    // ── Compute scale on first layout ───────────────────────────────
+    // For a fresh simulation (no stored layout), run a batch of ticks
+    // to establish initial positions so we can compute a meaningful maxR.
     if (!scaleRef.current) {
-      // Prefer the stored maxR from localStorage when available — that
-      // way the rendered coordinates match exactly across refresh, not
-      // just the raw simulation coordinates. Without this, a fresh
-      // recompute from the loaded positions could produce a slightly
-      // different maxR (e.g. if a node had drifted to a new radius
-      // between sessions) and the whole graph would look rescaled.
       const stored = readStoredLayout(engramId)
-      let maxR = 1
       if (stored && stored.maxR > 0) {
-        maxR = stored.maxR
+        scaleRef.current = buildScale(stored.maxR)
       } else {
-        // 3D radius — include z so the scale reflects the true extent of
-        // the constellation, not just its 2D footprint.
+        // Warm up the simulation to get initial positions.
+        const warmupTicks = Math.min(300, 100 + nodeCount)
+        for (let i = 0; i < warmupTicks; i++) sim.tick()
+        let maxR = 1
         for (const node of nodes) {
-          const r = Math.sqrt(
-            (node.x ?? 0) ** 2 + (node.y ?? 0) ** 2 + (node.z ?? 0) ** 2,
-          )
+          const r = Math.sqrt((node.x ?? 0) ** 2 + (node.y ?? 0) ** 2 + (node.z ?? 0) ** 2)
           if (r > maxR) maxR = r
         }
+        scaleRef.current = buildScale(maxR)
+        // Save initial positions after warmup.
+        const posMap = new Map<string, { x: number; y: number; z: number }>()
+        for (const n of nodes) {
+          posMap.set(n.slug, { x: n.x ?? 0, y: n.y ?? 0, z: n.z ?? 0 })
+        }
+        prevPositions.current = posMap
+        writeStoredLayout(engramId, posMap, maxR)
       }
-      const safe =
-        typeof window !== "undefined"
-          ? getSafeViewport(window.innerWidth, window.innerHeight)
-          : { width: 800, height: 600, left: 0, right: 800, top: 0, bottom: 600, centerX: 400, centerY: 300 }
-      scaleRef.current = {
-        maxR,
-        targetRadius: Math.min(safe.width, safe.height) * 0.35,
-        yOffset: 15,
+    }
+
+    // ── Build / update the stable handle ────────────────────────────
+    if (!handleRef.current) {
+      handleRef.current = {
+        tick: () => tickFn(),
+        readPosition: (i, out) => readPositionFn(i, out),
+        count: nodeCount,
+        meta: metaRef.current,
       }
+    } else {
+      handleRef.current.count = nodeCount
+      handleRef.current.meta = metaRef.current
     }
 
-    const { maxR, targetRadius, yOffset } = scaleRef.current
-
-    // Positions are now 3D: x, y, z interleaved. reconcileGraph.ts reads
-    // them as stride-3. The old stride-2 layout assigned z from the wiki
-    // depth which produced 3 flat planes; now each node has real physics
-    // depth from the 3D force simulation.
-    const positions = new Float32Array(nodeCount * 3)
-    const newCache = new Map<string, { x: number; y: number; z: number }>()
-
-    for (let i = 0; i < nodeCount; i++) {
-      const rawX = nodes[i].x ?? 0
-      const rawY = nodes[i].y ?? 0
-      const rawZ = nodes[i].z ?? 0
-      positions[i * 3] = (rawX / maxR) * targetRadius
-      positions[i * 3 + 1] = (rawY / maxR) * targetRadius + yOffset
-      positions[i * 3 + 2] = (rawZ / maxR) * targetRadius
-      newCache.set(nodes[i].slug, { x: rawX, y: rawY, z: rawZ })
+    function tickFn(): boolean {
+      const s = simRef.current
+      if (!s) return false
+      const alpha = s.alpha()
+      if (alpha <= 0.001) {
+        // Simulation has cooled — schedule persistence once.
+        if (!hasCooledRef.current) {
+          hasCooledRef.current = true
+          schedulePersist()
+        }
+        return false
+      }
+      s.tick()
+      return true
     }
 
-    // Rebuild adjacency cache from the NEW edges so the next layout pass
-    // can compute rippleSlugs for any nodes deleted in the future.
-    const newAdjacency = new Map<string, Set<string>>()
-    for (const n of data.nodes) newAdjacency.set(n.slug, new Set())
-    for (const e of data.edges) {
-      const fromSlug = data.nodes[e.sourceIdx]?.slug
-      const toSlug = data.nodes[e.targetIdx]?.slug
-      if (!fromSlug || !toSlug) continue
-      newAdjacency.get(fromSlug)?.add(toSlug)
-      newAdjacency.get(toSlug)?.add(fromSlug)
+    function readPositionFn(i: number, out: { x: number; y: number; z: number }) {
+      const n = nodesRef.current[i]
+      const scale = scaleRef.current
+      if (!n || !scale) {
+        out.x = 0; out.y = 0; out.z = 0
+        return
+      }
+      const { maxR, targetRadius, yOffset } = scale
+      out.x = ((n.x ?? 0) / maxR) * targetRadius
+      out.y = ((n.y ?? 0) / maxR) * targetRadius + yOffset
+      out.z = ((n.z ?? 0) / maxR) * targetRadius
     }
 
-    prevPositions.current = newCache
-    prevAdjacency.current = newAdjacency
-    writeStoredLayout(engramId, newCache, scaleRef.current.maxR)
-
-    return {
-      positions,
-      meta: { newSlugs, rippleSlugs },
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- dbSyncTick forces
   // re-layout when server-side positions arrive after the initial render.
-  }, [data, width, height, engramId, dbSyncTick])
+  }, [data, engramId, dbSyncTick, schedulePersist])
+
+  // Cleanup persist timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
+    }
+  }, [])
+
+  if (!data || data.nodes.length === 0) return null
+  return handleRef.current
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function buildScale(maxR: number): LayoutScale {
+  const safe =
+    typeof window !== "undefined"
+      ? getSafeViewport(window.innerWidth, window.innerHeight)
+      : { width: 800, height: 600, left: 0, right: 800, top: 0, bottom: 600, centerX: 400, centerY: 300 }
+  return {
+    maxR,
+    targetRadius: Math.min(safe.width, safe.height) * 0.35,
+    yOffset: 15,
+  }
 }
