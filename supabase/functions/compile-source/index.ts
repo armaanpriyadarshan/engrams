@@ -1763,7 +1763,14 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    const { summaryMd, concepts: conceptCandidates, unresolvedQuestions: qsFromPassA } = passAResult
+    const { summaryMd, concepts: rawCandidates, unresolvedQuestions: qsFromPassA } = passAResult
+    // Cap at 8 concepts per source. Pass A returns them in priority
+    // order, so the top 8 are the most important. Without the cap,
+    // rich sources (Wikipedia articles with 12-15 concepts) push the
+    // total Pass B time past the 60s edge function timeout and the
+    // compile orphans mid-write. 8 concepts × ~5s each ≈ 40s for
+    // Pass B, leaving headroom for Pass A + Pass C.
+    const conceptCandidates = rawCandidates.slice(0, 8)
 
     // Upsert the summary article. We use a deterministic slug so repeated
     // compiles overwrite the same row rather than stacking summaries.
