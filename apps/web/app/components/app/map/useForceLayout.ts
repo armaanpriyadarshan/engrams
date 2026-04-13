@@ -421,7 +421,7 @@ function buildScale(maxR: number): LayoutScale {
       : { width: 800, height: 600, left: 0, right: 800, top: 0, bottom: 600, centerX: 400, centerY: 300 }
   return {
     maxR,
-    targetRadius: Math.min(safe.width, safe.height) * 0.35,
+    targetRadius: Math.min(safe.width, safe.height) * 0.2,
     yOffset: 15,
   }
 }
