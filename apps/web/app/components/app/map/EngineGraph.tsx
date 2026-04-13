@@ -513,17 +513,38 @@ function buildMountScene(
       // ── Read positions from the continuous simulation each frame ──
       const handle = simHandleRef.current
       if (handle && count > 0) {
-        handle.tick()
+        const simWarm = handle.tick()
         const cp = buffers.currentPos
         const pos = { x: 0, y: 0, z: 0 }
+        let frameMaxR = 0
         for (let i = 0; i < count; i++) {
           handle.readPosition(i, pos)
           const i3 = i * 3
           cp[i3] = pos.x
           cp[i3 + 1] = pos.y
           cp[i3 + 2] = pos.z
+          const r = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z)
+          if (r > frameMaxR) frameMaxR = r
         }
         state.nodeGeo.attributes.position.needsUpdate = true
+
+        // While the simulation is settling, dynamically adjust the
+        // camera zoom extents to fit the evolving graph radius. Without
+        // this, applyReconcile computes graphRadius from all-zero
+        // currentPos on the first frame, and the camera auto-frames
+        // too close — then the simulation pushes nodes outside the view.
+        if (simWarm && frameMaxR > 1) {
+          const fitZ = frameMaxR * 2.0
+          const camZ = Math.max(250 + Math.min(count * 4, 400), fitZ)
+          state.maxZoom = camZ * 1.3
+          state.minZoom = Math.max(camZ * 0.07, 50)
+          state.panLimit = frameMaxR * 1.2
+          if (!state.hasFramed) {
+            state.targetZ = camZ
+            state.currentZoom = camZ
+            state.hasFramed = true
+          }
+        }
       }
 
       // ── Hover detection ──
