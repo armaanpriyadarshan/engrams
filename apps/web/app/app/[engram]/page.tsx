@@ -217,9 +217,7 @@ export default function EngramPage() {
   }, [nodeMenu])
 
   const { data: graphData, loading, error: graphError } = useGraphData(engramId)
-  const layoutResult = useForceLayout(graphData, 1200, 800, engramId)
-  const positions = layoutResult?.positions
-  const layoutMeta = layoutResult?.meta
+  const simulationHandle = useForceLayout(graphData, 1200, 800, engramId)
 
   // Compute which nodes pass the filter
   const nodeVisible = useMemo(() => {
@@ -371,12 +369,11 @@ export default function EngramPage() {
 
       {/* Graph view */}
       {view === "graph" && (
-        graphData && positions && layoutMeta ? (
+        graphData && simulationHandle ? (
           <div className="w-full h-full" style={{ animation: "graph-ignite 1.2s ease-out both" }}>
             <EngineGraph
               data={graphData}
-              positions={positions}
-              layoutMeta={layoutMeta}
+              simulationHandle={simulationHandle}
               engramSlug={engramSlug}
               onNodeClick={handleNodeClick}
               nodeVisible={nodeVisible}
