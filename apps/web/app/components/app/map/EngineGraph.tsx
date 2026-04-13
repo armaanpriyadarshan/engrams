@@ -4,7 +4,7 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import * as THREE from "three"
 import type { GraphData } from "./useGraphData"
-import type { LayoutMeta } from "./useForceLayout"
+import type { SimulationHandle } from "./useForceLayout"
 import { getSafeViewport, isInSafeViewport } from "@/lib/map-viewport-bounds"
 import { ARTICLE_TYPE_META, type ArticleType } from "@/lib/article-types"
 import type { GraphBuffers } from "./reconcileGraph"
@@ -12,8 +12,7 @@ import { reconcileGraph } from "./reconcileGraph"
 
 interface EngineGraphProps {
   data: GraphData
-  positions: Float32Array
-  layoutMeta: LayoutMeta
+  simulationHandle: SimulationHandle | null
   engramSlug: string
   onNodeClick?: (slug: string, x: number, y: number) => void
   nodeVisible?: Uint8Array | null
@@ -122,6 +121,7 @@ function buildMountScene(
   sceneRef: RefLike<SceneState | null>,
   dataRef: RefLike<GraphData>,
   nodeVisibleRef: RefLike<Uint8Array | null>,
+  simHandleRef: RefLike<SimulationHandle | null>,
   handleNodeClick: (slug: string, sx: number, sy: number) => void,
 ) {
   return function mountScene(
@@ -311,7 +311,6 @@ function buildMountScene(
         phases: new Float32Array(0),
         depthArr: new Float32Array(0),
         currentPos: new Float32Array(0),
-        targetPos: new Float32Array(0),
         fadeCurrent: new Float32Array(0),
         fadeTarget: new Float32Array(0),
         attention: new Float32Array(0),
@@ -511,16 +510,18 @@ function buildMountScene(
       state.camera.position.z = state.currentZoom * Math.cos(state.orbitTheta) * Math.cos(state.orbitPhi)
       state.camera.lookAt(state.panOffset.x, state.panOffset.y, 0)
 
-      // ── Lerp currentPos → targetPos ──
-      // Rate reduced from 6 to 3 (~330ms settle) so ripple neighbors
-      // read as motion rather than an imperceptible snap. Pinned nodes
-      // are unaffected because their currentPos already matches targetPos.
-      if (count > 0) {
-        const step = Math.min(delta * 3, 1)
+      // ── Read positions from the continuous simulation each frame ──
+      const handle = simHandleRef.current
+      if (handle && count > 0) {
+        handle.tick()
         const cp = buffers.currentPos
-        const tp = buffers.targetPos
-        for (let i = 0; i < count * 3; i++) {
-          cp[i] += (tp[i] - cp[i]) * step
+        const pos = { x: 0, y: 0, z: 0 }
+        for (let i = 0; i < count; i++) {
+          handle.readPosition(i, pos)
+          const i3 = i * 3
+          cp[i3] = pos.x
+          cp[i3 + 1] = pos.y
+          cp[i3 + 2] = pos.z
         }
         state.nodeGeo.attributes.position.needsUpdate = true
       }
@@ -693,8 +694,8 @@ function buildMountScene(
   }
 }
 
-function applyReconcile(state: SceneState, data: GraphData, positions: Float32Array, meta: LayoutMeta) {
-  const next = reconcileGraph(state.buffers, data, positions, meta)
+function applyReconcile(state: SceneState, data: GraphData, newSlugs: Set<string>) {
+  const next = reconcileGraph(state.buffers, data, newSlugs)
   state.buffers = next
 
   // ── Rebuild node geometry with the new buffers ──
@@ -731,9 +732,9 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   let graphRadius = 1
   for (let i = 0; i < next.count; i++) {
     const r = Math.sqrt(
-      next.targetPos[i * 3] ** 2 +
-      next.targetPos[i * 3 + 1] ** 2 +
-      next.targetPos[i * 3 + 2] ** 2,
+      next.currentPos[i * 3] ** 2 +
+      next.currentPos[i * 3 + 1] ** 2 +
+      next.currentPos[i * 3 + 2] ** 2,
     )
     if (r > graphRadius) graphRadius = r
   }
@@ -784,16 +785,16 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
   state.currentHoveredEdge = -1
 }
 
-export default function EngineGraph({ data, positions, layoutMeta, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
+export default function EngineGraph({ data, simulationHandle, engramSlug, onNodeClick, nodeVisible }: EngineGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const nodeVisibleRef = useRef<Uint8Array | null>(null)
   const sceneRef = useRef<SceneState | null>(null)
   const dataRef = useRef<GraphData>(data)
-  const positionsRef = useRef<Float32Array>(positions)
+  const simHandleRef = useRef<SimulationHandle | null>(simulationHandle)
   const [sceneReady, setSceneReady] = useState(false)
   useEffect(() => { dataRef.current = data }, [data])
-  useEffect(() => { positionsRef.current = positions }, [positions])
+  useEffect(() => { simHandleRef.current = simulationHandle }, [simulationHandle])
   const router = useRouter()
 
   // Keep nodeVisible ref in sync without re-running the whole setup
@@ -813,7 +814,7 @@ export default function EngineGraph({ data, positions, layoutMeta, engramSlug, o
     const tooltip = tooltipRef.current
     if (!container || !tooltip) return
 
-    const mountScene = buildMountScene(sceneRef, dataRef, nodeVisibleRef, handleNodeClick)
+    const mountScene = buildMountScene(sceneRef, dataRef, nodeVisibleRef, simHandleRef, handleNodeClick)
     let cleanup: (() => void) | undefined
     const observer = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
@@ -833,12 +834,12 @@ export default function EngineGraph({ data, positions, layoutMeta, engramSlug, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engramSlug])
 
-  // ── Reconcile-phase: update buffers in place when data/positions change ──
+  // ── Reconcile-phase: update buffers in place when data/simulation change ──
   useEffect(() => {
     const state = sceneRef.current
-    if (!sceneReady || !state || data.nodes.length === 0) return
-    applyReconcile(state, data, positions, layoutMeta)
-  }, [sceneReady, data, positions, layoutMeta])
+    if (!sceneReady || !state || data.nodes.length === 0 || !simulationHandle) return
+    applyReconcile(state, data, simulationHandle.meta.newSlugs)
+  }, [sceneReady, data, simulationHandle])
 
   return (
     <div className="relative w-full h-full">
