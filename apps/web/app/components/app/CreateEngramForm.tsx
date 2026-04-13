@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { runPostCompile } from "@/lib/post-compile"
 
 const ACCENT_COLORS = [
   "#76808F", "#7A8F76", "#8F8A76", "#8F767A",
@@ -79,9 +80,7 @@ export default function CreateEngramForm({ userId, variant = "page", onCancel, o
         // Fire-and-forget: navigate immediately and let the engram page
         // show compilation progress via CompilationToast.
         supabase.functions.invoke("compile-source", { body: { source_id: source.id } })
-        supabase.functions.invoke("generate-embedding", { body: { engram_id: engram.id } })
-        supabase.functions.invoke("detect-gaps", { body: { engram_id: engram.id, trigger_source_id: source.id } })
-        supabase.functions.invoke("lint-engram", { body: { engram_id: engram.id } })
+        runPostCompile(supabase, engram.id, source.id)
       }
     }
 

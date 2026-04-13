@@ -20,6 +20,7 @@ import KnowledgeGaps from "@/app/components/app/KnowledgeGaps"
 import IntegrationsSection from "@/app/components/app/IntegrationsSection"
 import { WidgetPanelProvider, usePanelContext } from "@/app/components/app/WidgetPanel"
 import { createSnapshot } from "@/lib/snapshots"
+import { runPostCompile } from "@/lib/post-compile"
 import { useHybridSearch } from "@/app/components/app/search/useHybridSearch"
 import { HybridSearchBar } from "@/app/components/app/search/HybridSearchBar"
 import { HybridResults } from "@/app/components/app/search/HybridResults"
@@ -81,9 +82,7 @@ function useDropZone(engramId: string | null) {
         const updated = result?.articles_updated ?? 0
         setDropMessage(`${created} created. ${updated} updated.`)
         await createSnapshot(supabase, engramId, "feed", `${created} created. ${updated} updated.`, { articles_created: created, articles_updated: updated }, source.id)
-        supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
-        supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: source.id } })
-        supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
+        runPostCompile(supabase, engramId, source.id)
       } else {
         setDropMessage("Failed.")
       }
@@ -132,9 +131,7 @@ function useDropZone(engramId: string | null) {
       setDropMessage(`${created} created. ${updated} updated.`)
 
       await createSnapshot(supabase, engramId, "feed", `${created} created. ${updated} updated.`, { articles_created: created, articles_updated: updated }, source.id)
-      supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
-      supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: source.id } })
-      supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
+      runPostCompile(supabase, engramId, source.id)
     }
     setTimeout(() => setDropMessage(""), 3000)
     router.refresh()

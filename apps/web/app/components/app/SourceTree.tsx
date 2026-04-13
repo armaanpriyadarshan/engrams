@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { runPostCompile } from "@/lib/post-compile"
 import Link from "next/link"
 import { WidgetPanel } from "./WidgetPanel"
 
@@ -120,9 +121,7 @@ export default function SourceTree({ engramId, engramSlug }: { engramId: string;
     setRecompiling(sourceId)
     const supabase = createClient()
     await supabase.functions.invoke("compile-source", { body: { source_id: sourceId } })
-    supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
-    supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: sourceId } })
-    supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
+    runPostCompile(supabase, engramId, sourceId)
     setRecompiling(null)
     fetchData()
   }, [engramId, fetchData])

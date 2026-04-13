@@ -4,12 +4,8 @@ import { useState, useCallback, useRef, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { createSnapshot } from "@/lib/snapshots"
-
-async function sha256(text: string): Promise<string> {
-  const data = new TextEncoder().encode(text)
-  const hash = await crypto.subtle.digest("SHA-256", data)
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("")
-}
+import { sha256 } from "@/lib/crypto"
+import { runPostCompile } from "@/lib/post-compile"
 
 export default function FeedPage() {
   const params = useParams()
@@ -57,14 +53,12 @@ export default function FeedPage() {
     setMessage("Source added. Compiling...")
     supabaseRef.current = supabase
 
+    // Show "taking longer" after 60s but DON'T tear down the channel —
+    // compilation can legitimately exceed 60s and we still want the
+    // completed handler to fire whenever it finally arrives.
     timeoutRef.current = setTimeout(() => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current)
-        channelRef.current = null
-      }
       timeoutRef.current = null
       setMessage("Compilation is taking longer than expected. Check back shortly.")
-      setCompiling(false)
     }, 60000)
 
     const channel = supabase
@@ -75,7 +69,7 @@ export default function FeedPage() {
         table: "compilation_runs",
         filter: `source_id=eq.${sourceId}`,
       }, async (payload) => {
-        const run = payload.new as any
+        const run = payload.new as { status?: string; log?: { stage?: string; error?: string }; articles_created?: number; articles_updated?: number; edges_created?: number }
         const stage = run.log?.stage
 
         if (run.status === "completed") {
@@ -92,9 +86,7 @@ export default function FeedPage() {
             articles_updated: updated,
             edges_created: edges,
           }, sourceId)
-          supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
-          supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: sourceId } })
-          supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
+          runPostCompile(supabase, engramId, sourceId)
           router.refresh()
         } else if (run.status === "failed") {
           const error = run.log?.error ?? "Compilation failed."
@@ -111,15 +103,20 @@ export default function FeedPage() {
           setMessage("Writing articles...")
         }
       })
-      .subscribe()
+      .subscribe((status) => {
+        // Only invoke compile-source once the channel is actually subscribed.
+        // Otherwise the INSERT/UPDATE events can land before the subscription
+        // is ready and the completed handler never fires.
+        if (status === "SUBSCRIBED") {
+          supabase.functions.invoke("compile-source", { body: { source_id: sourceId } })
+        }
+      })
 
     channelRef.current = channel
   }, [router])
 
   const triggerCompilation = useCallback((supabase: ReturnType<typeof createClient>, sourceId: string, engramId: string) => {
     subscribeToCompilation(supabase, sourceId, engramId)
-    // Fire and forget — progress comes via Realtime
-    supabase.functions.invoke("compile-source", { body: { source_id: sourceId } })
   }, [subscribeToCompilation])
 
   const submit = useCallback(async (sourceType: string, content: string, title?: string) => {

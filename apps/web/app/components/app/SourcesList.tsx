@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { runPostCompile } from "@/lib/post-compile"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 
@@ -88,9 +89,7 @@ export default function SourcesList({ sources, articles, engramId, engramSlug }:
     setRecompiling(sourceId)
     const supabase = createClient()
     await supabase.functions.invoke("compile-source", { body: { source_id: sourceId } })
-    supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
-    supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: sourceId } })
-    supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
+    runPostCompile(supabase, engramId, sourceId)
     setRecompiling(null)
     router.refresh()
   }, [engramId, router])

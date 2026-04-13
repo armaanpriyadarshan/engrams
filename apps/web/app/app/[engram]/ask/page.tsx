@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { createSnapshot } from "@/lib/snapshots"
+import { runPostCompile } from "@/lib/post-compile"
 import Link from "next/link"
 import ArticleContent from "@/app/components/app/ArticleContent"
 
@@ -101,9 +102,7 @@ export default function AskPage() {
         articles_created: created,
         articles_updated: updated,
       }, source.id)
-      supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
-      supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: source.id } })
-      supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
+      runPostCompile(supabase, engramId, source.id)
       router.refresh()
     }
     setFiling(false)

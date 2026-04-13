@@ -4,14 +4,10 @@ import { useState, useRef, useCallback, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { createSnapshot } from "@/lib/snapshots"
+import { sha256 } from "@/lib/crypto"
+import { runPostCompile } from "@/lib/post-compile"
 
 type FeedTab = "url" | "text" | "file"
-
-async function sha256(text: string): Promise<string> {
-  const data = new TextEncoder().encode(text)
-  const hash = await crypto.subtle.digest("SHA-256", data)
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("")
-}
 
 export default function AddSourceButton({ engramId }: { engramId: string }) {
   const router = useRouter()
@@ -104,9 +100,7 @@ export default function AddSourceButton({ engramId }: { engramId: string }) {
             articles_updated: updated,
             edges_created: edges,
           }, sourceId)
-          supabase.functions.invoke("generate-embedding", { body: { engram_id: engramId } })
-          supabase.functions.invoke("detect-gaps", { body: { engram_id: engramId, trigger_source_id: sourceId } })
-          supabase.functions.invoke("lint-engram", { body: { engram_id: engramId } })
+          runPostCompile(supabase, engramId, sourceId)
           router.refresh()
         } else if (run.status === "failed") {
           const error = run.log?.error ?? "Compilation failed."
