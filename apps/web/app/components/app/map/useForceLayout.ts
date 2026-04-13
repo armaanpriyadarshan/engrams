@@ -270,14 +270,19 @@ export function useForceLayout(
       const cached = prev.get(n.slug)
       const isRipple = rippleSlugs.has(n.slug)
       if (isRefresh && cached && !isRipple) {
-        // Existing nodes start at cached position, fully mobile so
-        // the constellation resettles as the graph grows.
+        // Pin existing nodes at their cached position. Soft-pinning
+        // (no fx/fy/fz) caused the graph to spread uncontrollably —
+        // nodes flew far away and disappeared. Hard pinning keeps the
+        // constellation stable while new nodes settle in.
         return {
           index: i,
           slug: n.slug,
           x: cached.x,
           y: cached.y,
           z: cached.z,
+          fx: cached.x,
+          fy: cached.y,
+          fz: cached.z,
         }
       }
       // New nodes seed near the graph centroid (not on a distant
@@ -352,11 +357,7 @@ export function useForceLayout(
     // On refresh, only new nodes + spatial ripple neighbors move. 50
     // ticks is enough for them to settle into their new equilibrium
     // without over-displacing.
-    // Refresh ticks kept moderate — enough for soft-settled nodes to
-    // adjust, but not so many that edgeless new nodes (articles
-    // arrive before edges) get pushed far by repulsion before their
-    // edges arrive seconds later.
-    const ticks = isRefresh ? 80 : Math.min(300, 100 + nodeCount)
+    const ticks = isRefresh ? 50 : Math.min(300, 100 + nodeCount)
     for (let i = 0; i < ticks; i++) {
       simulation.tick()
     }
