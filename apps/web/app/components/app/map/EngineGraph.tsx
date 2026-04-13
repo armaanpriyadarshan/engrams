@@ -782,17 +782,12 @@ function applyReconcile(state: SceneState, data: GraphData, newSlugs: Set<string
   // inspect individual nodes. Previously dense graphs hit minZoom
   // ~135 which felt like the camera couldn't get near anything.
   state.minZoom = Math.max(camZ * 0.07, 50)
-  // On the first reconcile that brings nodes in, auto-frame the whole
-  // graph — otherwise large graphs load too zoomed-in because targetZ is
-  // still pinned to the empty-scene default. After that, the user's zoom
-  // is preserved (we only clamp, never reset).
-  if (!state.hasFramed && next.count > 0) {
-    state.targetZ = camZ
-    state.currentZoom = camZ
-    state.hasFramed = true
-  } else {
-    state.targetZ = Math.max(state.minZoom, Math.min(state.maxZoom, state.targetZ))
-  }
+  // Auto-frame is handled by the animation loop's dynamic frame block
+  // (which reads real positions from the simulation). applyReconcile
+  // runs before the simulation writes positions, so currentPos is all
+  // zeros here — computing camZ from that would zoom too close.
+  // Just clamp the existing zoom to the new extents.
+  state.targetZ = Math.max(state.minZoom, Math.min(state.maxZoom, state.targetZ))
 
   // Attention pan disabled. It chased every new off-screen node,
   // making organic growth feel chaotic — the camera bounced between
