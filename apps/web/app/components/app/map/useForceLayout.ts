@@ -381,6 +381,20 @@ export function useForceLayout(
         return false
       }
       s.tick()
+      // Dynamically update maxR so the scale tracks the actual graph
+      // extent. Without this, nodes added after the initial warmup can
+      // exceed the frozen maxR and project way off screen.
+      const scale = scaleRef.current
+      if (scale) {
+        let currentMaxR = 1
+        for (const n of nodesRef.current) {
+          const r = Math.sqrt((n.x ?? 0) ** 2 + (n.y ?? 0) ** 2 + (n.z ?? 0) ** 2)
+          if (r > currentMaxR) currentMaxR = r
+        }
+        if (currentMaxR > scale.maxR) {
+          scale.maxR = currentMaxR
+        }
+      }
       return true
     }
 
