@@ -1,5 +1,4 @@
 import type { GraphData } from "./useGraphData"
-import type { LayoutMeta } from "./useForceLayout"
 import { getArticleTypeMeta } from "@/lib/article-types"
 
 export interface GraphBuffers {
@@ -14,8 +13,7 @@ export interface GraphBuffers {
   depthArr: Float32Array // count
 
   // Tweened position state
-  currentPos: Float32Array // count * 3 (rendered each frame)
-  targetPos: Float32Array // count * 3 (lerp target)
+  currentPos: Float32Array // count * 3 (rendered each frame; written by animation loop from simulation)
 
   // Tweened fade state
   fadeCurrent: Float32Array // count (rendered each frame via aFade attribute)
@@ -67,8 +65,7 @@ const DEFAULT_EDGE_COLOR: [number, number, number] = [0.33, 0.33, 0.33]
 export function reconcileGraph(
   prev: GraphBuffers | null,
   data: GraphData,
-  positions: Float32Array,
-  meta: LayoutMeta,
+  newSlugs: Set<string>,
 ): GraphBuffers {
   const count = data.nodes.length
   const edgeCount = data.edges.length
@@ -78,7 +75,6 @@ export function reconcileGraph(
   const phases = new Float32Array(count)
   const depthArr = new Float32Array(count)
   const currentPos = new Float32Array(count * 3)
-  const targetPos = new Float32Array(count * 3)
   const fadeCurrent = new Float32Array(count)
   const fadeTarget = new Float32Array(count)
   const attention = new Float32Array(count)
@@ -90,21 +86,11 @@ export function reconcileGraph(
     const node = data.nodes[i]
     const d = node.depth
     const i3 = i * 3
-    // positions is now stride-3 (x, y, z) — produced by the 3D force
-    // layout in useForceLayout. The old stride-2 path assigned z from
-    // the semantic wiki depth which pinned everything to 3 flat planes;
-    // now z comes from real physics.
-    const x = positions[i3]
-    const y = positions[i3 + 1]
-    const z = positions[i3 + 2]
 
-    // Target position — where the force layout wants this node to be
-    targetPos[i3] = x
-    targetPos[i3 + 1] = y
-    targetPos[i3 + 2] = z
-
-    // If this slug existed before, copy its rendered position so it glides.
-    // Otherwise place it at the target (it'll fade in from invisible).
+    // If this slug existed before, copy its rendered position so the
+    // animation loop can continue from where it left off.
+    // For new nodes, initialize to (0, 0, 0) — the animation loop will
+    // write the real position from the simulation on the next frame.
     const prevIdx = prev?.slugToIndex.get(node.slug)
     if (prev && prevIdx !== undefined) {
       const p3 = prevIdx * 3
@@ -117,14 +103,13 @@ export function reconcileGraph(
       // reconcile (e.g. two source feeds in quick succession).
       attention[i] = prev.attention[prevIdx]
     } else {
-      currentPos[i3] = x
-      currentPos[i3 + 1] = y
-      currentPos[i3 + 2] = z
+      currentPos[i3] = 0
+      currentPos[i3 + 1] = 0
+      currentPos[i3 + 2] = 0
       fadeCurrent[i] = 0 // new node: start invisible, fade in
-      // meta.newSlugs is empty on the very first layout pass (useForceLayout
-      // only populates it on refresh), so the initial load gets attention 0
-      // for every node — no spurious pulse.
-      attention[i] = meta.newSlugs.has(node.slug) ? 1.0 : 0
+      // newSlugs is empty on the very first layout pass, so the initial
+      // load gets attention 0 for every node — no spurious pulse.
+      attention[i] = newSlugs.has(node.slug) ? 1.0 : 0
     }
     fadeTarget[i] = 1
 
@@ -183,7 +168,6 @@ export function reconcileGraph(
     phases,
     depthArr,
     currentPos,
-    targetPos,
     fadeCurrent,
     fadeTarget,
     attention,
