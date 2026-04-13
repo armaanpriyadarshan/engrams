@@ -277,9 +277,14 @@ export function useForceLayout(
       return {
         index: i,
         slug: n.slug,
-        x: cached?.x ?? cx + (Math.random() - 0.5) * 30,
-        y: cached?.y ?? cy + (Math.random() - 0.5) * 30,
-        z: cached?.z ?? cz + (Math.random() - 0.5) * 30,
+        // Seed new nodes very close to the centroid — tight jitter
+        // so they start inside the existing cluster. The simulation
+        // spreads them just enough to find equilibrium. Large jitter
+        // caused new nodes to start outside the cluster and get pushed
+        // even further by repulsion before links could pull them back.
+        x: cached?.x ?? cx + (Math.random() - 0.5) * 5,
+        y: cached?.y ?? cy + (Math.random() - 0.5) * 5,
+        z: cached?.z ?? cz + (Math.random() - 0.5) * 5,
       }
     })
 
