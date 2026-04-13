@@ -324,17 +324,69 @@ export function useForceLayout(
     simRef.current = sim
     hasCooledRef.current = false
 
-    // ── Reheat based on what changed ────────────────────────────────
+    // ── Selective pinning + reheat ────────────────────────────────
+    // Pin EXISTING nodes so they don't bounce when new ones arrive.
+    // Only new nodes and edge endpoints are mobile.
     if (!isRefresh) {
-      // First layout — let the simulation run from default alpha (1).
-      // No reheat needed.
-    } else if (newSlugs.size > 0) {
-      sim.alpha(0.12).alphaTarget(0)
-    } else if (removedSlugs.size > 0) {
-      sim.alpha(0.08).alphaTarget(0)
+      // First layout — everything mobile, full alpha.
     } else {
-      // Edge-only change (new edges arrived for existing nodes).
-      sim.alpha(0.1).alphaTarget(0)
+      // Pin all existing nodes at their current positions
+      for (const node of nodes) {
+        if (!newSlugs.has(node.slug)) {
+          node.fx = node.x
+          node.fy = node.y
+          node.fz = node.z
+        }
+      }
+
+      // Unpin endpoints of NEW edges so connected nodes can pull
+      // together. An edge is "new" if at least one endpoint is a
+      // new node — those edges didn't exist before this data change.
+      const edgeEndpointsToUnpin = new Set<number>()
+      for (const edge of data.edges) {
+        const srcSlug = data.nodes[edge.sourceIdx]?.slug
+        const tgtSlug = data.nodes[edge.targetIdx]?.slug
+        if (srcSlug && newSlugs.has(srcSlug)) {
+          edgeEndpointsToUnpin.add(edge.targetIdx)
+        }
+        if (tgtSlug && newSlugs.has(tgtSlug)) {
+          edgeEndpointsToUnpin.add(edge.sourceIdx)
+        }
+      }
+      for (const idx of edgeEndpointsToUnpin) {
+        const node = nodes[idx]
+        if (node) {
+          node.fx = null
+          node.fy = null
+          node.fz = null
+        }
+      }
+
+      // Gentle reheat — only mobile nodes move
+      if (newSlugs.size > 0) {
+        sim.alpha(0.3).alphaTarget(0)
+      } else if (removedSlugs.size > 0) {
+        sim.alpha(0.15).alphaTarget(0)
+      } else {
+        // Edge-only: unpin endpoints of ALL new edges
+        // (edges where both endpoints existed but weren't connected)
+        for (const edge of data.edges) {
+          const srcSlug = data.nodes[edge.sourceIdx]?.slug
+          const tgtSlug = data.nodes[edge.targetIdx]?.slug
+          if (srcSlug && tgtSlug && !newSlugs.has(srcSlug) && !newSlugs.has(tgtSlug)) {
+            // Check if this edge is new by seeing if both nodes
+            // were in the previous slug set
+            if (prevSlugs.has(srcSlug) && prevSlugs.has(tgtSlug)) {
+              // This is a new edge between existing nodes — unpin both
+              const src = nodes[edge.sourceIdx]
+              const tgt = nodes[edge.targetIdx]
+              if (src) { src.fx = null; src.fy = null; src.fz = null }
+              if (tgt) { tgt.fx = null; tgt.fy = null; tgt.fz = null }
+            }
+          }
+        }
+        sim.alpha(0.2).alphaTarget(0)
+      }
     }
 
     // ── Compute scale on first layout ───────────────────────────────
