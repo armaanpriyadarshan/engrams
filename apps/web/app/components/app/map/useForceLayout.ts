@@ -45,7 +45,7 @@ export interface LayoutResult {
 // v5: rebalanced — links slightly looser (0.75 vs 0.85), repulsion
 // softer (-25 to -55 vs -30 to -70). Connected nodes still cluster
 // but with breathing room; disconnected nodes don't scatter as far.
-const STORAGE_KEY_PREFIX = "engrams-map-layout-v9-"
+const STORAGE_KEY_PREFIX = "engrams-map-layout-v10-"
 
 interface StoredLayout {
   positions: Array<[string, { x: number; y: number; z: number }]>
@@ -346,11 +346,10 @@ export function useForceLayout(
 
     const nodeCount = nodes.length
     // Moderated repulsion so outlier nodes don't drift way past the edge.
-    // Sweet spot between the ultra-compact test (-2/-5) and the
-    // previous scattered feel (-18/-38). Compact enough that the
-    // constellation reads as one organism, loose enough that
-    // individual clusters are distinguishable.
-    const repulsion = -12 - Math.min(nodeCount, 15)
+    // Very gentle repulsion — just enough to prevent overlap, not
+    // enough to scatter edgeless nodes far away. The center force
+    // (0.85) does the heavy lifting to keep everything cohesive.
+    const repulsion = -6 - Math.min(nodeCount, 8)
 
     // d3-force-3d requires numDimensions(3) to be set BEFORE nodes are
     // attached — otherwise it initializes nodes using its default 2D
@@ -381,7 +380,7 @@ export function useForceLayout(
       )
       .force("charge", forceManyBody<ForceNode>().strength(repulsion))
       // 3D center force — pulls the whole constellation toward the origin.
-      .force("center", forceCenter<ForceNode>(0, 0, 0).strength(0.6))
+      .force("center", forceCenter<ForceNode>(0, 0, 0).strength(0.85))
       // Collide radius per-node based on wiki depth. In 3D it enforces a
       // minimum spherical spacing so nodes never visually overlap on any
       // viewing angle.
