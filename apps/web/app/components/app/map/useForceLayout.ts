@@ -396,41 +396,10 @@ export function useForceLayout(
       simulation.tick()
     }
 
-    // ── Insert push: new nodes nudge nearby existing nodes outward ──
-    // After the simulation places the new node, push existing nodes
-    // within a radius slightly away — the inverse of the delete
-    // settle. Creates a "making room" effect on insertion. Runs
-    // AFTER simulation ticks so the new node's position is final.
-    if (isRefresh && newSlugs.size > 0) {
-      const INSERT_PUSH_RADIUS = 160
-      const INSERT_PUSH_RADIUS_SQ = INSERT_PUSH_RADIUS * INSERT_PUSH_RADIUS
-      for (let i = 0; i < nodeCount; i++) {
-        if (!newSlugs.has(nodes[i].slug)) continue
-        const nx = nodes[i].x ?? 0
-        const ny = nodes[i].y ?? 0
-        const nz = nodes[i].z ?? 0
-        for (let j = 0; j < nodeCount; j++) {
-          if (i === j) continue
-          if (newSlugs.has(nodes[j].slug)) continue
-          const ex = nodes[j].x ?? 0
-          const ey = nodes[j].y ?? 0
-          const ez = nodes[j].z ?? 0
-          const dx = ex - nx
-          const dy = ey - ny
-          const dz = ez - nz
-          const dist2 = dx * dx + dy * dy + dz * dz
-          if (dist2 >= INSERT_PUSH_RADIUS_SQ || dist2 < 0.01) continue
-          const dist = Math.sqrt(dist2)
-          // Strength falls off linearly, max 10 sim units of push
-          const t = 1 - dist / INSERT_PUSH_RADIUS
-          const pushMag = t * 14
-          // Push direction: away from the new node
-          nodes[j].x = ex + (dx / dist) * pushMag
-          nodes[j].y = ey + (dy / dist) * pushMag
-          nodes[j].z = ez + (dz / dist) * pushMag
-        }
-      }
-    }
+    // Insert push removed — it was scattering the graph by pushing
+    // existing nodes away from every new arrival. The force simulation's
+    // own repulsion + collide already handles spacing; an extra push
+    // on top made organic growth look chaotic.
 
     // Establish the scale on first layout and never change it.
     // targetRadius is derived from the safe viewport (the visible

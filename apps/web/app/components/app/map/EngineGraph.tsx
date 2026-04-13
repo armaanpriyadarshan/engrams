@@ -772,53 +772,11 @@ function applyReconcile(state: SceneState, data: GraphData, positions: Float32Ar
     state.targetZ = Math.max(state.minZoom, Math.min(state.maxZoom, state.targetZ))
   }
 
-  // ── Start an attention pan if any new node would land outside the
-  // safe viewport. Only REPLACE an in-flight pan if there's a new target
-  // to drive toward — otherwise leave the existing drift alone so it can
-  // finish its phase. ──
-  if (meta.newSlugs.size > 0) {
-    const safe =
-      typeof window !== "undefined"
-        ? getSafeViewport(window.innerWidth, window.innerHeight)
-        : null
-    if (safe) {
-      const rect = state.container.getBoundingClientRect()
-      const projVec = new THREE.Vector3()
-      let offScreenCount = 0
-      let centroidX = 0
-      let centroidY = 0
-      for (let i = 0; i < next.count; i++) {
-        if (!meta.newSlugs.has(next.slugs[i])) continue
-        const i3 = i * 3
-        projVec
-          .set(next.targetPos[i3], next.targetPos[i3 + 1], next.targetPos[i3 + 2])
-          .project(state.camera)
-        const sx = (projVec.x * 0.5 + 0.5) * rect.width + rect.left
-        const sy = (-projVec.y * 0.5 + 0.5) * rect.height + rect.top
-        if (!isInSafeViewport(sx, sy, safe)) {
-          offScreenCount += 1
-          centroidX += next.targetPos[i3]
-          centroidY += next.targetPos[i3 + 1]
-        }
-      }
-      if (offScreenCount > 0) {
-        // Use the CURRENT returnTo if a pan is already in-flight — don't
-        // trap the user at a mid-drift position when a second reconcile
-        // lands. Otherwise capture the current resting panOffset.
-        const returnTo = state.attentionPan
-          ? state.attentionPan.returnTo
-          : { x: state.panOffset.x, y: state.panOffset.y }
-        state.attentionPan = {
-          target: { x: centroidX / offScreenCount, y: centroidY / offScreenCount },
-          returnTo,
-          startMs: performance.now(),
-        }
-      }
-      // If offScreenCount is 0, leave any in-flight attentionPan alone so
-      // it can finish its three-phase drift. A new reconcile without
-      // off-screen nodes doesn't need to steal the camera.
-    }
-  }
+  // Attention pan disabled. It chased every new off-screen node,
+  // making organic growth feel chaotic — the camera bounced between
+  // distant positions as articles arrived one by one. New nodes now
+  // appear wherever the simulation places them; the user pans
+  // manually if they want to see them.
 
   // ── Force hover recompute on next frame: surviving slugs may have moved
   // to new indices, so the old index would point at the wrong node. ──
