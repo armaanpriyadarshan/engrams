@@ -135,6 +135,10 @@ export function useForceLayout(
   // Counter that bumps when server-side layout arrives, forcing the
   // effect to re-run with the DB-seeded positions.
   const [dbSyncTick, setDbSyncTick] = useState(0)
+  // Counter that bumps when the handle is created/updated, forcing
+  // the component to re-render and return the new handle. Refs don't
+  // trigger re-renders, so without this the parent stays stuck on null.
+  const [handleTick, setHandleTick] = useState(0)
 
   // Fetch layout from Supabase when localStorage is empty. This is what
   // makes positions persist across browsers/devices — the first browser
@@ -351,6 +355,7 @@ export function useForceLayout(
 
     // ── Build / update the stable handle ────────────────────────────
     if (!handleRef.current) {
+      setHandleTick(t => t + 1)
       handleRef.current = {
         tick: () => tickFn(),
         readPosition: (i, out) => readPositionFn(i, out),
@@ -360,6 +365,7 @@ export function useForceLayout(
     } else {
       handleRef.current.count = nodeCount
       handleRef.current.meta = metaRef.current
+      setHandleTick(t => t + 1)
     }
 
     function tickFn(): boolean {
