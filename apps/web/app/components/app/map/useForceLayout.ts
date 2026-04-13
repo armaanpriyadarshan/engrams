@@ -179,8 +179,17 @@ export function useForceLayout(
       const nodes = nodesRef.current
       if (nodes.length === 0 || !scaleRef.current) return
       const posMap = new Map<string, { x: number; y: number; z: number }>()
+      let currentMaxR = 1
       for (const n of nodes) {
         posMap.set(n.slug, { x: n.x ?? 0, y: n.y ?? 0, z: n.z ?? 0 })
+        const r = Math.sqrt((n.x ?? 0) ** 2 + (n.y ?? 0) ** 2 + (n.z ?? 0) ** 2)
+        if (r > currentMaxR) currentMaxR = r
+      }
+      // Update the live scale so readPosition uses the actual extent,
+      // not the stale maxR from the initial warmup. This is what
+      // prevents organic growth from exceeding the viewport on refresh.
+      if (currentMaxR > scaleRef.current.maxR) {
+        scaleRef.current.maxR = currentMaxR
       }
       prevPositions.current = posMap
       writeStoredLayout(engramId, posMap, scaleRef.current.maxR)
