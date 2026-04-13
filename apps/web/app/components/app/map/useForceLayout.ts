@@ -293,33 +293,28 @@ export function useForceLayout(
     }))
 
     const nodeCount = nodes.length
-    const repulsion = -4 - Math.min(nodeCount, 6)
+    const repulsion = -3 - Math.min(nodeCount, 5)
 
-    // ── Create or reconfigure simulation ────────────────────────────
-    // d3-force-3d requires numDimensions(3) to be set BEFORE nodes are
-    // attached — otherwise it initializes nodes using its default 2D
-    // phyllotactic seed and z stays undefined, which NaNs the whole
-    // position buffer downstream.
     const sim = forceSimulation<SimNode>()
       .numDimensions(3)
       .nodes(nodes)
       .force(
         "link",
         forceLink<SimNode, SimLink>(links)
-          .distance((l: SimLink) => 40 - 10 * (l.weight ?? 1.0))
-          .strength((l: SimLink) => 0.55 + 0.2 * (l.weight ?? 1.0)),
+          .distance((l: SimLink) => 25 - 8 * (l.weight ?? 1.0))
+          .strength((l: SimLink) => 0.7 + 0.2 * (l.weight ?? 1.0)),
       )
       .force("charge", forceManyBody<SimNode>().strength(repulsion))
-      .force("center", forceCenter<SimNode>(0, 0, 0).strength(1.0))
+      .force("center", forceCenter<SimNode>(0, 0, 0).strength(1.2))
       .force(
         "collide",
         forceCollide<SimNode>()
-          .radius((_: SimNode, i: number) => 12 + (data.nodes[i]?.depth ?? 0) * 5)
+          .radius((_: SimNode, i: number) => 8 + (data.nodes[i]?.depth ?? 0) * 3)
           .strength(1),
       )
-      .velocityDecay(0.6) // Higher = more damping = smoother motion (default 0.4)
-      .alphaDecay(0.015)  // Slower cooldown so the graph resettles fully (default 0.0228)
-      .stop() // We tick manually in the animation loop
+      .velocityDecay(0.6)
+      .alphaDecay(0.015)
+      .stop()
 
     simRef.current = sim
     hasCooledRef.current = false
