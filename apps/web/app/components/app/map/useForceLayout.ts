@@ -317,6 +317,8 @@ export function useForceLayout(
           .radius((_: SimNode, i: number) => 12 + (data.nodes[i]?.depth ?? 0) * 5)
           .strength(1),
       )
+      .velocityDecay(0.6) // Higher = more damping = smoother motion (default 0.4)
+      .alphaDecay(0.015)  // Slower cooldown so the graph resettles fully (default 0.0228)
       .stop() // We tick manually in the animation loop
 
     simRef.current = sim
