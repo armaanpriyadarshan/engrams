@@ -256,20 +256,22 @@ export function useForceLayout(
       }
     }
 
+    // Compute centroid of existing nodes so new nodes can be seeded
+    // near the cluster instead of on d3-force's distant phyllotactic
+    // sphere. Small random jitter prevents them stacking at the exact
+    // same point.
+    let cx = 0, cy = 0, cz = 0, cn = 0
+    for (const [, pos] of prev) {
+      cx += pos.x; cy += pos.y; cz += pos.z; cn++
+    }
+    if (cn > 0) { cx /= cn; cy /= cn; cz /= cn }
+
     const nodes: ForceNode[] = data.nodes.map((n, i) => {
       const cached = prev.get(n.slug)
       const isRipple = rippleSlugs.has(n.slug)
       if (isRefresh && cached && !isRipple) {
-        // Existing nodes start at their cached position but are
-        // NOT hard-pinned. They're free to drift as the simulation
-        // resettles the whole graph. This means organic growth
-        // (feeding one source at a time) produces layouts as good
-        // as bulk loading — the entire constellation readjusts
-        // each time a new node arrives, like Obsidian's graph.
-        //
-        // The old approach (fx/fy/fz pinning) froze early nodes in
-        // place forever, so the global structure never optimized as
-        // the graph grew.
+        // Existing nodes start at cached position, fully mobile so
+        // the constellation resettles as the graph grows.
         return {
           index: i,
           slug: n.slug,
@@ -278,17 +280,15 @@ export function useForceLayout(
           z: cached.z,
         }
       }
-      // New nodes and ripple neighbors are mobile. Ripple neighbors start
-      // at their cached position and get pushed around by the new node's
-      // repulsion (add case) or settle into the void (delete case).
-      // For a fresh node with no cache, d3-force-3d initializes from a
-      // phyllotactic sphere, which gives natural 3D scatter.
+      // New nodes seed near the graph centroid (not on a distant
+      // phyllotactic sphere). The simulation pulls them to their
+      // natural position via link + charge forces.
       return {
         index: i,
         slug: n.slug,
-        x: cached?.x,
-        y: cached?.y,
-        z: cached?.z,
+        x: cached?.x ?? cx + (Math.random() - 0.5) * 30,
+        y: cached?.y ?? cy + (Math.random() - 0.5) * 30,
+        z: cached?.z ?? cz + (Math.random() - 0.5) * 30,
       }
     })
 
