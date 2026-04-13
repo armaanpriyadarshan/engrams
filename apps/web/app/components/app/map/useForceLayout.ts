@@ -3,7 +3,8 @@
    so that new data doesn't retrigger the full simulation. The React 19
    rule is aware that ref access inside useMemo is unusual but here it's
    the intended behavior. */
-import { useMemo, useRef } from "react"
+import { useMemo, useRef, useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 // d3-force-3d is a drop-in superset of d3-force that adds a z axis. Same
 // API — forceSimulation, forceLink, etc. — but nodes carry x/y/z and every
 // force operates in three dimensions when numDimensions(3) is set. The 2D
@@ -72,15 +73,26 @@ function writeStoredLayout(
   maxR: number,
 ) {
   if (!engramId || typeof window === "undefined") return
+  const payload: StoredLayout = {
+    positions: Array.from(positions.entries()),
+    maxR,
+  }
   try {
-    const payload: StoredLayout = {
-      positions: Array.from(positions.entries()),
-      maxR,
-    }
     window.localStorage.setItem(STORAGE_KEY_PREFIX + engramId, JSON.stringify(payload))
   } catch {
-    // Quota exceeded or other storage failure — silently drop. Layout
-    // still works in memory; only the cross-refresh continuity is lost.
+    // Quota exceeded — localStorage write failed, DB write below
+    // still provides cross-browser persistence.
+  }
+  // Fire-and-forget write to Supabase so positions sync across
+  // browsers/devices. The DB is the source of truth for cross-browser;
+  // localStorage is the fast cache for same-browser.
+  try {
+    const supabase = createClient()
+    Promise.resolve(
+      supabase.from("engrams").update({ layout_positions: payload }).eq("id", engramId),
+    ).catch(() => {})
+  } catch {
+    // Supabase client construction failed — skip silently.
   }
 }
 
@@ -90,23 +102,45 @@ export function useForceLayout(
   height: number,
   engramId: string | null = null,
 ): LayoutResult | null {
-  // Cache previous positions (in normalized simulation space, pre-scale)
-  // by slug so existing nodes don't jump on refresh. Seeded lazily from
-  // localStorage inside the useMemo so that a page refresh produces the
-  // same constellation the user was looking at — incremental updates and
-  // fresh loads stay visually consistent.
   const prevPositions = useRef<Map<string, { x: number; y: number; z: number }>>(new Map())
-  // Cache the adjacency of the PREVIOUS layout so we can compute the
-  // direct neighbors of nodes that were just removed — those are gone
-  // from the new data.edges by the time we run this diff.
   const prevAdjacency = useRef<Map<string, Set<string>>>(new Map())
-  // Cache the scale from the FIRST layout. Reusing it means adding a node
-  // never rescales the whole graph — existing nodes stay exactly where they
-  // were, and new nodes slot in at the same world-space density.
   const scaleRef = useRef<LayoutScale | null>(null)
-  // Track which engram we last seeded from storage so we re-seed when the
-  // user switches engrams within the same browser session.
   const seededEngramId = useRef<string | null>(null)
+
+  // Counter that bumps when server-side layout arrives, forcing useMemo
+  // to re-run with the DB-seeded positions.
+  const [dbSyncTick, setDbSyncTick] = useState(0)
+
+  // Fetch layout from Supabase when localStorage is empty. This is what
+  // makes positions persist across browsers/devices — the first browser
+  // to compute a layout writes it to the DB, and every other browser
+  // reads it here instead of recomputing from scratch.
+  useEffect(() => {
+    if (!engramId || typeof window === "undefined") return
+    const localStored = readStoredLayout(engramId)
+    if (localStored) return // localStorage has it, skip DB fetch
+
+    const supabase = createClient()
+    Promise.resolve(
+      supabase.from("engrams").select("layout_positions").eq("id", engramId).single(),
+    )
+      .then(({ data: row }) => {
+        if (!row?.layout_positions) return
+        const serverLayout = row.layout_positions as StoredLayout
+        if (!serverLayout || !Array.isArray(serverLayout.positions)) return
+        try {
+          window.localStorage.setItem(
+            STORAGE_KEY_PREFIX + engramId,
+            JSON.stringify(serverLayout),
+          )
+        } catch {}
+        prevPositions.current = new Map(serverLayout.positions)
+        scaleRef.current = null
+        seededEngramId.current = engramId
+        setDbSyncTick((c) => c + 1)
+      })
+      .catch(() => {})
+  }, [engramId])
 
   return useMemo(() => {
     if (!data || data.nodes.length === 0) return null
@@ -473,5 +507,7 @@ export function useForceLayout(
       positions,
       meta: { newSlugs, rippleSlugs },
     }
-  }, [data, width, height, engramId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dbSyncTick forces
+  // re-layout when server-side positions arrive after the initial render.
+  }, [data, width, height, engramId, dbSyncTick])
 }
