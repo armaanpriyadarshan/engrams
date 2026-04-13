@@ -293,7 +293,7 @@ export function useForceLayout(
     }))
 
     const nodeCount = nodes.length
-    const repulsion = -3 - Math.min(nodeCount, 5)
+    const repulsion = -6 - Math.min(nodeCount, 8)
 
     const sim = forceSimulation<SimNode>()
       .numDimensions(3)
@@ -301,15 +301,15 @@ export function useForceLayout(
       .force(
         "link",
         forceLink<SimNode, SimLink>(links)
-          .distance((l: SimLink) => 25 - 8 * (l.weight ?? 1.0))
-          .strength((l: SimLink) => 0.7 + 0.2 * (l.weight ?? 1.0)),
+          .distance((l: SimLink) => 42 - 10 * (l.weight ?? 1.0))
+          .strength((l: SimLink) => 0.55 + 0.2 * (l.weight ?? 1.0)),
       )
       .force("charge", forceManyBody<SimNode>().strength(repulsion))
-      .force("center", forceCenter<SimNode>(0, 0, 0).strength(1.2))
+      .force("center", forceCenter<SimNode>(0, 0, 0).strength(0.85))
       .force(
         "collide",
         forceCollide<SimNode>()
-          .radius((_: SimNode, i: number) => 8 + (data.nodes[i]?.depth ?? 0) * 3)
+          .radius((_: SimNode, i: number) => 14 + (data.nodes[i]?.depth ?? 0) * 5)
           .strength(1),
       )
       .velocityDecay(0.6)
