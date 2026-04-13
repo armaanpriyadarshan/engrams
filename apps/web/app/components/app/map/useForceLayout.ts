@@ -352,11 +352,11 @@ export function useForceLayout(
     // On refresh, only new nodes + spatial ripple neighbors move. 50
     // ticks is enough for them to settle into their new equilibrium
     // without over-displacing.
-    // With soft-pinning (no fx/fy/fz), the incremental path needs
-    // more ticks so the whole graph can resettle, not just the new
-    // nodes. 120 ticks is enough for a gentle adjustment without
-    // making every source feed feel sluggish.
-    const ticks = isRefresh ? 120 : Math.min(300, 100 + nodeCount)
+    // Refresh ticks kept moderate — enough for soft-settled nodes to
+    // adjust, but not so many that edgeless new nodes (articles
+    // arrive before edges) get pushed far by repulsion before their
+    // edges arrive seconds later.
+    const ticks = isRefresh ? 80 : Math.min(300, 100 + nodeCount)
     for (let i = 0; i < ticks; i++) {
       simulation.tick()
     }

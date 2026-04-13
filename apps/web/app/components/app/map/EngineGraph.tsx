@@ -133,7 +133,7 @@ function buildMountScene(
     // ── Scene / camera / renderer ──
     const scene = new THREE.Scene()
     const camZ = 400
-    const camera = new THREE.PerspectiveCamera(55, initW / initH, 1, 3000)
+    const camera = new THREE.PerspectiveCamera(55, initW / initH, 1, 10000)
     camera.position.set(0, 0, camZ)
     const renderer = new THREE.WebGLRenderer({ alpha: true, powerPreference: "high-performance" })
     renderer.setSize(initW, initH)
