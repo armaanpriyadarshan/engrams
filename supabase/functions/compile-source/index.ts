@@ -930,10 +930,10 @@ const DEFAULT_WRITE_GUIDANCE = `You will write or rewrite a single wiki article.
 Your job:
 - Produce a clear, encyclopedic article that explains the topic in its own right, drawing on the new summary and the existing article.
 - When an existing article is provided, treat it as the working draft and update it with any new information from the summary. Preserve its voice and any still-accurate claims.
-- **WIKI-LINKS ARE MANDATORY.** Whenever you mention a concept that exists in the wiki index OR in the other articles being written in this same compile run, you MUST replace the inline mention with [[slug]] syntax. This is the most important rule. An article with zero wiki-links is broken and will be rejected.
-  - BAD: "Espresso machines use a portafilter to hold the coffee grounds, and the grouphead delivers hot water."
-  - GOOD: "Espresso machines use a [[portafilter]] to hold the coffee grounds, and the [[grouphead]] delivers hot water."
-  - Scan the wiki index BEFORE writing. For every concept in the index that's plausibly relevant to your topic, find a place to mention it and link it. Aim for at least 3 wiki-links per article when the index is non-empty; more is better.
+- **USE WIKI-LINKS** whenever you naturally mention a concept that exists in the wiki index or in the other articles being written in this compile run. Replace the inline mention with [[slug]] syntax.
+  - BAD: "Espresso machines use a portafilter to hold the coffee grounds."
+  - GOOD: "Espresso machines use a [[portafilter]] to hold the coffee grounds."
+  - Only link when the reference is genuine — don't force connections that don't exist. Some articles may have zero links and that's fine.
   - Only link to slugs that actually appear in the index or in your fellow concepts' slugs from this compile. Never invent a slug.
 - For every [[slug]] you cite, add an entry to \`link_weights\` with a number from 0.1 to 1.0 indicating how essential that connection is. 1.0 = the article cannot be understood without the linked concept (parent topic, hard prerequisite, central counterpoint). 0.6 = supporting context worth knowing. 0.2 = a passing reference. The driver of the layout is this number, so be honest — don't grade everything 1.0.
 - Third person, encyclopedic. No first person. No hedging. No filler.
@@ -2037,7 +2037,7 @@ ${newSlugsStr}
 For each NEW article, find connections to OTHER articles in the index (both new and existing). Return a JSON array of edges.
 
 Rules:
-- Every new article MUST have at least 2 connections. More is better — aim for 3-5 per article.
+- Only create connections that genuinely exist. Some articles may have no meaningful connections — that's fine. Don't force edges.
 - Connections can go in either direction (from new→existing, existing→new, or new→new).
 - Weight each edge 0.1–1.0:
   - 0.8–1.0: prerequisite, parent topic, or essential counterpart
