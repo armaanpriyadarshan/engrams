@@ -541,7 +541,9 @@ function buildMountScene(
           state.panLimit = frameMaxR * 1.2
           if (!state.hasFramed) {
             state.targetZ = camZ
-            state.currentZoom = camZ
+            // Don't slam currentZoom — let it lerp via the
+            // existing currentZoom += (targetZ - currentZoom) * 0.1
+            // so the camera smoothly zooms out instead of jumping.
             state.hasFramed = true
           }
         }
