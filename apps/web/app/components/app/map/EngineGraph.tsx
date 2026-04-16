@@ -257,7 +257,7 @@ function buildMountScene(
           // the dark background. As you zoom in and sprites grow past
           // 15px, the multiplier rolls off to 0.8 so the close-up
           // stays composed instead of blown out.
-          float zoomBrightness = 1.5 - smoothstep(15.0, 50.0, vSize) * 0.7;
+          float zoomBrightness = 1.8 - smoothstep(15.0, 50.0, vSize) * 0.7;
           // Clamp to 1.0 BEFORE applying vFade so the fade actually
           // dims the core. Without this, the peaked center (1.74) ×
           // brightness (1.5) stays above 1.0 even at 55% fade and the
@@ -280,7 +280,7 @@ function buildMountScene(
       blending: THREE.AdditiveBlending,
     })
 
-    const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.18 })
+    const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.28 })
 
     // ── Empty geometries (populated by applyReconcile) ──
     const nodeGeo = new THREE.BufferGeometry()
